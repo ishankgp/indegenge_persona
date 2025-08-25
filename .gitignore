@@ -13,8 +13,9 @@ pip-log.txt
 pip-delete-this-directory.txt
 .pytest_cache/
 *.egg-info/
-dist/
 build/
+backend/__pycache__/
+backend/app/__pycache__/
 
 # Database
 *.db
@@ -35,6 +36,7 @@ yarn-debug.log*
 yarn-error.log*
 frontend/dist/
 frontend/build/
+dist/
 
 # IDE
 .vscode/
