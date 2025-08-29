@@ -32,7 +32,7 @@ def print_error(message):
 
 def get_python_executable():
     """Determines the correct python executable from the venv."""
-    venv_path = BACKEND_DIR / "venv"
+    venv_path = PROJECT_ROOT / "venv"
     if sys.platform == "win32":
         python_exe = venv_path / "Scripts" / "python.exe"
     else:
@@ -40,7 +40,7 @@ def get_python_executable():
 
     if not python_exe.exists():
         print_error(f"Python executable not found in venv at: {python_exe}")
-        print_error("Please ensure the backend virtual environment is set up correctly.")
+        print_error("Please ensure the virtual environment is set up correctly.")
         return None
     return str(python_exe)
 
