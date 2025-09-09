@@ -329,7 +329,7 @@ export function Analytics() {
                     <h4 className="text-sm font-medium text-gray-700 mb-2">
                       {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                     </h4>
-                    <p className="text-2xl font-bold text-primary">{value}</p>
+                    <p className="text-2xl font-bold text-primary">{String(value)}</p>
                   </div>
                 );
               })}
