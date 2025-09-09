@@ -2,7 +2,7 @@ import requests
 import json
 
 # --- Configuration ---
-BACKEND_URL = "http://127.0.0.1:8000"
+BACKEND_URL = "https://personabackend-production.up.railway.app"
 GENERATE_ENDPOINT = f"{BACKEND_URL}/personas/generate"
 
 # --- Sample Persona Inputs ---
