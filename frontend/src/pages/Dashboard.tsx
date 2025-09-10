@@ -346,12 +346,12 @@ export default function Dashboard() {
                           {count}
                         </span>
                       </div>
-                      <div className="w-full bg-muted rounded-full h-2">
-                        <div 
-                          className="bg-gradient-to-r from-primary to-secondary h-2 rounded-full transition-all duration-500" 
-                          style={{ width: `${(count / personas.length) * 100}%` }}
-                        ></div>
-                      </div>
+                       <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                         <div 
+                           className="bg-gradient-to-r from-primary to-secondary h-full rounded-full transition-all duration-500" 
+                           style={{ width: `${(count / personas.length) * 100}%` }}
+                         />
+                       </div>
                     </div>
                   ))}
                 </div>

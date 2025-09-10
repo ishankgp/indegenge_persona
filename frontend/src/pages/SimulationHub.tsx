@@ -88,11 +88,11 @@ const availableMetrics = [
   }
 ];
 
-const sampleMessages = [
+const SAMPLE_MESSAGES = [
   "Introducing our new diabetes management solution with 24/7 glucose monitoring",
   "Experience relief from chronic pain with our breakthrough therapy",
   "Take control of your health journey with personalized treatment plans"
-];
+] as const;
 
 export function SimulationHub() {
   const navigate = useNavigate();
@@ -493,7 +493,7 @@ export function SimulationHub() {
                 />
                 <div className="flex gap-2">
                   <p className="text-xs text-gray-500 dark:text-gray-400">Try a sample:</p>
-                  {sampleMessages.map((message, index) => (
+                  {SAMPLE_MESSAGES.map((message, index) => (
                     <Button
                       key={index}
                       variant="ghost"
