@@ -11,27 +11,26 @@ import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
-  PlayCircle, 
-  Loader2, 
   Users, 
-  Target, 
+  Sparkles, 
+  Settings, 
+  Search, 
   BarChart3, 
-  Settings,
+  Target, 
   Brain,
-  Sparkles,
-  ChevronRight,
-  AlertCircle,
-  CheckCircle2,
-  Zap,
-  TrendingUp,
-  MessageSquare,
-  Shield,
-  Award,
-  Gauge,
   Activity,
+  Zap,
+  Shield,
+  MessageSquare,
+  AlertCircle,
+  PlayCircle,
+  Award,
+  Plus,
+  CheckCircle2,
+  Gauge,
   FileText,
-  Search,
-  Plus
+  Loader2,
+  ChevronRight
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
@@ -380,8 +379,8 @@ export function SimulationHub() {
                             <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
                               <Checkbox
                                 checked={filteredPersonas.length > 0 && filteredPersonas.every(p => selectedPersonas.has(p.id))}
-                                onCheckedChange={(checked) => {
-                                  if (checked) {
+                                onChange={(e) => {
+                                  if (e.target.checked) {
                                     setSelectedPersonas(new Set(filteredPersonas.map(p => p.id)));
                                   } else {
                                     setSelectedPersonas(new Set());
@@ -408,7 +407,7 @@ export function SimulationHub() {
                               <td className="p-4">
                                 <Checkbox
                                   checked={selectedPersonas.has(persona.id)}
-                                  onCheckedChange={() => togglePersona(persona.id)}
+                                  onChange={() => togglePersona(persona.id)}
                                   onClick={(e) => e.stopPropagation()}
                                 />
                               </td>
@@ -538,7 +537,7 @@ export function SimulationHub() {
                           <div className="flex items-start space-x-3">
                             <Checkbox
                               checked={isSelected}
-                              onCheckedChange={() => toggleMetric(metric.id)}
+                              onChange={() => toggleMetric(metric.id)}
                               onClick={(e) => e.stopPropagation()}
                               className="mt-1"
                             />

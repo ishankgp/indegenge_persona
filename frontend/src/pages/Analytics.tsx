@@ -3,7 +3,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -18,17 +17,12 @@ import {
   Award,
   AlertTriangle,
   CheckCircle,
-  XCircle,
-  Info,
-  ChevronRight,
   Download,
   Share2,
   Filter,
-  Calendar,
   Clock,
   Gauge,
   Lightbulb,
-  Heart,
   PlayCircle,
   Shield
 } from 'lucide-react';
