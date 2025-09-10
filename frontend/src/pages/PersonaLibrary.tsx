@@ -34,6 +34,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { PersonaDetailModal } from '../components/PersonaDetailModal';
+import { cn } from '@/lib/utils';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
@@ -607,9 +608,4 @@ export function PersonaLibrary() {
       />
     </div>
   );
-}
-
-// Helper function for conditional classnames
-function cn(...classes: string[]) {
-  return classes.filter(Boolean).join(' ');
 }
