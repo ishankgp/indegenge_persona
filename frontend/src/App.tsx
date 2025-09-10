@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
-import { Dashboard } from './pages/Dashboard';
+import Dashboard from './pages/Dashboard';
 import { PersonaLibrary } from './pages/PersonaLibrary';
 import { SimulationHub } from './pages/SimulationHub';
 import { Analytics } from './pages/Analytics';
