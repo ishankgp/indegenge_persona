@@ -1,39 +1,97 @@
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, Minus, Users, Target, Brain, MessageSquare, Activity } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
+import { 
+  TrendingUp, 
+  TrendingDown, 
+  Minus, 
+  Users, 
+  Target, 
+  Brain, 
+  MessageSquare, 
+  Activity,
+  BarChart3,
+  Sparkles,
+  Award,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  Info,
+  ChevronRight,
+  Download,
+  Share2,
+  Filter,
+  Calendar,
+  Clock,
+  Gauge,
+  Lightbulb,
+  Heart,
+  PlayCircle,
+  Shield
+} from 'lucide-react';
 
 export function Analytics() {
   const location = useLocation();
+  const navigate = useNavigate();
   const analysisResults = location.state?.analysisResults;
 
   if (!analysisResults) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-        <div className="gradient-bg text-white p-8">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-white/20 rounded-xl">
-                <Activity className="h-8 w-8" />
-              </div>
-              <div>
-                <h1 className="text-4xl font-bold">Analytics Dashboard</h1>
-                <p className="text-blue-100 text-lg">
-                  View and analyze cohort simulation results
-                </p>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
+        {/* Header */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-secondary">
+          <div className="absolute inset-0 overflow-hidden">
+            <div className="absolute top-20 left-10 w-72 h-72 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
+            <div className="absolute bottom-0 right-20 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse animation-delay-2000"></div>
+          </div>
+
+          <div className="relative z-10 px-8 py-12">
+            <div className="max-w-7xl mx-auto">
+              <div className="flex items-center space-x-6">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-white/20 rounded-2xl blur-xl"></div>
+                  <div className="relative p-4 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20">
+                    <Activity className="h-10 w-10 text-white" />
+                  </div>
+                </div>
+                <div>
+                  <h1 className="text-5xl font-bold text-white">Analytics Dashboard</h1>
+                  <p className="text-white/90 text-lg mt-2">
+                    View and analyze cohort simulation results
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
-        <div className="max-w-7xl mx-auto p-8">
-          <Card className="stat-card">
-            <CardContent className="py-16 text-center">
-              <div className="p-4 bg-primary/10 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                <Activity className="h-8 w-8 text-primary" />
+
+        {/* Empty State */}
+        <div className="max-w-7xl mx-auto px-8 py-12">
+          <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardContent className="py-20 text-center">
+              <div className="relative inline-block">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-full blur-2xl opacity-30"></div>
+                <div className="relative p-6 bg-gradient-to-br from-primary/10 to-secondary/10 rounded-full">
+                  <BarChart3 className="h-12 w-12 text-primary" />
+                </div>
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">No analysis results available</h3>
-              <p className="text-gray-600">
-                Run a simulation from the Simulation Hub first.
+              <h3 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mt-6 mb-2">
+                No Analysis Results Available
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
+                Run a simulation from the Simulation Hub to see detailed analytics and insights
               </p>
+              <Button 
+                size="lg"
+                className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200"
+                onClick={() => navigate('/simulation')}
+              >
+                <Activity className="mr-2 h-5 w-5" />
+                Go to Simulation Hub
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -41,7 +99,7 @@ export function Analytics() {
     );
   }
 
-  // Extract data from the actual backend response structure
+  // Extract data from results
   const {
     cohort_size,
     stimulus_text,
@@ -53,107 +111,225 @@ export function Analytics() {
   } = analysisResults;
 
   const getSentimentIcon = (sentiment: number) => {
-    if (sentiment > 0.3) return <TrendingUp className="h-4 w-4 text-green-500" />;
+    if (sentiment > 0.3) return <TrendingUp className="h-4 w-4 text-emerald-500" />;
     if (sentiment < -0.3) return <TrendingDown className="h-4 w-4 text-red-500" />;
     return <Minus className="h-4 w-4 text-gray-500" />;
   };
 
   const getSentimentColor = (sentiment: number) => {
-    if (sentiment > 0.3) return 'text-green-600';
+    if (sentiment > 0.3) return 'text-emerald-600';
     if (sentiment < -0.3) return 'text-red-600';
     return 'text-gray-600';
+  };
+
+  const getSentimentBadge = (sentiment: number) => {
+    if (sentiment > 0.3) return { label: 'Positive', className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' };
+    if (sentiment < -0.3) return { label: 'Negative', className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' };
+    return { label: 'Neutral', className: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' };
+  };
+
+  const getScoreColor = (score: number, max: number = 10) => {
+    const percentage = (score / max) * 100;
+    if (percentage >= 70) return 'text-emerald-600';
+    if (percentage >= 40) return 'text-amber-600';
+    return 'text-red-600';
+  };
+
+  const getScoreProgress = (score: number, max: number = 10) => {
+    return (score / max) * 100;
   };
 
   const MetricCard = ({ 
     title, 
     value, 
     subtitle, 
-    icon: Icon 
+    icon: Icon,
+    trend,
+    color = 'primary'
   }: { 
     title: string; 
     value: any; 
     subtitle?: string;
     icon?: any;
-  }) => (
-    <Card className="stat-card border-l-4 border-l-primary">
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium text-gray-600">{title}</CardTitle>
-          {Icon && (
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Icon className="h-4 w-4 text-primary" />
+    trend?: 'up' | 'down' | 'neutral';
+    color?: string;
+  }) => {
+    const colorClasses = {
+      primary: 'from-violet-500 to-purple-500',
+      secondary: 'from-blue-500 to-cyan-500',
+      success: 'from-emerald-500 to-green-500',
+      warning: 'from-amber-500 to-orange-500'
+    };
+
+    return (
+      <Card className="relative overflow-hidden border-0 shadow-xl hover:shadow-2xl transition-all duration-300 backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+        <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${colorClasses[color as keyof typeof colorClasses]}`}></div>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">{title}</CardTitle>
+            {Icon && (
+              <div className={`p-2.5 rounded-xl bg-gradient-to-br ${colorClasses[color as keyof typeof colorClasses]} bg-opacity-10`}>
+                <Icon className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-baseline gap-2">
+            <div className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+              {value}
             </div>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="stat-number">{value}</div>
-        {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
-      </CardContent>
-    </Card>
-  );
+            {trend && (
+              <div className="flex items-center">
+                {trend === 'up' && <TrendingUp className="h-4 w-4 text-emerald-500" />}
+                {trend === 'down' && <TrendingDown className="h-4 w-4 text-red-500" />}
+                {trend === 'neutral' && <Minus className="h-4 w-4 text-gray-500" />}
+              </div>
+            )}
+          </div>
+          {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{subtitle}</p>}
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header Section */}
-      <div className="gradient-bg text-white p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-white/20 rounded-xl">
-                <Activity className="h-8 w-8" />
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
+      {/* Enhanced Header Section */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-secondary">
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute top-20 left-10 w-72 h-72 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute bottom-0 right-20 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse animation-delay-2000"></div>
+        </div>
+
+        <div className="relative z-10 px-8 py-12">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-6">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-white/20 rounded-2xl blur-xl"></div>
+                  <div className="relative p-4 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20">
+                    <Activity className="h-10 w-10 text-white" />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <h1 className="text-5xl font-bold text-white">Analytics Dashboard</h1>
+                    <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30 px-3 py-1">
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      Live Results
+                    </Badge>
+                  </div>
+                  <p className="text-white/90 text-lg">
+                    Comprehensive analysis for {cohort_size} personas
+                  </p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-4xl font-bold">Analytics Dashboard</h1>
-                <p className="text-blue-100 text-lg">
-                  Analysis results for {cohort_size} personas
-                </p>
+              <div className="flex gap-3">
+                <Button variant="secondary" className="bg-white/20 backdrop-blur-sm text-white border-white/30 hover:bg-white/30">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
+                <Button variant="secondary" className="bg-white/20 backdrop-blur-sm text-white border-white/30 hover:bg-white/30">
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share
+                </Button>
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-sm text-blue-100">Analysis completed</div>
-              <div className="text-xs text-blue-200">{new Date(created_at).toLocaleString()}</div>
+            
+            {/* Quick Stats Bar */}
+            <div className="grid grid-cols-4 gap-4 mt-8">
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-white/70 text-sm">Completed</p>
+                    <p className="text-2xl font-bold text-white">{new Date(created_at).toLocaleTimeString()}</p>
+                  </div>
+                  <Clock className="h-8 w-8 text-white/50" />
+                </div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-white/70 text-sm">Cohort Size</p>
+                    <p className="text-2xl font-bold text-white">{cohort_size}</p>
+                  </div>
+                  <Users className="h-8 w-8 text-white/50" />
+                </div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-white/70 text-sm">Metrics</p>
+                    <p className="text-2xl font-bold text-white">{metrics_analyzed.length}</p>
+                  </div>
+                  <Gauge className="h-8 w-8 text-white/50" />
+                </div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-white/70 text-sm">Insights</p>
+                    <p className="text-2xl font-bold text-white">{insights?.length || 0}</p>
+                  </div>
+                  <Lightbulb className="h-8 w-8 text-white/50" />
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-8 -mt-8">
-        {/* Stimulus Card */}
-        <Card className="stat-card mb-8">
-          <CardHeader>
-            <div className="flex items-center space-x-2">
-              <div className="p-2 bg-secondary/10 rounded-lg">
-                <MessageSquare className="h-5 w-5 text-secondary" />
+      <div className="max-w-7xl mx-auto px-8 -mt-8">
+        {/* Stimulus Card - Enhanced */}
+        <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+          <CardHeader className="bg-gradient-to-r from-primary/10 to-secondary/10 rounded-t-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-gradient-to-br from-primary to-secondary rounded-xl">
+                  <MessageSquare className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl">Analyzed Stimulus</CardTitle>
+                  <CardDescription>Marketing message tested across cohort</CardDescription>
+                </div>
               </div>
-              <CardTitle className="text-lg">Stimulus Text</CardTitle>
+              <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">
+                <Brain className="h-3 w-3 mr-1" />
+                AI Analyzed
+              </Badge>
             </div>
           </CardHeader>
-          <CardContent>
-            <p className="text-gray-700 italic">"{stimulus_text}"</p>
-            <div className="mt-4 flex flex-wrap gap-2">
+          <CardContent className="pt-6">
+            <blockquote className="border-l-4 border-primary pl-6 py-2 mb-6">
+              <p className="text-lg text-gray-700 dark:text-gray-300 italic">"{stimulus_text}"</p>
+            </blockquote>
+            <div className="flex flex-wrap gap-2">
               {metrics_analyzed.map((metric: string) => (
-                <span key={metric} className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm font-medium">
+                <Badge key={metric} variant="outline" className="px-3 py-1">
+                  <CheckCircle className="h-3 w-3 mr-1 text-emerald-500" />
                   {metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                </span>
+                </Badge>
               ))}
             </div>
           </CardContent>
         </Card>
 
-        {/* Metric Cards */}
+        {/* Key Metrics Grid - Enhanced */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
           {summary_statistics.purchase_intent_avg !== undefined && (
             <MetricCard
-              title="Avg. Purchase Intent"
+              title="Average Purchase Intent"
               value={summary_statistics.purchase_intent_avg.toFixed(1)}
               subtitle="Scale of 1-10"
               icon={Target}
+              trend={summary_statistics.purchase_intent_avg > 5 ? 'up' : 'down'}
+              color="primary"
             />
           )}
           {summary_statistics.sentiment_avg !== undefined && (
             <MetricCard
-              title="Avg. Sentiment"
+              title="Average Sentiment"
               value={
                 <div className="flex items-center gap-2">
                   <span className={getSentimentColor(summary_statistics.sentiment_avg)}>
@@ -164,46 +340,58 @@ export function Analytics() {
               }
               subtitle="Scale of -1 to 1"
               icon={Brain}
+              color="secondary"
             />
           )}
           {summary_statistics.trust_in_brand_avg !== undefined && (
             <MetricCard
-              title="Avg. Brand Trust"
+              title="Average Brand Trust"
               value={summary_statistics.trust_in_brand_avg.toFixed(1)}
               subtitle="Scale of 1-10"
-              icon={Users}
+              icon={Shield}
+              trend={summary_statistics.trust_in_brand_avg > 5 ? 'up' : 'down'}
+              color="success"
             />
           )}
           {summary_statistics.message_clarity_avg !== undefined && (
             <MetricCard
-              title="Avg. Message Clarity"
+              title="Message Clarity"
               value={summary_statistics.message_clarity_avg.toFixed(1)}
               subtitle="Scale of 1-10"
               icon={MessageSquare}
+              trend={summary_statistics.message_clarity_avg > 7 ? 'up' : 'neutral'}
+              color="warning"
             />
           )}
         </div>
 
-        {/* Insights */}
+        {/* AI Insights - Enhanced */}
         {insights && insights.length > 0 && (
-          <Card className="stat-card mb-8">
-            <CardHeader>
-              <div className="flex items-center space-x-2">
-                <div className="p-2 bg-warning/10 rounded-lg">
-                  <Brain className="h-5 w-5 text-warning" />
+          <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardHeader className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl">
+                    <Lightbulb className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">AI-Generated Insights</CardTitle>
+                    <CardDescription>Key findings and recommendations</CardDescription>
+                  </div>
                 </div>
-                <CardTitle className="text-lg">Key Insights</CardTitle>
+                <Award className="h-8 w-8 text-amber-500" />
               </div>
-              <CardDescription>AI-generated insights from the cohort analysis</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
+            <CardContent className="pt-6">
+              <div className="grid gap-4 md:grid-cols-2">
                 {insights.map((insight: string, index: number) => (
-                  <div key={index} className="flex items-start space-x-3">
-                    <div className="flex-shrink-0 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center text-xs font-bold">
-                      {index + 1}
+                  <div key={index} className="relative p-4 bg-gradient-to-r from-primary/5 to-secondary/5 rounded-xl border border-primary/20">
+                    <div className="flex items-start space-x-3">
+                      <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center text-white text-sm font-bold">
+                        {index + 1}
+                      </div>
+                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{insight}</p>
                     </div>
-                    <p className="text-sm text-gray-700">{insight}</p>
                   </div>
                 ))}
               </div>
@@ -211,87 +399,145 @@ export function Analytics() {
           </Card>
         )}
 
-        {/* Individual Responses Table */}
-        <Card className="stat-card">
-          <CardHeader>
-            <div className="flex items-center space-x-2">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Users className="h-5 w-5 text-primary" />
+        {/* Individual Responses - Enhanced Table */}
+        <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+          <CardHeader className="bg-gradient-to-r from-primary/10 to-secondary/10 rounded-t-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-gradient-to-br from-primary to-secondary rounded-xl">
+                  <Users className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl">Individual Persona Responses</CardTitle>
+                  <CardDescription>Detailed breakdown by persona</CardDescription>
+                </div>
               </div>
-              <CardTitle className="text-lg">Individual Persona Responses</CardTitle>
+              <Button variant="outline" size="sm">
+                <Filter className="h-4 w-4 mr-2" />
+                Filter
+              </Button>
             </div>
-            <CardDescription>Detailed responses from each persona in the cohort</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="border-b bg-gray-50">
+                <thead className="border-b bg-gray-50 dark:bg-gray-800">
                   <tr>
-                    <th className="p-3 text-left text-sm font-medium text-gray-700">Persona</th>
-                    <th className="p-3 text-left text-sm font-medium text-gray-700">Reasoning</th>
+                    <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Persona</th>
+                    <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Reasoning</th>
                     {metrics_analyzed.includes('purchase_intent') && (
-                      <th className="p-3 text-center text-sm font-medium text-gray-700">Purchase Intent</th>
+                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <div className="flex items-center justify-center gap-1">
+                          <Target className="h-4 w-4" />
+                          Intent
+                        </div>
+                      </th>
                     )}
                     {metrics_analyzed.includes('sentiment') && (
-                      <th className="p-3 text-center text-sm font-medium text-gray-700">Sentiment</th>
+                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <div className="flex items-center justify-center gap-1">
+                          <Brain className="h-4 w-4" />
+                          Sentiment
+                        </div>
+                      </th>
                     )}
                     {metrics_analyzed.includes('trust_in_brand') && (
-                      <th className="p-3 text-center text-sm font-medium text-gray-700">Brand Trust</th>
+                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <div className="flex items-center justify-center gap-1">
+                          <Shield className="h-4 w-4" />
+                          Trust
+                        </div>
+                      </th>
                     )}
                     {metrics_analyzed.includes('message_clarity') && (
-                      <th className="p-3 text-center text-sm font-medium text-gray-700">Message Clarity</th>
+                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <div className="flex items-center justify-center gap-1">
+                          <MessageSquare className="h-4 w-4" />
+                          Clarity
+                        </div>
+                      </th>
                     )}
                     {metrics_analyzed.includes('key_concern_flagged') && (
-                      <th className="p-3 text-center text-sm font-medium text-gray-700">Key Concern</th>
+                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <div className="flex items-center justify-center gap-1">
+                          <AlertTriangle className="h-4 w-4" />
+                          Concern
+                        </div>
+                      </th>
                     )}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {individual_responses.map((response: any, index: number) => (
-                    <tr key={index} className="hover:bg-gray-50 transition-colors">
-                      <td className="p-3">
-                        <div className="font-medium text-gray-900">{response.persona_name}</div>
-                        <div className="text-xs text-gray-500">ID: {response.persona_id}</div>
+                    <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold">
+                            {response.persona_name.charAt(0)}
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-900 dark:text-gray-100">{response.persona_name}</div>
+                            <div className="text-xs text-gray-500">ID: {response.persona_id}</div>
+                          </div>
+                        </div>
                       </td>
-                      <td className="p-3 max-w-md">
-                        <p className="text-sm text-gray-600">{response.reasoning}</p>
+                      <td className="p-4 max-w-md">
+                        <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{response.reasoning}</p>
                       </td>
                       {metrics_analyzed.includes('purchase_intent') && (
-                        <td className="p-3 text-center">
-                          <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
-                            {response.responses.purchase_intent}
-                          </span>
+                        <td className="p-4 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className={`text-lg font-bold ${getScoreColor(response.responses.purchase_intent)}`}>
+                              {response.responses.purchase_intent}
+                            </span>
+                            <Progress 
+                              value={getScoreProgress(response.responses.purchase_intent)} 
+                              className="w-16 h-1.5"
+                            />
+                          </div>
                         </td>
                       )}
                       {metrics_analyzed.includes('sentiment') && (
-                        <td className="p-3 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <span className={`font-medium ${getSentimentColor(response.responses.sentiment)}`}>
-                              {response.responses.sentiment?.toFixed(2)}
-                            </span>
-                            {getSentimentIcon(response.responses.sentiment)}
+                        <td className="p-4 text-center">
+                          <Badge className={getSentimentBadge(response.responses.sentiment).className}>
+                            {getSentimentBadge(response.responses.sentiment).label}
+                          </Badge>
+                          <div className="text-xs mt-1 text-gray-500">
+                            {response.responses.sentiment?.toFixed(2)}
                           </div>
                         </td>
                       )}
                       {metrics_analyzed.includes('trust_in_brand') && (
-                        <td className="p-3 text-center">
-                          <span className="inline-block px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-                            {response.responses.trust_in_brand}
-                          </span>
+                        <td className="p-4 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className={`text-lg font-bold ${getScoreColor(response.responses.trust_in_brand)}`}>
+                              {response.responses.trust_in_brand}
+                            </span>
+                            <Progress 
+                              value={getScoreProgress(response.responses.trust_in_brand)} 
+                              className="w-16 h-1.5"
+                            />
+                          </div>
                         </td>
                       )}
                       {metrics_analyzed.includes('message_clarity') && (
-                        <td className="p-3 text-center">
-                          <span className="inline-block px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
-                            {response.responses.message_clarity}
-                          </span>
+                        <td className="p-4 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className={`text-lg font-bold ${getScoreColor(response.responses.message_clarity)}`}>
+                              {response.responses.message_clarity}
+                            </span>
+                            <Progress 
+                              value={getScoreProgress(response.responses.message_clarity)} 
+                              className="w-16 h-1.5"
+                            />
+                          </div>
                         </td>
                       )}
                       {metrics_analyzed.includes('key_concern_flagged') && (
-                        <td className="p-3">
-                          <p className="text-xs text-gray-600 text-center">
+                        <td className="p-4">
+                          <Badge variant="outline" className="text-xs">
                             {response.responses.key_concern_flagged}
-                          </p>
+                          </Badge>
                         </td>
                       )}
                     </tr>
@@ -302,40 +548,25 @@ export function Analytics() {
           </CardContent>
         </Card>
 
-        {/* Summary Statistics Details */}
-        <Card className="stat-card mt-8">
-          <CardHeader>
-            <div className="flex items-center space-x-2">
-              <div className="p-2 bg-success/10 rounded-lg">
-                <Activity className="h-5 w-5 text-success" />
-              </div>
-              <CardTitle className="text-lg">Statistical Summary</CardTitle>
-            </div>
-            <CardDescription>Detailed statistics for analyzed metrics</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {Object.entries(summary_statistics).map(([key, value]) => {
-                if (key === 'key_concern_flagged') {
-                  return (
-                    <div key={key} className="p-4 bg-gray-50 rounded-lg">
-                      <h4 className="text-sm font-medium text-gray-700 mb-2">Most Common Concern</h4>
-                      <p className="text-sm text-gray-600">{value as string}</p>
-                    </div>
-                  );
-                }
-                return (
-                  <div key={key} className="p-4 bg-gray-50 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">
-                      {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                    </h4>
-                    <p className="text-2xl font-bold text-primary">{String(value)}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+        {/* Action Buttons */}
+        <div className="flex justify-center gap-4 mt-8 pb-8">
+          <Button 
+            size="lg"
+            className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl"
+            onClick={() => navigate('/simulation')}
+          >
+            <PlayCircle className="h-5 w-5 mr-2" />
+            Run New Simulation
+          </Button>
+          <Button 
+            size="lg"
+            variant="outline"
+            onClick={() => window.print()}
+          >
+            <Download className="h-5 w-5 mr-2" />
+            Export Report
+          </Button>
+        </div>
       </div>
     </div>
   );
