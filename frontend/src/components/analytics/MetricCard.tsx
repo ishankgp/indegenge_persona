@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { TrendDirection } from '@/types/analytics';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { ComponentType, ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 
 type ColorKey = 'primary' | 'secondary' | 'success' | 'warning';
 
