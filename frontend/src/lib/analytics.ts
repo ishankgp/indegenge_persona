@@ -46,5 +46,3 @@ export function getSentimentDescriptor(sentiment: number): {
     iconTone: 'neutral',
   };
 }
-
-

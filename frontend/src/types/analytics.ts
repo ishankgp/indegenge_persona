@@ -41,5 +41,3 @@ export interface AnalysisResults {
 }
 
 export type TrendDirection = 'up' | 'down' | 'neutral';
-
-

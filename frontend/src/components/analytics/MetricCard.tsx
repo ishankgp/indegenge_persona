@@ -55,5 +55,3 @@ export function MetricCard({ title, value, subtitle, icon: Icon, trend, color = 
 }
 
 export default MetricCard;
-
-

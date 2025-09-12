@@ -7,7 +7,7 @@ Icons: Material Symbols, Heroicons, Lucide
 Animation: Motion
 Fonts: San Serif, Inter, Geist, Mona Sans, IBM Plex Sans, Manrope
 
-``````````````````
+\`\`\````````````````
 <code_editing_rules>
 <guiding_principles>
 - Clarity and Reuse: Every component and page should be modular and reusable. Avoid duplication by factoring repeated UI patterns into components.
@@ -47,4 +47,4 @@ Fonts: San Serif, Inter, Geist, Mona Sans, IBM Plex Sans, Manrope
 </ui_ux_best_practices>
 
 <code_editing_rules>
-`````````````````````````````````````
+\`\`\```````````````````````````````````
