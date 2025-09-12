@@ -71,6 +71,13 @@ async def get_all_personas(skip: int = 0, limit: int = 100, db: Session = Depend
     personas = crud.get_personas(db, skip=skip, limit=limit)
     return personas
 
+@app.head("/personas/")
+async def head_personas(db: Session = Depends(get_db)):
+    """Lightweight HEAD endpoint to allow health probes without transferring payload."""
+    count = db.query(models.Persona).count()
+    from fastapi import Response
+    return Response(status_code=200, headers={"X-Total-Personas": str(count)})
+
 # --- Cohort Analysis Endpoints ---
 
 @app.post("/cohorts/analyze")
@@ -129,6 +136,15 @@ async def get_stats(db: Session = Depends(get_db)):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "service": "PharmaPersonaSim API"}
+
+@app.get("/health/db")
+async def health_db(db: Session = Depends(get_db)):
+    """Database health including persona count."""
+    try:
+        count = db.query(models.Persona).count()
+        return {"status": "ok", "personas": count}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

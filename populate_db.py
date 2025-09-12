@@ -1,8 +1,13 @@
 import requests
 import json
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- Configuration ---
-BACKEND_URL = "https://personabackend-production.up.railway.app"
+# Allow overriding the backend URL via environment variable BACKEND_URL (falls back to production URL)
+BACKEND_URL = os.getenv("BACKEND_URL", "https://personabackend-production.up.railway.app")
 GENERATE_ENDPOINT = f"{BACKEND_URL}/personas/generate"
 
 # --- Sample Persona Inputs ---

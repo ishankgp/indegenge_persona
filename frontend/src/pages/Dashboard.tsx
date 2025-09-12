@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { PersonasAPI, StatsAPI } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
   Users, 
@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+// API base managed centrally in lib/api.ts
 
 interface Persona {
   id: number;
@@ -48,13 +48,12 @@ export default function Dashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      // Fetch personas
-      const personasResponse = await axios.get(`${API_BASE_URL}/personas/`);
-      setPersonas(personasResponse.data);
-      
-      // Fetch statistics
-      const statsResponse = await axios.get(`${API_BASE_URL}/stats`);
-      setStats(statsResponse.data);
+      const [personasData, statsData] = await Promise.all([
+        PersonasAPI.list(),
+        StatsAPI.stats()
+      ]);
+      setPersonas(personasData);
+      setStats(statsData);
       
       setError(null);
     } catch (error) {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { PersonasAPI, CohortAPI } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+// API base managed via shared client
 
 interface Persona {
   id: number;
@@ -123,8 +123,8 @@ export function SimulationHub() {
   const fetchPersonas = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_BASE_URL}/personas`);
-      setPersonas(response.data);
+      const data = await PersonasAPI.list();
+      setPersonas(data);
     } catch (error) {
       console.error('Error fetching personas:', error);
     } finally {
@@ -168,15 +168,15 @@ export function SimulationHub() {
 
     setAnalyzing(true);
     try {
-      const response = await axios.post(`${API_BASE_URL}/cohorts/analyze`, {
+      const response = await CohortAPI.analyze({
         persona_ids: Array.from(selectedPersonas),
         stimulus_text: stimulusText,
         metrics: Array.from(selectedMetrics)
       });
-      
+
       setProgress(100);
       setTimeout(() => {
-        navigate('/analytics', { state: { analysisResults: response.data } });
+        navigate('/analytics', { state: { analysisResults: response } });
       }, 500);
     } catch (error) {
       console.error('Error running analysis:', error);
