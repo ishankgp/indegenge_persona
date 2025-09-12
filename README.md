@@ -21,13 +21,13 @@ A sophisticated AI-powered pharmaceutical persona simulation platform that helps
 ### Installation
 
 1. **Clone the repository**
-```bash
+\`\`\`bash
 git clone https://github.com/ishankgp/indegenge_persona.git
 cd indegenge_persona
-```
+\`\`\`
 
 2. **Set up the backend**
-```bash
+\`\`\`bash
 cd backend
 python -m venv venv
 # Windows
@@ -36,30 +36,30 @@ venv\Scripts\activate
 source venv/bin/activate
 
 pip install -r requirements.txt
-```
+\`\`\`
 
 3. **Set up the frontend**
-```bash
+\`\`\`bash
 cd ../frontend
 npm install
-```
+\`\`\`
 
 4. **Configure environment variables**
-```bash
+\`\`\`bash
 # In the root directory
 cp .env.example .env
 # Edit .env and add your OpenAI API key
-```
+\`\`\`
 
 5. **Initialize the database**
-```bash
+\`\`\`bash
 python populate_db.py  # Seeds personas via API (uses canonical backend DB)
-```
+\`\`\`
 
 6. **Run the application**
-```bash
+\`\`\`bash
 python run_app.py
-```
+\`\`\`
 
 The application will be available at:
 - Frontend: http://localhost:5173
@@ -67,7 +67,7 @@ The application will be available at:
 
 ## 🏗️ Project Structure
 
-```
+\`\`\`
 pharmapersonasim/
 ├── backend/
 │   ├── app/
@@ -86,7 +86,7 @@ pharmapersonasim/
 │   └── package.json
 ├── run_app.py               # Application launcher
 └── populate_db.py           # Database seeder
-```
+\`\`\`
 
 ## 📱 Key Features
 
@@ -125,15 +125,15 @@ pharmapersonasim/
 ### Vercel Deployment (Frontend)
 
 1. Install Vercel CLI:
-```bash
+\`\`\`bash
 npm i -g vercel
-```
+\`\`\`
 
 2. Deploy:
-```bash
+\`\`\`bash
 cd frontend
 vercel
-```
+\`\`\`
 
 ### Backend Deployment
 
