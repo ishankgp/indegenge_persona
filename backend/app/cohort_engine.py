@@ -1,4 +1,4 @@
-import openai
+from openai import OpenAI
 import os
 from dotenv import load_dotenv
 import json
@@ -9,8 +9,9 @@ from datetime import datetime
 
 load_dotenv()
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+# Initialize OpenAI client after loading environment variables
+client = OpenAI()
+MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-5")
 
 def create_cohort_analysis_prompt(persona_data: Dict[str, Any], stimulus_text: str, metrics: List[str]) -> str:
     """Creates a prompt for analyzing how a persona responds to a stimulus."""
@@ -43,16 +44,16 @@ def create_cohort_analysis_prompt(persona_data: Dict[str, Any], stimulus_text: s
 
     **Output Format:**
     Generate a response in pure JSON format. Do not include any text, code block markers, or explanations before or after the JSON object. The JSON object must have the following structure:
-    {{
-        "responses": {{
+    {
+        "responses": {
             "purchase_intent": <number 1-10>,
             "sentiment": <number -1 to 1>,
             "trust_in_brand": <number 1-10>,
             "message_clarity": <number 1-10>,
             "key_concern_flagged": "<string describing their main concern>"
-        }},
+        },
         "reasoning": "<2-3 sentences explaining their response based on their persona characteristics>"
-    }}
+    }
 
     **Important Notes:**
     - Only include the metrics that were requested in the analysis
@@ -63,23 +64,67 @@ def create_cohort_analysis_prompt(persona_data: Dict[str, Any], stimulus_text: s
     
     return prompt
 
+def generate_tool_preamble(persona_count: int, metrics: List[str], stimulus_text: str) -> str:
+    """Generates a short tool preamble describing the planned analysis steps."""
+    try:
+        preamble_prompt = f"""
+You are preparing a brief, user-friendly preamble for an AI analysis run. Keep it concise and skimmable.
+
+Provide:
+1) One sentence goal reformulation for the user.
+2) 3-5 bullet plan steps of what the analysis will do.
+
+Context:
+- Cohort size: {persona_count}
+- Metrics: {', '.join(metrics) if metrics else 'none'}
+- Stimulus: "{stimulus_text[:200]}"{('...' if len(stimulus_text) > 200 else '')}
+
+Output format: Plain text only. Start with the one-line goal, then a blank line, then bullets with "- ".
+"""
+
+        response = client.responses.create(
+            model=MODEL_NAME,
+            input=[
+                {"role": "system", "content": [{"type": "text", "text": "You create succinct planning preambles for AI tool runs. Be clear and concrete."}]},
+                {"role": "user", "content": [{"type": "text", "text": preamble_prompt}]},
+            ],
+            temperature=0.2,
+            max_output_tokens=220,
+        )
+        content = (response.output_text or "").strip()
+        return content
+    except Exception:
+        # Fallback deterministic preamble
+        steps = [
+            "Validate inputs and selected metrics",
+            "Analyze each persona's response to the stimulus",
+            "Aggregate cohort-level statistics",
+            "Generate AI insights and recommendations",
+            "Return structured results for visualization",
+        ]
+        bullets = "\n".join([f"- {s}" for s in steps])
+        return (
+            f"Analyze {persona_count} persona(s) against the provided stimulus to derive metric scores and insights.\n\n" + bullets
+        )
+
 def analyze_persona_response(persona_data: Dict[str, Any], stimulus_text: str, metrics: List[str]) -> Dict[str, Any]:
     """Analyzes how a single persona responds to a stimulus."""
     
     try:
         prompt = create_cohort_analysis_prompt(persona_data, stimulus_text, metrics)
         
-        response = openai.ChatCompletion.create(
+        response = client.responses.create(
             model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": "You are a pharmaceutical marketing analyst specializing in patient behavior simulation."},
-                {"role": "user", "content": prompt}
+            input=[
+                {"role": "system", "content": [{"type": "text", "text": "You are a pharmaceutical marketing analyst specializing in patient behavior simulation."}]},
+                {"role": "user", "content": [{"type": "text", "text": prompt}]},
             ],
             temperature=0.7,
-            max_tokens=1000
+            response_format={"type": "json_object"},
+            max_output_tokens=1200,
         )
         
-        response_text = response.choices[0].message.content.strip()
+        response_text = (response.output_text or "").strip()
         
         # Clean the response to extract JSON
         if response_text.startswith('```json'):
@@ -87,7 +132,7 @@ def analyze_persona_response(persona_data: Dict[str, Any], stimulus_text: str, m
         if response_text.endswith('```'):
             response_text = response_text[:-3]
         
-        response_data = json.loads(response_text)
+        response_data = json.loads(response_text or "{}")
         
         # Filter responses to only include requested metrics
         filtered_responses = {}
@@ -217,6 +262,9 @@ def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: Lis
     if not personas:
         raise ValueError("No valid personas found for the provided IDs")
     
+    # Optional: generate a brief tool preamble for the UI
+    preamble_text = generate_tool_preamble(len(personas), metrics, stimulus_text)
+
     # Analyze each persona's response
     individual_responses = []
     for persona in personas:
@@ -244,5 +292,6 @@ def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: Lis
         'individual_responses': individual_responses,
         'summary_statistics': summary_stats,
         'insights': insights,
+        'preamble': preamble_text,
         'created_at': datetime.now().isoformat()
     }
