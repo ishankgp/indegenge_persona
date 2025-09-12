@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PersonasAPI } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -77,18 +77,23 @@ export function PersonaLibrary() {
   });
 
   useEffect(() => {
+    console.log('PersonaLibrary: Starting to fetch personas...');
     fetchPersonas();
   }, []);
 
   const fetchPersonas = async () => {
+    console.log('PersonaLibrary: fetchPersonas called');
     setLoading(true);
     try {
+      console.log('PersonaLibrary: Calling PersonasAPI.list()...');
       const data = await PersonasAPI.list();
+      console.log('PersonaLibrary: Got personas data:', { count: data.length, data: data.slice(0, 2) });
       setPersonas(data);
     } catch (error) {
-      console.error('Error fetching personas:', error);
+      console.error('PersonaLibrary: Error fetching personas:', error);
     } finally {
       setLoading(false);
+      console.log('PersonaLibrary: Finished loading');
     }
   };
 
@@ -125,15 +130,40 @@ export function PersonaLibrary() {
     }
   };
 
-  const filteredPersonas = personas.filter(persona => {
-    const matchesSearch = persona.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         persona.condition.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         persona.location.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterCondition === 'all' || persona.condition === filterCondition;
-    return matchesSearch && matchesFilter;
-  });
+  // Enhanced filtering with better debugging
+  const filteredPersonas = React.useMemo(() => {
+    console.log('Filtering with:', { searchTerm, filterCondition, totalPersonas: personas.length });
+    if (personas.length === 0) return [];
+    return personas.filter(persona => {
+      const searchLower = searchTerm.toLowerCase().trim();
+      const matchesSearch = searchTerm === '' || 
+        persona.name.toLowerCase().includes(searchLower) ||
+        (persona.condition || '').toLowerCase().includes(searchLower) ||
+        persona.location.toLowerCase().includes(searchLower);
+      // Normalize for comparison
+      const personaCond = (persona.condition || '').trim().toLowerCase();
+      const filterCond = (filterCondition || '').trim().toLowerCase();
+      const matchesFilter = filterCond === 'all' || personaCond === filterCond;
+      const result = matchesSearch && matchesFilter;
+      if (!result && (searchTerm !== '' || filterCondition !== 'all')) {
+        console.log(`Filtered out: ${persona.name}`, {
+          searchTerm: searchTerm,
+          condition: persona.condition,
+          filterCondition: filterCondition,
+          matchesSearch,
+          matchesFilter
+        });
+      }
+      return result;
+    });
+  }, [personas, searchTerm, filterCondition]);
 
-  const uniqueConditions = Array.from(new Set(personas.map(p => p.condition)));
+  // Normalize and deduplicate conditions (trim/lowercase for robustness)
+  const uniqueConditions = Array.from(
+    new Set(personas.map(p => (p.condition || '').trim()))
+  ).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  console.log('Available conditions:', uniqueConditions);
+  console.log('Selected filter condition:', filterCondition);
 
   const PersonaCard = ({ persona }: { persona: Persona }) => {
     const personaData = JSON.parse(persona.full_persona_json);
@@ -303,15 +333,21 @@ export function PersonaLibrary() {
             
             {activeTab === 'view' && (
               <div className="flex items-center gap-4">
-                {/* Search Bar */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
+                {/* Search Bar - Simplified for debugging */}
+                <div className="relative z-50">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                  <input
                     type="text"
                     placeholder="Search personas..."
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-4 w-64 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm"
+                    onChange={(e) => {
+                      console.log('Search term changed to:', e.target.value);
+                      setSearchTerm(e.target.value);
+                    }}
+                    onFocus={() => console.log('Search input focused')}
+                    onBlur={() => console.log('Search input blurred')}
+                    className="pl-10 pr-4 w-64 h-10 rounded-md border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    style={{ position: 'relative', zIndex: 9999 }}
                   />
                 </div>
                 
@@ -320,12 +356,15 @@ export function PersonaLibrary() {
                   <Filter className="h-4 w-4 text-gray-500" />
                   <select
                     value={filterCondition}
-                    onChange={(e) => setFilterCondition(e.target.value)}
+                    onChange={(e) => {
+                      console.log('Filter condition changed to:', e.target.value);
+                      setFilterCondition(e.target.value);
+                    }}
                     className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm text-sm"
                   >
                     <option value="all">All Conditions</option>
                     {uniqueConditions.map(condition => (
-                      <option key={condition} value={condition}>{condition}</option>
+                      <option key={condition} value={condition.trim().toLowerCase()}>{condition.trim()}</option>
                     ))}
                   </select>
                 </div>
