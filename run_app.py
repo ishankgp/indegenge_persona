@@ -12,6 +12,8 @@ import socket
 import signal
 from pathlib import Path
 
+# Note: dotenv loading removed - pass environment variables directly
+
 # --- Configuration ---
 BACKEND_PORT = 8000
 # Allow overriding host via env; default to 0.0.0.0 so external browser can reach inside container

@@ -7,7 +7,7 @@ load_dotenv()
 
 # Initialize OpenAI client after loading environment variables
 client = OpenAI()
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-5")
+MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 def create_patient_persona_prompt(age, gender, condition, location, concerns):
     """Creates the exact, detailed prompt for generating a patient persona."""
@@ -46,7 +46,6 @@ def generate_persona_from_attributes(age: int, gender: str, condition: str, loca
         response = client.responses.create(
             model=MODEL_NAME,
             input=[{"role": "user", "content": [{"type": "text", "text": prompt}]}],
-            temperature=0.7,
             response_format={"type": "json_object"},
             max_output_tokens=1200,
         )

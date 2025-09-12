@@ -15,7 +15,12 @@ export default defineConfig({
     proxy: [
       '/personas', '/cohorts', '/stats', '/health', '/api'
     ].reduce((acc, path) => {
-      acc[path] = { target: 'http://127.0.0.1:8000', changeOrigin: true };
+      acc[path] = { 
+        target: 'http://localhost:8000', 
+        changeOrigin: true,
+        secure: false,
+        ws: true
+      };
       return acc;
     }, {} as Record<string, any>)
   }

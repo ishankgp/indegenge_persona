@@ -35,6 +35,14 @@ export function Analytics() {
   const navigate = useNavigate();
   const analysisResults = location.state?.analysisResults as AnalysisResults | undefined;
 
+  console.log('📊 Analytics page loaded:', {
+    hasLocationState: !!location.state,
+    hasAnalysisResults: !!analysisResults,
+    analysisResultsKeys: analysisResults ? Object.keys(analysisResults) : null,
+    cohortSize: analysisResults?.cohort_size,
+    individualResponsesCount: analysisResults?.individual_responses?.length
+  });
+
   if (!analysisResults) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">

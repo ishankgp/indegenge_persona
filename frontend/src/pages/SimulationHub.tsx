@@ -230,15 +230,51 @@ export function SimulationHub() {
       });
 
       // Note: This will require backend API updates to handle multipart/form-data
+      console.log('🚀 Sending request with FormData:', {
+        persona_ids: formData.get('persona_ids'),
+        metrics: formData.get('metrics'),
+        content_type: formData.get('content_type'),
+        stimulus_text: formData.get('stimulus_text'),
+        stimulus_images_count: stimulusImages.length
+      });
+      
       const response = await CohortAPI.analyze(formData);
+      
+      console.log('✅ Received response:', {
+        responseType: typeof response,
+        cohort_size: response?.cohort_size,
+        individual_responses_count: response?.individual_responses?.length,
+        has_summary_statistics: !!response?.summary_statistics,
+        responseKeys: response ? Object.keys(response) : null
+      });
+
+      // Validate response structure
+      if (!response) {
+        throw new Error('Received null/undefined response from server');
+      }
+      if (!response.individual_responses || !Array.isArray(response.individual_responses)) {
+        throw new Error('Response missing individual_responses array');
+      }
+      if (response.individual_responses.length === 0) {
+        throw new Error('Response contains no individual responses');
+      }
 
       setProgress(100);
       setTimeout(() => {
+        console.log('🧭 Navigating to analytics with data:', {
+          cohort_size: response.cohort_size,
+          responses_count: response.individual_responses.length
+        });
         navigate('/analytics', { state: { analysisResults: response } });
       }, 500);
     } catch (error) {
-      console.error('Error running analysis:', error);
-      alert('Error running analysis. Please try again.');
+      console.error('❌ Error running analysis:', error);
+      console.error('❌ Error type:', typeof error);
+      console.error('❌ Error string:', String(error));
+      
+      // Try to extract useful info from the error
+      const errorStr = String(error);
+      alert(`Error running analysis: ${errorStr}\n\nCheck browser console for details.`);
     } finally {
       setAnalyzing(false);
     }
