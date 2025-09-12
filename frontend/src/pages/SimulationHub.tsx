@@ -30,7 +30,11 @@ import {
   Gauge,
   FileText,
   Loader2,
-  ChevronRight
+  ChevronRight,
+  Image,
+  Upload,
+  X,
+  Eye
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
@@ -100,6 +104,9 @@ export function SimulationHub() {
   const [selectedPersonas, setSelectedPersonas] = useState<Set<number>>(new Set());
   const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(new Set(['purchase_intent', 'sentiment']));
   const [stimulusText, setStimulusText] = useState('');
+  const [stimulusImages, setStimulusImages] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [contentType, setContentType] = useState<'text' | 'image' | 'both'>('text');
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -152,6 +159,33 @@ export function SimulationHub() {
     setSelectedMetrics(newSelected);
   };
 
+  const handleImageUpload = (files: FileList | null) => {
+    if (!files) return;
+    
+    const newImages: File[] = [];
+    const newPreviews: string[] = [];
+    
+    Array.from(files).forEach(file => {
+      if (file.type.startsWith('image/')) {
+        newImages.push(file);
+        
+        // Create preview URL
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          setImagePreviews(prev => [...prev, e.target?.result as string]);
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+    
+    setStimulusImages(prev => [...prev, ...newImages]);
+  };
+
+  const removeImage = (index: number) => {
+    setStimulusImages(prev => prev.filter((_, i) => i !== index));
+    setImagePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleRunAnalysis = async () => {
     if (selectedPersonas.size === 0) {
       alert('Please select at least one persona');
@@ -161,18 +195,42 @@ export function SimulationHub() {
       alert('Please select at least one metric');
       return;
     }
-    if (!stimulusText.trim()) {
+    
+    // Validate based on content type
+    const hasText = stimulusText.trim() !== '';
+    const hasImages = stimulusImages.length > 0;
+    
+    if (contentType === 'text' && !hasText) {
       alert('Please enter stimulus text');
+      return;
+    }
+    if (contentType === 'image' && !hasImages) {
+      alert('Please upload at least one image');
+      return;
+    }
+    if (contentType === 'both' && (!hasText || !hasImages)) {
+      alert('Please provide both text and images for analysis');
       return;
     }
 
     setAnalyzing(true);
     try {
-      const response = await CohortAPI.analyze({
-        persona_ids: Array.from(selectedPersonas),
-        stimulus_text: stimulusText,
-        metrics: Array.from(selectedMetrics)
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('persona_ids', JSON.stringify(Array.from(selectedPersonas)));
+      formData.append('metrics', JSON.stringify(Array.from(selectedMetrics)));
+      formData.append('content_type', contentType);
+      
+      if (hasText) {
+        formData.append('stimulus_text', stimulusText);
+      }
+      
+      stimulusImages.forEach((image, index) => {
+        formData.append(`stimulus_images`, image);
       });
+
+      // Note: This will require backend API updates to handle multipart/form-data
+      const response = await CohortAPI.analyze(formData);
 
       setProgress(100);
       setTimeout(() => {
@@ -471,41 +529,171 @@ export function SimulationHub() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6 pt-6">
-              {/* Stimulus Text Section */}
+              {/* Content Type Selection */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="stimulus" className="text-base font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-gray-500" />
-                    Marketing Message / Stimulus Text
+                  <Label className="text-base font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    <Settings className="h-4 w-4 text-gray-500" />
+                    Content Type
                   </Label>
-                  <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">
-                    <Sparkles className="h-3 w-3 mr-1" />
-                    AI Analysis
+                  <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-0">
+                    <Eye className="h-3 w-3 mr-1" />
+                    Multi-Modal
                   </Badge>
                 </div>
-                <Textarea
-                  id="stimulus"
-                  placeholder="Enter your marketing message, ad copy, or clinical communication here..."
-                  value={stimulusText}
-                  onChange={(e) => setStimulusText(e.target.value)}
-                  rows={5}
-                  className="resize-none font-medium"
-                />
-                <div className="flex gap-2">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Try a sample:</p>
-                  {SAMPLE_MESSAGES.map((message, index) => (
-                    <Button
-                      key={index}
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs"
-                      onClick={() => setStimulusText(message)}
-                    >
-                      Sample {index + 1}
-                    </Button>
-                  ))}
+                <div className="grid grid-cols-3 gap-3">
+                  <Button
+                    variant={contentType === 'text' ? 'default' : 'outline'}
+                    className={`p-4 h-auto ${contentType === 'text' ? 'bg-gradient-to-r from-primary to-secondary text-white' : ''}`}
+                    onClick={() => setContentType('text')}
+                  >
+                    <div className="text-center">
+                      <FileText className="h-6 w-6 mx-auto mb-2" />
+                      <span className="block text-sm font-medium">Text Only</span>
+                      <span className="text-xs opacity-80">Marketing copy, messaging</span>
+                    </div>
+                  </Button>
+                  <Button
+                    variant={contentType === 'image' ? 'default' : 'outline'}
+                    className={`p-4 h-auto ${contentType === 'image' ? 'bg-gradient-to-r from-primary to-secondary text-white' : ''}`}
+                    onClick={() => setContentType('image')}
+                  >
+                    <div className="text-center">
+                      <Image className="h-6 w-6 mx-auto mb-2" />
+                      <span className="block text-sm font-medium">Image Only</span>
+                      <span className="text-xs opacity-80">Visual ads, graphics</span>
+                    </div>
+                  </Button>
+                  <Button
+                    variant={contentType === 'both' ? 'default' : 'outline'}
+                    className={`p-4 h-auto ${contentType === 'both' ? 'bg-gradient-to-r from-primary to-secondary text-white' : ''}`}
+                    onClick={() => setContentType('both')}
+                  >
+                    <div className="text-center">
+                      <div className="flex justify-center gap-1 mb-2">
+                        <FileText className="h-5 w-5" />
+                        <Image className="h-5 w-5" />
+                      </div>
+                      <span className="block text-sm font-medium">Text + Image</span>
+                      <span className="text-xs opacity-80">Complete campaigns</span>
+                    </div>
+                  </Button>
                 </div>
               </div>
+
+              <Separator />
+
+              {/* Text Input Section */}
+              {(contentType === 'text' || contentType === 'both') && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="stimulus" className="text-base font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-gray-500" />
+                      Marketing Message / Stimulus Text
+                    </Label>
+                    <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      AI Analysis
+                    </Badge>
+                  </div>
+                  <Textarea
+                    id="stimulus"
+                    placeholder="Enter your marketing message, ad copy, or clinical communication here..."
+                    value={stimulusText}
+                    onChange={(e) => setStimulusText(e.target.value)}
+                    rows={5}
+                    className="resize-none font-medium"
+                  />
+                  <div className="flex gap-2">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Try a sample:</p>
+                    {SAMPLE_MESSAGES.map((message, index) => (
+                      <Button
+                        key={index}
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => setStimulusText(message)}
+                      >
+                        Sample {index + 1}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Image Upload Section */}
+              {(contentType === 'image' || contentType === 'both') && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                      <Image className="h-4 w-4 text-gray-500" />
+                      Visual Content / Image Ads
+                    </Label>
+                    <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0">
+                      <Eye className="h-3 w-3 mr-1" />
+                      Visual Analysis
+                    </Badge>
+                  </div>
+                  
+                  {/* Image Upload Area */}
+                  <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-6 hover:border-primary transition-colors">
+                    <input
+                      type="file"
+                      id="image-upload"
+                      multiple
+                      accept="image/*"
+                      onChange={(e) => handleImageUpload(e.target.files)}
+                      className="hidden"
+                    />
+                    <label htmlFor="image-upload" className="cursor-pointer">
+                      <div className="text-center">
+                        <Upload className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+                          Upload Image Ads
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                          Drag and drop your ad creatives here, or click to browse
+                        </p>
+                        <Button type="button" variant="outline">
+                          <Plus className="h-4 w-4 mr-2" />
+                          Choose Images
+                        </Button>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Image Previews */}
+                  {imagePreviews.length > 0 && (
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Uploaded Images ({imagePreviews.length})
+                      </Label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {imagePreviews.map((preview, index) => (
+                          <div key={index} className="relative group">
+                            <img
+                              src={preview}
+                              alt={`Upload preview ${index + 1}`}
+                              className="w-full h-32 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                            />
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="absolute top-2 right-2 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => removeImage(index)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                            <div className="absolute bottom-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                              {stimulusImages[index]?.name || `Image ${index + 1}`}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <Separator />
 
@@ -573,7 +761,7 @@ export function SimulationHub() {
                   <Brain className="h-5 w-5 text-primary" />
                   Simulation Summary
                 </h4>
-                <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="grid grid-cols-4 gap-4 text-sm">
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Personas</p>
                     <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{selectedPersonas.size}</p>
@@ -583,10 +771,36 @@ export function SimulationHub() {
                     <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{selectedMetrics.size}</p>
                   </div>
                   <div>
+                    <p className="text-gray-500 dark:text-gray-400">Content</p>
+                    <p className="text-xl font-bold text-gray-900 dark:text-gray-100 capitalize">
+                      {contentType === 'both' ? 'Multi-Modal' : contentType}
+                    </p>
+                  </div>
+                  <div>
                     <p className="text-gray-500 dark:text-gray-400">Est. Time</p>
-                    <p className="text-xl font-bold text-gray-900 dark:text-gray-100">~{Math.max(1, Math.round(selectedPersonas.size * 0.5))}s</p>
+                    <p className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                      ~{Math.max(1, Math.round(selectedPersonas.size * (contentType === 'image' || contentType === 'both' ? 1.5 : 0.5)))}s
+                    </p>
                   </div>
                 </div>
+                {(stimulusText.trim() || stimulusImages.length > 0) && (
+                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center gap-4 text-sm">
+                      {stimulusText.trim() && (
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-primary" />
+                          <span className="text-gray-600 dark:text-gray-400">Text message ready</span>
+                        </div>
+                      )}
+                      {stimulusImages.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <Image className="h-4 w-4 text-purple-600" />
+                          <span className="text-gray-600 dark:text-gray-400">{stimulusImages.length} image{stimulusImages.length > 1 ? 's' : ''} uploaded</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Run Button */}
@@ -594,7 +808,14 @@ export function SimulationHub() {
                 className="w-full bg-gradient-to-r from-primary to-secondary text-white hover:shadow-2xl transition-all duration-200 py-6 text-lg font-semibold group" 
                 size="lg"
                 onClick={handleRunAnalysis}
-                disabled={analyzing || selectedPersonas.size === 0 || !stimulusText.trim() || selectedMetrics.size === 0}
+                disabled={
+                  analyzing || 
+                  selectedPersonas.size === 0 || 
+                  selectedMetrics.size === 0 ||
+                  (contentType === 'text' && !stimulusText.trim()) ||
+                  (contentType === 'image' && stimulusImages.length === 0) ||
+                  (contentType === 'both' && (!stimulusText.trim() || stimulusImages.length === 0))
+                }
               >
                 {analyzing ? (
                   <>
@@ -604,7 +825,7 @@ export function SimulationHub() {
                 ) : (
                   <>
                     <PlayCircle className="mr-3 h-5 w-5 group-hover:scale-110 transition-transform" />
-                    Run Cohort Simulation
+                    Run {contentType === 'image' ? 'Visual' : contentType === 'both' ? 'Multi-Modal' : 'Text'} Analysis
                     <ChevronRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                   </>
                 )}
