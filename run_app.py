@@ -12,6 +12,8 @@ from pathlib import Path
 
 # --- Configuration ---
 BACKEND_PORT = 8000
+# Allow overriding host via env; default to 0.0.0.0 so external browser can reach inside container
+BACKEND_HOST = os.environ.get("BACKEND_HOST", "0.0.0.0")
 FRONTEND_PORT = 5173
 PROJECT_ROOT = Path(__file__).parent.resolve()
 BACKEND_DIR = PROJECT_ROOT / "backend"
@@ -51,14 +53,14 @@ def start_backend(python_exe):
         python_exe,
         "-m", "uvicorn",
         "app.main:app",
-        "--host", "127.0.0.1",
+        "--host", BACKEND_HOST,
         "--port", str(BACKEND_PORT)
     ]
     try:
         # Use Popen for non-blocking execution
         process = subprocess.Popen(command, cwd=str(BACKEND_DIR))
         print_info(f"Backend server process started with PID: {process.pid}")
-        print_info(f"API will be available at http://127.0.0.1:{BACKEND_PORT}")
+        print_info(f"API will be available at http://{BACKEND_HOST}:{BACKEND_PORT}")
         return process
     except FileNotFoundError:
         print_error(f"Could not find command: {command[0]}. Is Python installed and in the PATH?")
@@ -89,6 +91,12 @@ def start_frontend():
 
 def main():
     print_header("PharmaPersonaSim Full-Stack Launcher")
+
+    # Print effective config
+    try:
+        subprocess.run([sys.executable, str(PROJECT_ROOT / 'scripts' / 'print_config.py')], check=False)
+    except Exception as e:
+        print_error(f"Could not print config: {e}")
 
     python_exe = get_python_executable()
     if not python_exe:

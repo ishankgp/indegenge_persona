@@ -1,4 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { getApiBaseUrl, checkHealth } from '@/lib/api';
 import { 
   LayoutDashboard, 
   Users, 
@@ -39,6 +41,28 @@ const navigation = [
 
 export function Layout() {
   const location = useLocation();
+  const [apiOk, setApiOk] = useState<boolean | null>(null);
+  const [personaCount, setPersonaCount] = useState<number | undefined>();
+  const [baseUrl] = useState(getApiBaseUrl());
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await checkHealth();
+      if (!cancelled) {
+        setApiOk(res.ok);
+        setPersonaCount(res.personas);
+      }
+    })();
+    const interval = setInterval(async () => {
+      const res = await checkHealth();
+      if (!cancelled) {
+        setApiOk(res.ok);
+        setPersonaCount(res.personas);
+      }
+    }, 15000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20">
@@ -118,9 +142,14 @@ export function Layout() {
           {/* Enhanced Footer */}
           <div className="border-t border-border/50 p-6 bg-gradient-to-r from-muted/30 to-muted/10">
             <div className="text-center">
-              <div className="inline-flex items-center space-x-2 text-sm font-medium text-gray-700 mb-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span>System Online</span>
+              <div className="flex flex-col items-center mb-2 space-y-1">
+                <div className="inline-flex items-center space-x-2 text-sm font-medium text-gray-700">
+                  <div className={"w-2 h-2 rounded-full " + (apiOk === null ? 'bg-yellow-400 animate-pulse' : apiOk ? 'bg-green-500 animate-pulse' : 'bg-red-500')}></div>
+                  <span>{apiOk === null ? 'Checking API...' : apiOk ? 'API Online' : 'API Down'}</span>
+                </div>
+                <div className="text-[10px] text-muted-foreground font-mono">
+                  {baseUrl || 'relative'} {personaCount !== undefined && apiOk && (<span>• {personaCount} personas</span>)}
+                </div>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Transform qualitative personas into<br />quantitative pharmaceutical insights

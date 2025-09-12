@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { PersonasAPI } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -36,7 +36,7 @@ import {
 import { PersonaDetailModal } from '../components/PersonaDetailModal';
 import { cn } from '@/lib/utils';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+// Base URL managed centrally via lib/api
 
 interface Persona {
   id: number;
@@ -83,8 +83,8 @@ export function PersonaLibrary() {
   const fetchPersonas = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_BASE_URL}/personas`);
-      setPersonas(response.data);
+      const data = await PersonasAPI.list();
+      setPersonas(data);
     } catch (error) {
       console.error('Error fetching personas:', error);
     } finally {
@@ -103,7 +103,7 @@ export function PersonaLibrary() {
     e.preventDefault();
     setGenerating(true);
     try {
-      await axios.post(`${API_BASE_URL}/personas/generate`, {
+      await PersonasAPI.generate({
         ...formData,
         age: parseInt(formData.age)
       });

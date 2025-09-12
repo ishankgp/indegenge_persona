@@ -53,7 +53,7 @@ cp .env.example .env
 
 5. **Initialize the database**
 ```bash
-python populate_db.py
+python populate_db.py  # Seeds personas via API (uses canonical backend DB)
 ```
 
 6. **Run the application**
@@ -148,10 +148,17 @@ The backend can be deployed to any platform that supports Python applications:
 
 ### Environment Variables
 
+We use a single canonical SQLite database file stored at `backend/pharma_personas.db`.
+
+Key variables:
 - `OPENAI_API_KEY`: Your OpenAI API key (required)
-- `DATABASE_URL`: Database connection string (optional, defaults to SQLite)
+- `DATABASE_URL`: Set to `sqlite:///backend/pharma_personas.db` (already in `.env.example`)
 - `BACKEND_HOST`: Backend server host
 - `BACKEND_PORT`: Backend server port
+- `BACKEND_URL`: (optional) Override used by `populate_db.py` for seeding
+- `VITE_API_URL`: Frontend points here for API calls (e.g. Railway backend URL in production)
+
+If you previously had a duplicate `pharma_personas.db` at the repo root, it has been removed to prevent divergence. Always interact through the API or operate directly on `backend/pharma_personas.db`.
 
 ## 📝 API Documentation
 
