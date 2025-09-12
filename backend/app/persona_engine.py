@@ -1,12 +1,13 @@
-import openai
+from openai import OpenAI
 import os
 from dotenv import load_dotenv
 import json
 
 load_dotenv()
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+# Initialize OpenAI client after loading environment variables
+client = OpenAI()
+MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-5")
 
 def create_patient_persona_prompt(age, gender, condition, location, concerns):
     """Creates the exact, detailed prompt for generating a patient persona."""
@@ -42,14 +43,15 @@ def generate_persona_from_attributes(age: int, gender: str, condition: str, loca
     prompt = create_patient_persona_prompt(age, gender, condition, location, concerns)
     
     try:
-        response = openai.ChatCompletion.create(
+        response = client.responses.create(
             model=MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,  # A bit of creativity is good for personas
-            response_format={"type": "json_object"}
+            input=[{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+            temperature=0.7,
+            response_format={"type": "json_object"},
+            max_output_tokens=1200,
         )
         
-        content = response.choices[0].message['content']
+        content = (response.output_text or "{}")
         # The content should already be a valid JSON string
         return content
         

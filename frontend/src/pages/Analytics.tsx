@@ -3,6 +3,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import MetricCard from '@/components/analytics/MetricCard';
+import { computeScoreColor, computeScoreProgress, getSentimentDescriptor } from '@/lib/analytics';
+import type { AnalysisResults, AnalyzedMetricKey, IndividualResponseRow } from '@/types/analytics';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -30,7 +33,7 @@ import {
 export function Analytics() {
   const location = useLocation();
   const navigate = useNavigate();
-  const analysisResults = location.state?.analysisResults;
+  const analysisResults = location.state?.analysisResults as AnalysisResults | undefined;
 
   if (!analysisResults) {
     return (
@@ -101,91 +104,9 @@ export function Analytics() {
     individual_responses,
     summary_statistics,
     insights,
+    preamble,
     created_at
   } = analysisResults;
-
-  const getSentimentData = (sentiment: number) => {
-    if (sentiment > 0.3) return {
-      icon: <TrendingUp className="h-4 w-4 text-emerald-500" />,
-      color: 'text-emerald-600',
-      badge: { label: 'Positive', className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' }
-    };
-    if (sentiment < -0.3) return {
-      icon: <TrendingDown className="h-4 w-4 text-red-500" />,
-      color: 'text-red-600',
-      badge: { label: 'Negative', className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' }
-    };
-    return {
-      icon: <Minus className="h-4 w-4 text-gray-500" />,
-      color: 'text-gray-600',
-      badge: { label: 'Neutral', className: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' }
-    };
-  };
-
-  const getScoreColor = (score: number, max: number = 10) => {
-    const percentage = (score / max) * 100;
-    if (percentage >= 70) return 'text-emerald-600';
-    if (percentage >= 40) return 'text-amber-600';
-    return 'text-red-600';
-  };
-
-  const getScoreProgress = (score: number, max: number = 10) => {
-    return (score / max) * 100;
-  };
-
-  const MetricCard = ({ 
-    title, 
-    value, 
-    subtitle, 
-    icon: Icon,
-    trend,
-    color = 'primary'
-  }: { 
-    title: string; 
-    value: any; 
-    subtitle?: string;
-    icon?: any;
-    trend?: 'up' | 'down' | 'neutral';
-    color?: string;
-  }) => {
-    const colorClasses = {
-      primary: 'from-violet-500 to-purple-500',
-      secondary: 'from-blue-500 to-cyan-500',
-      success: 'from-emerald-500 to-green-500',
-      warning: 'from-amber-500 to-orange-500'
-    };
-
-    return (
-      <Card className="relative overflow-hidden border-0 shadow-xl hover:shadow-2xl transition-all duration-300 backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
-        <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${colorClasses[color as keyof typeof colorClasses]}`}></div>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">{title}</CardTitle>
-            {Icon && (
-              <div className={`p-2.5 rounded-xl bg-gradient-to-br ${colorClasses[color as keyof typeof colorClasses]} bg-opacity-10`}>
-                <Icon className="h-5 w-5 text-gray-700 dark:text-gray-300" />
-              </div>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-baseline gap-2">
-            <div className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              {value}
-            </div>
-            {trend && (
-              <div className="flex items-center">
-                {trend === 'up' && <TrendingUp className="h-4 w-4 text-emerald-500" />}
-                {trend === 'down' && <TrendingDown className="h-4 w-4 text-red-500" />}
-                {trend === 'neutral' && <Minus className="h-4 w-4 text-gray-500" />}
-              </div>
-            )}
-          </div>
-          {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{subtitle}</p>}
-        </CardContent>
-      </Card>
-    );
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
@@ -275,6 +196,28 @@ export function Analytics() {
       </div>
 
       <div className="max-w-7xl mx-auto px-8 -mt-8">
+        {/* Tool Preamble - Analysis Plan */}
+        {preamble && (
+          <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardHeader className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl" />
+                  <div>
+                    <CardTitle className="text-xl">Analysis Plan</CardTitle>
+                    <CardDescription>Generated by AI preamble</CardDescription>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">
+                {preamble}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Stimulus Card - Enhanced */}
         <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
           <CardHeader className="bg-gradient-to-r from-primary/10 to-secondary/10 rounded-t-xl">
@@ -299,7 +242,7 @@ export function Analytics() {
               <p className="text-lg text-gray-700 dark:text-gray-300 italic">"{stimulus_text}"</p>
             </blockquote>
             <div className="flex flex-wrap gap-2">
-              {metrics_analyzed.map((metric: string) => (
+              {metrics_analyzed.map((metric: AnalyzedMetricKey) => (
                 <Badge key={metric} variant="outline" className="px-3 py-1">
                   <CheckCircle className="h-3 w-3 mr-1 text-emerald-500" />
                   {metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
@@ -326,10 +269,20 @@ export function Analytics() {
               title="Average Sentiment"
               value={
                 <div className="flex items-center gap-2">
-                  <span className={getSentimentData(summary_statistics.sentiment_avg).color}>
-                    {summary_statistics.sentiment_avg.toFixed(2)}
-                  </span>
-                  {getSentimentData(summary_statistics.sentiment_avg).icon}
+                  {(() => {
+                    const d = getSentimentDescriptor(summary_statistics.sentiment_avg);
+                    return (
+                      <span className={d.color}>
+                        {summary_statistics.sentiment_avg.toFixed(2)}
+                      </span>
+                    );
+                  })()}
+                  {(() => {
+                    const d = getSentimentDescriptor(summary_statistics.sentiment_avg);
+                    if (d.iconTone === 'up') return <TrendingUp className="h-4 w-4 text-emerald-500" />;
+                    if (d.iconTone === 'down') return <TrendingDown className="h-4 w-4 text-red-500" />;
+                    return <Minus className="h-4 w-4 text-gray-500" />;
+                  })()}
                 </div>
               }
               subtitle="Scale of -1 to 1"
@@ -462,7 +415,7 @@ export function Analytics() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {individual_responses.map((response: any, index: number) => (
+                  {individual_responses.map((response: IndividualResponseRow, index: number) => (
                     <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                       <td className="p-4">
                         <div className="flex items-center gap-3">
@@ -481,11 +434,11 @@ export function Analytics() {
                       {metrics_analyzed.includes('purchase_intent') && (
                         <td className="p-4 text-center">
                           <div className="flex flex-col items-center gap-1">
-                            <span className={`text-lg font-bold ${getScoreColor(response.responses.purchase_intent)}`}>
+                            <span className={`text-lg font-bold ${computeScoreColor(response.responses.purchase_intent || 0)}`}>
                               {response.responses.purchase_intent}
                             </span>
                             <Progress 
-                              value={getScoreProgress(response.responses.purchase_intent)} 
+                              value={computeScoreProgress(response.responses.purchase_intent || 0)} 
                               className="w-16 h-1.5"
                             />
                           </div>
@@ -493,9 +446,14 @@ export function Analytics() {
                       )}
                       {metrics_analyzed.includes('sentiment') && (
                         <td className="p-4 text-center">
-                          <Badge className={getSentimentData(response.responses.sentiment).badge.className}>
-                            {getSentimentData(response.responses.sentiment).badge.label}
-                          </Badge>
+                          {(() => {
+                            const d = getSentimentDescriptor(response.responses.sentiment || 0);
+                            return (
+                              <Badge className={d.badgeClassName}>
+                                {d.level}
+                              </Badge>
+                            );
+                          })()}
                           <div className="text-xs mt-1 text-gray-500">
                             {response.responses.sentiment?.toFixed(2)}
                           </div>
@@ -504,11 +462,11 @@ export function Analytics() {
                       {metrics_analyzed.includes('trust_in_brand') && (
                         <td className="p-4 text-center">
                           <div className="flex flex-col items-center gap-1">
-                            <span className={`text-lg font-bold ${getScoreColor(response.responses.trust_in_brand)}`}>
+                            <span className={`text-lg font-bold ${computeScoreColor(response.responses.trust_in_brand || 0)}`}>
                               {response.responses.trust_in_brand}
                             </span>
                             <Progress 
-                              value={getScoreProgress(response.responses.trust_in_brand)} 
+                              value={computeScoreProgress(response.responses.trust_in_brand || 0)} 
                               className="w-16 h-1.5"
                             />
                           </div>
@@ -517,11 +475,11 @@ export function Analytics() {
                       {metrics_analyzed.includes('message_clarity') && (
                         <td className="p-4 text-center">
                           <div className="flex flex-col items-center gap-1">
-                            <span className={`text-lg font-bold ${getScoreColor(response.responses.message_clarity)}`}>
+                            <span className={`text-lg font-bold ${computeScoreColor(response.responses.message_clarity || 0)}`}>
                               {response.responses.message_clarity}
                             </span>
                             <Progress 
-                              value={getScoreProgress(response.responses.message_clarity)} 
+                              value={computeScoreProgress(response.responses.message_clarity || 0)} 
                               className="w-16 h-1.5"
                             />
                           </div>
