@@ -104,22 +104,22 @@ export function Analytics() {
     created_at
   } = analysisResults;
 
-  const getSentimentIcon = (sentiment: number) => {
-    if (sentiment > 0.3) return <TrendingUp className="h-4 w-4 text-emerald-500" />;
-    if (sentiment < -0.3) return <TrendingDown className="h-4 w-4 text-red-500" />;
-    return <Minus className="h-4 w-4 text-gray-500" />;
-  };
-
-  const getSentimentColor = (sentiment: number) => {
-    if (sentiment > 0.3) return 'text-emerald-600';
-    if (sentiment < -0.3) return 'text-red-600';
-    return 'text-gray-600';
-  };
-
-  const getSentimentBadge = (sentiment: number) => {
-    if (sentiment > 0.3) return { label: 'Positive', className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' };
-    if (sentiment < -0.3) return { label: 'Negative', className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' };
-    return { label: 'Neutral', className: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' };
+  const getSentimentData = (sentiment: number) => {
+    if (sentiment > 0.3) return {
+      icon: <TrendingUp className="h-4 w-4 text-emerald-500" />,
+      color: 'text-emerald-600',
+      badge: { label: 'Positive', className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' }
+    };
+    if (sentiment < -0.3) return {
+      icon: <TrendingDown className="h-4 w-4 text-red-500" />,
+      color: 'text-red-600',
+      badge: { label: 'Negative', className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' }
+    };
+    return {
+      icon: <Minus className="h-4 w-4 text-gray-500" />,
+      color: 'text-gray-600',
+      badge: { label: 'Neutral', className: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' }
+    };
   };
 
   const getScoreColor = (score: number, max: number = 10) => {
@@ -326,10 +326,10 @@ export function Analytics() {
               title="Average Sentiment"
               value={
                 <div className="flex items-center gap-2">
-                  <span className={getSentimentColor(summary_statistics.sentiment_avg)}>
+                  <span className={getSentimentData(summary_statistics.sentiment_avg).color}>
                     {summary_statistics.sentiment_avg.toFixed(2)}
                   </span>
-                  {getSentimentIcon(summary_statistics.sentiment_avg)}
+                  {getSentimentData(summary_statistics.sentiment_avg).icon}
                 </div>
               }
               subtitle="Scale of -1 to 1"
@@ -493,8 +493,8 @@ export function Analytics() {
                       )}
                       {metrics_analyzed.includes('sentiment') && (
                         <td className="p-4 text-center">
-                          <Badge className={getSentimentBadge(response.responses.sentiment).className}>
-                            {getSentimentBadge(response.responses.sentiment).label}
+                          <Badge className={getSentimentData(response.responses.sentiment).badge.className}>
+                            {getSentimentData(response.responses.sentiment).badge.label}
                           </Badge>
                           <div className="text-xs mt-1 text-gray-500">
                             {response.responses.sentiment?.toFixed(2)}
