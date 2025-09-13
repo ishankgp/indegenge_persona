@@ -163,7 +163,6 @@ export function SimulationHub() {
     if (!files) return;
     
     const newImages: File[] = [];
-    const newPreviews: string[] = [];
     
     Array.from(files).forEach(file => {
       if (file.type.startsWith('image/')) {
@@ -225,12 +224,15 @@ export function SimulationHub() {
         formData.append('stimulus_text', stimulusText);
       }
       
-      stimulusImages.forEach((image, index) => {
+      stimulusImages.forEach((image) => {
         formData.append(`stimulus_images`, image);
       });
 
-      // Note: This will require backend API updates to handle multipart/form-data
-      console.log('🚀 Sending request with FormData:', {
+      // Set initial progress
+      setProgress(10);
+
+      // Note: Backend now processes personas in parallel for faster analysis
+      console.log('🚀 Sending request with FormData (parallel processing enabled):', {
         persona_ids: formData.get('persona_ids'),
         metrics: formData.get('metrics'),
         content_type: formData.get('content_type'),
@@ -238,9 +240,22 @@ export function SimulationHub() {
         stimulus_images_count: stimulusImages.length
       });
       
+      // Simulate progress updates during parallel processing
+      const progressInterval = setInterval(() => {
+        setProgress(prev => {
+          if (prev < 85) {
+            return prev + Math.random() * 15; // Gradual progress simulation
+          }
+          return prev;
+        });
+      }, 1000);
+      
       const response = await CohortAPI.analyze(formData);
       
-      console.log('✅ Received response:', {
+      // Clear the progress interval
+      clearInterval(progressInterval);
+      
+      console.log('✅ Received response (parallel processing completed):', {
         responseType: typeof response,
         cohort_size: response?.cohort_size,
         individual_responses_count: response?.individual_responses?.length,
@@ -339,7 +354,7 @@ export function SimulationHub() {
           <Card className="mb-6 border-0 shadow-xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Running AI Analysis...</span>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Running Parallel AI Analysis...</span>
                 <span className="text-sm font-bold text-primary">{progress}%</span>
               </div>
               <Progress value={progress} className="h-2" />
@@ -856,7 +871,7 @@ export function SimulationHub() {
                 {analyzing ? (
                   <>
                     <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-                    Running AI Analysis... {progress}%
+                    Parallel AI Analysis... {progress.toFixed(0)}%
                   </>
                 ) : (
                   <>
