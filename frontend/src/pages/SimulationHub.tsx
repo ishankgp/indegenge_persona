@@ -1,22 +1,24 @@
-import { useState, useEffect } from 'react';
-import { PersonasAPI, CohortAPI } from '@/lib/api';
-import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
-import { Skeleton } from '@/components/ui/skeleton';
-import { 
-  Users, 
-  Sparkles, 
-  Settings, 
-  Search, 
-  BarChart3, 
-  Target, 
+"use client"
+
+import { useState, useEffect } from "react"
+import { PersonasAPI, CohortAPI } from "@/lib/api"
+import { useNavigate } from "react-router-dom"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
+import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Users,
+  Sparkles,
+  Settings,
+  Search,
+  BarChart3,
+  Target,
   Brain,
   Activity,
   Zap,
@@ -31,260 +33,260 @@ import {
   FileText,
   Loader2,
   ChevronRight,
-  Image,
+  ImageIcon,
   Upload,
   X,
-  Eye
-} from 'lucide-react';
-import { Input } from '@/components/ui/input';
+  Eye,
+} from "lucide-react"
+import { Input } from "@/components/ui/input"
 
 // API base managed via shared client
 
 interface Persona {
-  id: number;
-  name: string;
-  age: number;
-  gender: string;
-  condition: string;
-  location: string;
+  id: number
+  name: string
+  age: number
+  gender: string
+  condition: string
+  location: string
 }
 
 const availableMetrics = [
-  { 
-    id: 'purchase_intent', 
-    label: 'Purchase Intent', 
-    description: 'Likelihood to ask doctor about treatment', 
+  {
+    id: "purchase_intent",
+    label: "Purchase Intent",
+    description: "Likelihood to ask doctor about treatment",
     icon: Target,
-    color: 'text-violet-600',
-    bgColor: 'bg-violet-100 dark:bg-violet-900/30'
+    color: "text-violet-600",
+    bgColor: "bg-violet-100 dark:bg-violet-900/30",
   },
-  { 
-    id: 'sentiment', 
-    label: 'Sentiment Analysis', 
-    description: 'Emotional response to messaging', 
+  {
+    id: "sentiment",
+    label: "Sentiment Analysis",
+    description: "Emotional response to messaging",
     icon: Brain,
-    color: 'text-blue-600',
-    bgColor: 'bg-blue-100 dark:bg-blue-900/30'
+    color: "text-blue-600",
+    bgColor: "bg-blue-100 dark:bg-blue-900/30",
   },
-  { 
-    id: 'trust_in_brand', 
-    label: 'Brand Trust', 
-    description: 'Impact on brand perception', 
+  {
+    id: "trust_in_brand",
+    label: "Brand Trust",
+    description: "Impact on brand perception",
     icon: Shield,
-    color: 'text-emerald-600',
-    bgColor: 'bg-emerald-100 dark:bg-emerald-900/30'
+    color: "text-emerald-600",
+    bgColor: "bg-emerald-100 dark:bg-emerald-900/30",
   },
-  { 
-    id: 'message_clarity', 
-    label: 'Message Clarity', 
-    description: 'Understanding of key messages', 
+  {
+    id: "message_clarity",
+    label: "Message Clarity",
+    description: "Understanding of key messages",
     icon: MessageSquare,
-    color: 'text-amber-600',
-    bgColor: 'bg-amber-100 dark:bg-amber-900/30'
+    color: "text-amber-600",
+    bgColor: "bg-amber-100 dark:bg-amber-900/30",
   },
-  { 
-    id: 'key_concern_flagged', 
-    label: 'Key Concerns', 
-    description: 'Primary concerns identified', 
+  {
+    id: "key_concern_flagged",
+    label: "Key Concerns",
+    description: "Primary concerns identified",
     icon: AlertCircle,
-    color: 'text-red-600',
-    bgColor: 'bg-red-100 dark:bg-red-900/30'
-  }
-];
+    color: "text-red-600",
+    bgColor: "bg-red-100 dark:bg-red-900/30",
+  },
+]
 
 const SAMPLE_MESSAGES = [
   "Introducing our new diabetes management solution with 24/7 glucose monitoring",
   "Experience relief from chronic pain with our breakthrough therapy",
-  "Take control of your health journey with personalized treatment plans"
-] as const;
+  "Take control of your health journey with personalized treatment plans",
+] as const
 
 export function SimulationHub() {
-  const navigate = useNavigate();
-  const [personas, setPersonas] = useState<Persona[]>([]);
-  const [selectedPersonas, setSelectedPersonas] = useState<Set<number>>(new Set());
-  const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(new Set(['purchase_intent', 'sentiment']));
-  const [stimulusText, setStimulusText] = useState('');
-  const [stimulusImages, setStimulusImages] = useState<File[]>([]);
-  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
-  const [contentType, setContentType] = useState<'text' | 'image' | 'both'>('text');
-  const [loading, setLoading] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [progress, setProgress] = useState(0);
+  const navigate = useNavigate()
+  const [personas, setPersonas] = useState<Persona[]>([])
+  const [selectedPersonas, setSelectedPersonas] = useState<Set<number>>(new Set())
+  const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(new Set(["purchase_intent", "sentiment"]))
+  const [stimulusText, setStimulusText] = useState("")
+  const [stimulusImages, setStimulusImages] = useState<File[]>([])
+  const [imagePreviews, setImagePreviews] = useState<string[]>([])
+  const [contentType, setContentType] = useState<"text" | "image" | "both">("text")
+  const [loading, setLoading] = useState(false)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [progress, setProgress] = useState(0)
 
   useEffect(() => {
-    fetchPersonas();
-  }, []);
+    fetchPersonas()
+  }, [])
 
   useEffect(() => {
     if (analyzing) {
       const timer = setInterval(() => {
-        setProgress(prev => Math.min(prev + 10, 90));
-      }, 200);
-      return () => clearInterval(timer);
+        setProgress((prev) => Math.min(prev + 10, 90))
+      }, 200)
+      return () => clearInterval(timer)
     } else {
-      setProgress(0);
+      setProgress(0)
     }
-  }, [analyzing]);
+  }, [analyzing])
 
   const fetchPersonas = async () => {
-    setLoading(true);
+    setLoading(true)
     try {
-      const data = await PersonasAPI.list();
-      setPersonas(data);
+      const data = await PersonasAPI.list()
+      setPersonas(data)
     } catch (error) {
-      console.error('Error fetching personas:', error);
+      console.error("Error fetching personas:", error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const togglePersona = (id: number) => {
-    const newSelected = new Set(selectedPersonas);
+    const newSelected = new Set(selectedPersonas)
     if (newSelected.has(id)) {
-      newSelected.delete(id);
+      newSelected.delete(id)
     } else {
-      newSelected.add(id);
+      newSelected.add(id)
     }
-    setSelectedPersonas(newSelected);
-  };
+    setSelectedPersonas(newSelected)
+  }
 
   const toggleMetric = (id: string) => {
-    const newSelected = new Set(selectedMetrics);
+    const newSelected = new Set(selectedMetrics)
     if (newSelected.has(id)) {
-      newSelected.delete(id);
+      newSelected.delete(id)
     } else {
-      newSelected.add(id);
+      newSelected.add(id)
     }
-    setSelectedMetrics(newSelected);
-  };
+    setSelectedMetrics(newSelected)
+  }
 
   const handleImageUpload = (files: FileList | null) => {
-    if (!files) return;
-    
-    const newImages: File[] = [];
-    const newPreviews: string[] = [];
-    
-    Array.from(files).forEach(file => {
-      if (file.type.startsWith('image/')) {
-        newImages.push(file);
-        
+    if (!files) return
+
+    const newImages: File[] = []
+
+    Array.from(files).forEach((file) => {
+      if (file.type.startsWith("image/")) {
+        newImages.push(file)
+
         // Create preview URL
-        const reader = new FileReader();
+        const reader = new FileReader()
         reader.onload = (e) => {
-          setImagePreviews(prev => [...prev, e.target?.result as string]);
-        };
-        reader.readAsDataURL(file);
+          setImagePreviews((prev) => [...prev, e.target?.result as string])
+        }
+        reader.readAsDataURL(file)
       }
-    });
-    
-    setStimulusImages(prev => [...prev, ...newImages]);
-  };
+    })
+
+    setStimulusImages((prev) => [...prev, ...newImages])
+  }
 
   const removeImage = (index: number) => {
-    setStimulusImages(prev => prev.filter((_, i) => i !== index));
-    setImagePreviews(prev => prev.filter((_, i) => i !== index));
-  };
+    setStimulusImages((prev) => prev.filter((_, i) => i !== index))
+    setImagePreviews((prev) => prev.filter((_, i) => i !== index))
+  }
 
   const handleRunAnalysis = async () => {
     if (selectedPersonas.size === 0) {
-      alert('Please select at least one persona');
-      return;
+      alert("Please select at least one persona")
+      return
     }
     if (selectedMetrics.size === 0) {
-      alert('Please select at least one metric');
-      return;
-    }
-    
-    // Validate based on content type
-    const hasText = stimulusText.trim() !== '';
-    const hasImages = stimulusImages.length > 0;
-    
-    if (contentType === 'text' && !hasText) {
-      alert('Please enter stimulus text');
-      return;
-    }
-    if (contentType === 'image' && !hasImages) {
-      alert('Please upload at least one image');
-      return;
-    }
-    if (contentType === 'both' && (!hasText || !hasImages)) {
-      alert('Please provide both text and images for analysis');
-      return;
+      alert("Please select at least one metric")
+      return
     }
 
-    setAnalyzing(true);
+    // Validate based on content type
+    const hasText = stimulusText.trim() !== ""
+    const hasImages = stimulusImages.length > 0
+
+    if (contentType === "text" && !hasText) {
+      alert("Please enter stimulus text")
+      return
+    }
+    if (contentType === "image" && !hasImages) {
+      alert("Please upload at least one image")
+      return
+    }
+    if (contentType === "both" && (!hasText || !hasImages)) {
+      alert("Please provide both text and images for analysis")
+      return
+    }
+
+    setAnalyzing(true)
     try {
       // Create FormData for file upload
-      const formData = new FormData();
-      formData.append('persona_ids', JSON.stringify(Array.from(selectedPersonas)));
-      formData.append('metrics', JSON.stringify(Array.from(selectedMetrics)));
-      formData.append('content_type', contentType);
-      
+      const formData = new FormData()
+      formData.append("persona_ids", JSON.stringify(Array.from(selectedPersonas)))
+      formData.append("metrics", JSON.stringify(Array.from(selectedMetrics)))
+      formData.append("content_type", contentType)
+
       if (hasText) {
-        formData.append('stimulus_text', stimulusText);
+        formData.append("stimulus_text", stimulusText)
       }
-      
-      stimulusImages.forEach((image, index) => {
-        formData.append(`stimulus_images`, image);
-      });
+
+      stimulusImages.forEach((image) => {
+        formData.append(`stimulus_images`, image)
+      })
 
       // Note: This will require backend API updates to handle multipart/form-data
-      console.log('🚀 Sending request with FormData:', {
-        persona_ids: formData.get('persona_ids'),
-        metrics: formData.get('metrics'),
-        content_type: formData.get('content_type'),
-        stimulus_text: formData.get('stimulus_text'),
-        stimulus_images_count: stimulusImages.length
-      });
-      
-      const response = await CohortAPI.analyze(formData);
-      
-      console.log('✅ Received response:', {
+      console.log("🚀 Sending request with FormData:", {
+        persona_ids: formData.get("persona_ids"),
+        metrics: formData.get("metrics"),
+        content_type: formData.get("content_type"),
+        stimulus_text: formData.get("stimulus_text"),
+        stimulus_images_count: stimulusImages.length,
+      })
+
+      const response = await CohortAPI.analyze(formData)
+
+      console.log("✅ Received response:", {
         responseType: typeof response,
         cohort_size: response?.cohort_size,
         individual_responses_count: response?.individual_responses?.length,
         has_summary_statistics: !!response?.summary_statistics,
-        responseKeys: response ? Object.keys(response) : null
-      });
+        responseKeys: response ? Object.keys(response) : null,
+      })
 
       // Validate response structure
       if (!response) {
-        throw new Error('Received null/undefined response from server');
+        throw new Error("Received null/undefined response from server")
       }
       if (!response.individual_responses || !Array.isArray(response.individual_responses)) {
-        throw new Error('Response missing individual_responses array');
+        throw new Error("Response missing individual_responses array")
       }
       if (response.individual_responses.length === 0) {
-        throw new Error('Response contains no individual responses');
+        throw new Error("Response contains no individual responses")
       }
 
-      setProgress(100);
+      setProgress(100)
       setTimeout(() => {
-        console.log('🧭 Navigating to analytics with data:', {
+        console.log("🧭 Navigating to analytics with data:", {
           cohort_size: response.cohort_size,
-          responses_count: response.individual_responses.length
-        });
-        navigate('/analytics', { state: { analysisResults: response } });
-      }, 500);
+          responses_count: response.individual_responses.length,
+        })
+        navigate("/analytics", { state: { analysisResults: response } })
+      }, 500)
     } catch (error) {
-      console.error('❌ Error running analysis:', error);
-      console.error('❌ Error type:', typeof error);
-      console.error('❌ Error string:', String(error));
-      
-      // Try to extract useful info from the error
-      const errorStr = String(error);
-      alert(`Error running analysis: ${errorStr}\n\nCheck browser console for details.`);
-    } finally {
-      setAnalyzing(false);
-    }
-  };
+      console.error("❌ Error running analysis:", error)
+      console.error("❌ Error type:", typeof error)
+      console.error("❌ Error string:", String(error))
 
-  const filteredPersonas = personas.filter(persona => 
-    persona.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    persona.condition.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    persona.location.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+      // Try to extract useful info from the error
+      const errorStr = String(error)
+      alert(`Error running analysis: ${errorStr}\n\nCheck browser console for details.`)
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  const filteredPersonas = personas.filter(
+    (persona) =>
+      persona.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      persona.condition.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      persona.location.toLowerCase().includes(searchTerm.toLowerCase()),
+  )
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
@@ -314,9 +316,7 @@ export function SimulationHub() {
                       Real-time Analysis
                     </Badge>
                   </div>
-                  <p className="text-white/90 text-lg">
-                    Test marketing messages with AI-powered persona simulations
-                  </p>
+                  <p className="text-white/90 text-lg">Test marketing messages with AI-powered persona simulations</p>
                 </div>
               </div>
               <div className="text-right">
@@ -391,15 +391,17 @@ export function SimulationHub() {
                 <div className="text-center py-16">
                   <div className="relative inline-block">
                     <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-purple-500 rounded-full blur-2xl opacity-30"></div>
-                    <div className="relative p-6 bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-900/30 dark:to-purple-900/30 rounded-full">
+                    <div className="relative p-6 bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-950/30 dark:to-purple-900/30 rounded-full">
                       <Users className="h-12 w-12 text-violet-600 dark:text-violet-400" />
                     </div>
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mt-6 mb-2">No Personas Available</h3>
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mt-6 mb-2">
+                    No Personas Available
+                  </h3>
                   <p className="text-gray-600 dark:text-gray-400 mb-6">Create personas first to run simulations</p>
-                  <Button 
+                  <Button
                     className="bg-gradient-to-r from-violet-600 to-purple-600 text-white"
-                    onClick={() => navigate('/personas')}
+                    onClick={() => navigate("/personas")}
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Create Personas
@@ -423,7 +425,7 @@ export function SimulationHub() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setSelectedPersonas(new Set(filteredPersonas.map(p => p.id)))}
+                        onClick={() => setSelectedPersonas(new Set(filteredPersonas.map((p) => p.id)))}
                         className="border-violet-300 text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-900/30"
                       >
                         <CheckCircle2 className="h-4 w-4 mr-1" />
@@ -444,7 +446,9 @@ export function SimulationHub() {
                   <div className="grid grid-cols-4 gap-3">
                     <div className="bg-gradient-to-r from-violet-50 to-violet-100 dark:from-violet-950/30 dark:to-violet-900/30 rounded-lg p-3">
                       <p className="text-xs text-violet-600 dark:text-violet-400">Total Available</p>
-                      <p className="text-xl font-bold text-violet-900 dark:text-violet-100">{filteredPersonas.length}</p>
+                      <p className="text-xl font-bold text-violet-900 dark:text-violet-100">
+                        {filteredPersonas.length}
+                      </p>
                     </div>
                     <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/30 rounded-lg p-3">
                       <p className="text-xs text-blue-600 dark:text-blue-400">Selected</p>
@@ -453,13 +457,19 @@ export function SimulationHub() {
                     <div className="bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/30 rounded-lg p-3">
                       <p className="text-xs text-emerald-600 dark:text-emerald-400">Coverage</p>
                       <p className="text-xl font-bold text-emerald-900 dark:text-emerald-100">
-                        {filteredPersonas.length > 0 ? Math.round((selectedPersonas.size / filteredPersonas.length) * 100) : 0}%
+                        {filteredPersonas.length > 0
+                          ? Math.round((selectedPersonas.size / filteredPersonas.length) * 100)
+                          : 0}
+                        %
                       </p>
                     </div>
                     <div className="bg-gradient-to-r from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/30 rounded-lg p-3">
                       <p className="text-xs text-amber-600 dark:text-amber-400">Conditions</p>
                       <p className="text-xl font-bold text-amber-900 dark:text-amber-100">
-                        {new Set(filteredPersonas.filter(p => selectedPersonas.has(p.id)).map(p => p.condition)).size}
+                        {
+                          new Set(filteredPersonas.filter((p) => selectedPersonas.has(p.id)).map((p) => p.condition))
+                            .size
+                        }
                       </p>
                     </div>
                   </div>
@@ -472,29 +482,38 @@ export function SimulationHub() {
                           <tr>
                             <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
                               <Checkbox
-                                checked={filteredPersonas.length > 0 && filteredPersonas.every(p => selectedPersonas.has(p.id))}
+                                checked={
+                                  filteredPersonas.length > 0 &&
+                                  filteredPersonas.every((p) => selectedPersonas.has(p.id))
+                                }
                                 onChange={(e) => {
                                   if (e.target.checked) {
-                                    setSelectedPersonas(new Set(filteredPersonas.map(p => p.id)));
+                                    setSelectedPersonas(new Set(filteredPersonas.map((p) => p.id)))
                                   } else {
-                                    setSelectedPersonas(new Set());
+                                    setSelectedPersonas(new Set())
                                   }
                                 }}
                               />
                             </th>
                             <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Name</th>
                             <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Age</th>
-                            <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Gender</th>
-                            <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Condition</th>
-                            <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Location</th>
+                            <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                              Gender
+                            </th>
+                            <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                              Condition
+                            </th>
+                            <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                              Location
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                           {filteredPersonas.map((persona) => (
-                            <tr 
-                              key={persona.id} 
+                            <tr
+                              key={persona.id}
                               className={`hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer ${
-                                selectedPersonas.has(persona.id) ? 'bg-violet-50 dark:bg-violet-900/20' : ''
+                                selectedPersonas.has(persona.id) ? "bg-violet-50 dark:bg-violet-900/20" : ""
                               }`}
                               onClick={() => togglePersona(persona.id)}
                             >
@@ -579,9 +598,9 @@ export function SimulationHub() {
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <Button
-                    variant={contentType === 'text' ? 'default' : 'outline'}
-                    className={`p-4 h-auto ${contentType === 'text' ? 'bg-gradient-to-r from-primary to-secondary text-white' : ''}`}
-                    onClick={() => setContentType('text')}
+                    variant={contentType === "text" ? "default" : "outline"}
+                    className={`p-4 h-auto ${contentType === "text" ? "bg-gradient-to-r from-primary to-secondary text-white" : ""}`}
+                    onClick={() => setContentType("text")}
                   >
                     <div className="text-center">
                       <FileText className="h-6 w-6 mx-auto mb-2" />
@@ -590,25 +609,25 @@ export function SimulationHub() {
                     </div>
                   </Button>
                   <Button
-                    variant={contentType === 'image' ? 'default' : 'outline'}
-                    className={`p-4 h-auto ${contentType === 'image' ? 'bg-gradient-to-r from-primary to-secondary text-white' : ''}`}
-                    onClick={() => setContentType('image')}
+                    variant={contentType === "image" ? "default" : "outline"}
+                    className={`p-4 h-auto ${contentType === "image" ? "bg-gradient-to-r from-primary to-secondary text-white" : ""}`}
+                    onClick={() => setContentType("image")}
                   >
                     <div className="text-center">
-                      <Image className="h-6 w-6 mx-auto mb-2" />
+                      <ImageIcon className="h-6 w-6 mx-auto mb-2" />
                       <span className="block text-sm font-medium">Image Only</span>
                       <span className="text-xs opacity-80">Visual ads, graphics</span>
                     </div>
                   </Button>
                   <Button
-                    variant={contentType === 'both' ? 'default' : 'outline'}
-                    className={`p-4 h-auto ${contentType === 'both' ? 'bg-gradient-to-r from-primary to-secondary text-white' : ''}`}
-                    onClick={() => setContentType('both')}
+                    variant={contentType === "both" ? "default" : "outline"}
+                    className={`p-4 h-auto ${contentType === "both" ? "bg-gradient-to-r from-primary to-secondary text-white" : ""}`}
+                    onClick={() => setContentType("both")}
                   >
                     <div className="text-center">
                       <div className="flex justify-center gap-1 mb-2">
                         <FileText className="h-5 w-5" />
-                        <Image className="h-5 w-5" />
+                        <ImageIcon className="h-5 w-5" />
                       </div>
                       <span className="block text-sm font-medium">Text + Image</span>
                       <span className="text-xs opacity-80">Complete campaigns</span>
@@ -620,10 +639,13 @@ export function SimulationHub() {
               <Separator />
 
               {/* Text Input Section */}
-              {(contentType === 'text' || contentType === 'both') && (
+              {(contentType === "text" || contentType === "both") && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="stimulus" className="text-base font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    <Label
+                      htmlFor="stimulus"
+                      className="text-base font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2"
+                    >
                       <FileText className="h-4 w-4 text-gray-500" />
                       Marketing Message / Stimulus Text
                     </Label>
@@ -658,11 +680,11 @@ export function SimulationHub() {
               )}
 
               {/* Image Upload Section */}
-              {(contentType === 'image' || contentType === 'both') && (
+              {(contentType === "image" || contentType === "both") && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <Label className="text-base font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                      <Image className="h-4 w-4 text-gray-500" />
+                      <ImageIcon className="h-4 w-4 text-gray-500" />
                       Visual Content / Image Ads
                     </Label>
                     <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0">
@@ -670,7 +692,7 @@ export function SimulationHub() {
                       Visual Analysis
                     </Badge>
                   </div>
-                  
+
                   {/* Image Upload Area */}
                   <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-6 hover:border-primary transition-colors">
                     <input
@@ -684,9 +706,7 @@ export function SimulationHub() {
                     <label htmlFor="image-upload" className="cursor-pointer">
                       <div className="text-center">
                         <Upload className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-                          Upload Image Ads
-                        </h3>
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">Upload Image Ads</h3>
                         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                           Drag and drop your ad creatives here, or click to browse
                         </p>
@@ -706,9 +726,9 @@ export function SimulationHub() {
                       </Label>
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                         {imagePreviews.map((preview, index) => (
-                          <div key={index} className="relative group">
+                          <div key={preview} className="relative group">
                             <img
-                              src={preview}
+                              src={preview || "/placeholder.svg"}
                               alt={`Upload preview ${index + 1}`}
                               className="w-full h-32 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
                             />
@@ -746,14 +766,14 @@ export function SimulationHub() {
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
                   {availableMetrics.map((metric) => {
-                    const isSelected = selectedMetrics.has(metric.id);
+                    const isSelected = selectedMetrics.has(metric.id)
                     return (
-                      <div 
-                        key={metric.id} 
+                      <div
+                        key={metric.id}
                         className={`relative rounded-xl border-2 transition-all cursor-pointer ${
-                          isSelected 
-                            ? 'border-primary bg-gradient-to-r from-primary/5 to-secondary/5' 
-                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                          isSelected
+                            ? "border-primary bg-gradient-to-r from-primary/5 to-secondary/5"
+                            : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
                         }`}
                         onClick={() => toggleMetric(metric.id)}
                       >
@@ -770,21 +790,15 @@ export function SimulationHub() {
                             </div>
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <span className="font-medium text-gray-900 dark:text-gray-100">
-                                  {metric.label}
-                                </span>
-                                {isSelected && (
-                                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                                )}
+                                <span className="font-medium text-gray-900 dark:text-gray-100">{metric.label}</span>
+                                {isSelected && <CheckCircle2 className="h-4 w-4 text-primary" />}
                               </div>
-                              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                {metric.description}
-                              </p>
+                              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{metric.description}</p>
                             </div>
                           </div>
                         </div>
                       </div>
-                    );
+                    )
                   })}
                 </div>
               </div>
@@ -809,13 +823,20 @@ export function SimulationHub() {
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Content</p>
                     <p className="text-xl font-bold text-gray-900 dark:text-gray-100 capitalize">
-                      {contentType === 'both' ? 'Multi-Modal' : contentType}
+                      {contentType === "both" ? "Multi-Modal" : contentType}
                     </p>
                   </div>
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Est. Time</p>
                     <p className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                      ~{Math.max(1, Math.round(selectedPersonas.size * (contentType === 'image' || contentType === 'both' ? 1.5 : 0.5)))}s
+                      ~
+                      {Math.max(
+                        1,
+                        Math.round(
+                          selectedPersonas.size * (contentType === "image" || contentType === "both" ? 1.5 : 0.5),
+                        ),
+                      )}
+                      s
                     </p>
                   </div>
                 </div>
@@ -830,8 +851,10 @@ export function SimulationHub() {
                       )}
                       {stimulusImages.length > 0 && (
                         <div className="flex items-center gap-2">
-                          <Image className="h-4 w-4 text-purple-600" />
-                          <span className="text-gray-600 dark:text-gray-400">{stimulusImages.length} image{stimulusImages.length > 1 ? 's' : ''} uploaded</span>
+                          <ImageIcon className="h-4 w-4 text-purple-600" />
+                          <span className="text-gray-600 dark:text-gray-400">
+                            {stimulusImages.length} image{stimulusImages.length > 1 ? "s" : ""} uploaded
+                          </span>
                         </div>
                       )}
                     </div>
@@ -840,17 +863,17 @@ export function SimulationHub() {
               </div>
 
               {/* Run Button */}
-              <Button 
-                className="w-full bg-gradient-to-r from-primary to-secondary text-white hover:shadow-2xl transition-all duration-200 py-6 text-lg font-semibold group" 
+              <Button
+                className="w-full bg-gradient-to-r from-primary to-secondary text-white hover:shadow-2xl transition-all duration-200 py-6 text-lg font-semibold group"
                 size="lg"
                 onClick={handleRunAnalysis}
                 disabled={
-                  analyzing || 
-                  selectedPersonas.size === 0 || 
+                  analyzing ||
+                  selectedPersonas.size === 0 ||
                   selectedMetrics.size === 0 ||
-                  (contentType === 'text' && !stimulusText.trim()) ||
-                  (contentType === 'image' && stimulusImages.length === 0) ||
-                  (contentType === 'both' && (!stimulusText.trim() || stimulusImages.length === 0))
+                  (contentType === "text" && !stimulusText.trim()) ||
+                  (contentType === "image" && stimulusImages.length === 0) ||
+                  (contentType === "both" && (!stimulusText.trim() || stimulusImages.length === 0))
                 }
               >
                 {analyzing ? (
@@ -861,7 +884,7 @@ export function SimulationHub() {
                 ) : (
                   <>
                     <PlayCircle className="mr-3 h-5 w-5 group-hover:scale-110 transition-transform" />
-                    Run {contentType === 'image' ? 'Visual' : contentType === 'both' ? 'Multi-Modal' : 'Text'} Analysis
+                    Run {contentType === "image" ? "Visual" : contentType === "both" ? "Multi-Modal" : "Text"} Analysis
                     <ChevronRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                   </>
                 )}
@@ -871,5 +894,5 @@ export function SimulationHub() {
         </div>
       </div>
     </div>
-  );
+  )
 }

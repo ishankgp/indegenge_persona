@@ -78,11 +78,16 @@ const conditionColors: Record<string, string> = {
 export function PersonaLibrary() {
   const [personas, setPersonas] = useState<Persona[]>([])
   const [loading, setLoading] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [selectedPersonas, setSelectedPersonas] = useState<Set<number>>(new Set())
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [activeTab, setActiveTab] = useState<"single" | "bulk" | "prompt">("single")
+  const [bulkPersonas, setBulkPersonas] = useState<BulkPersonaTemplate[]>([
+    { id: "1", age: "", gender: "", condition: "", location: "", concerns: "" },
+  ])
   const [generating, setGenerating] = useState(false)
-  const [activeTab, setActiveTab] = useState("view")
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
-  const [searchTerm, setSearchTerm] = useState("")
   const [filterCondition, setFilterCondition] = useState("all")
   const [formData, setFormData] = useState({
     age: "",
@@ -91,7 +96,6 @@ export function PersonaLibrary() {
     location: "",
     concerns: "",
   })
-  const [bulkMode, setBulkMode] = useState(false)
   const [bulkTemplates, setBulkTemplates] = useState<BulkPersonaTemplate[]>([
     { id: "1", age: "", gender: "", condition: "", location: "", concerns: "" },
   ])
