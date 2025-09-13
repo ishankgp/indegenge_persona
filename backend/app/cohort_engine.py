@@ -277,6 +277,77 @@ def calculate_summary_statistics(individual_responses: List[Dict[str, Any]], met
     
     return summary
 
+
+def generate_llm_powered_insights_and_suggestions(individual_responses: List[Dict[str, Any]], summary_statistics: Dict[str, Any], stimulus_text: str) -> Dict[str, Any]:
+    """
+    Uses an LLM to generate cumulative insights and actionable suggestions based on cohort analysis data.
+    """
+    logger.info("🧠 Generating LLM-powered insights and suggestions...")
+
+    prompt = f"""
+    As an expert pharmaceutical marketing analyst, your task is to synthesize the results of a patient persona simulation and provide high-level insights and actionable suggestions.
+
+    **1. The Stimulus Material:**
+    The following marketing message was tested:
+    "{stimulus_text}"
+
+    **2. Cohort Summary Statistics:**
+    Here are the overall performance metrics for the cohort:
+    {json.dumps(summary_statistics, indent=2)}
+
+    **3. Individual Persona Responses:**
+    Here is a summary of how each individual persona responded, including their reasoning:
+    {json.dumps(individual_responses, indent=2)}
+
+    **4. Your Task:**
+    Based on all the data above, generate a JSON object with two keys: "cumulative_insights" and "actionable_suggestions".
+
+    - `cumulative_insights`: Provide 2-3 high-level insights summarizing the overall cohort response. What are the key takeaways?
+    - `actionable_suggestions`: Provide 2-3 specific, actionable suggestions to improve the ad copy. Each suggestion should be directly linked to the provided data (e.g., "Because many personas flagged 'cost' as a concern, consider adding...").
+
+    **Output Format (JSON only):**
+    {{
+      "cumulative_insights": [
+        "Insight 1...",
+        "Insight 2..."
+      ],
+      "actionable_suggestions": [
+        {{
+          "suggestion": "Specific suggestion for the ad copy...",
+          "reasoning": "This is based on the observation that..."
+        }},
+        {{
+          "suggestion": "Another specific suggestion...",
+          "reasoning": "This addresses the low score in..."
+        }}
+      ]
+    }}
+    """
+
+    messages = [
+        {"role": "system", "content": [{"type": "text", "text": "You are an expert marketing analyst providing insights on persona simulations."}]},
+        {"role": "user", "content": [{"type": "text", "text": prompt}]},
+    ]
+
+    try:
+        response = _chat_json(messages)
+        if "error" in response:
+            raise ValueError(response["error"])
+        
+        # Basic validation
+        if "cumulative_insights" not in response or "actionable_suggestions" not in response:
+            raise ValueError("LLM response missing required keys.")
+            
+        logger.info("✅ Successfully generated LLM-powered insights and suggestions.")
+        return response
+    except Exception as e:
+        logger.error(f"❌ Failed to generate LLM-powered insights: {e}")
+        return {
+            "cumulative_insights": ["LLM-powered insight generation failed. Displaying fallback."],
+            "actionable_suggestions": [{"suggestion": "Could not generate suggestions due to an error.", "reasoning": str(e)}]
+        }
+
+
 def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulus_text: str) -> List[str]:
     """Generates insights from the cohort analysis."""
     
@@ -371,7 +442,7 @@ def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: Lis
     summary_stats = calculate_summary_statistics(individual_responses, metrics)
     
     # Generate insights
-    insights = generate_cohort_insights(individual_responses, stimulus_text)
+    llm_generated_data = generate_llm_powered_insights_and_suggestions(individual_responses, summary_stats, stimulus_text)
     
     return {
         'cohort_size': len(personas),
@@ -379,7 +450,8 @@ def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: Lis
         'metrics_analyzed': metrics,
         'individual_responses': individual_responses,
         'summary_statistics': summary_stats,
-        'insights': insights,
+        'insights': llm_generated_data.get("cumulative_insights", []),
+        'suggestions': llm_generated_data.get("actionable_suggestions", []),
         'preamble': preamble_text,
         'created_at': datetime.now().isoformat()
     }

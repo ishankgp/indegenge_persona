@@ -36,6 +36,7 @@ export interface AnalysisResults {
   individual_responses: IndividualResponseRow[];
   summary_statistics: SummaryStatistics;
   insights?: string[];
+  suggestions?: string[];
   preamble?: string;
   created_at: string;
 }
