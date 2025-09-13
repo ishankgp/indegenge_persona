@@ -8,7 +8,8 @@ import {
   BarChart3,
   Activity,
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  UserPlus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +19,12 @@ const navigation = [
     href: '/', 
     icon: LayoutDashboard,
     description: 'Overview & metrics'
+  },
+  { 
+    name: 'Create Persona', 
+    href: '/create-persona', 
+    icon: UserPlus,
+    description: 'Generate new personas'
   },
   { 
     name: 'Persona Library', 
