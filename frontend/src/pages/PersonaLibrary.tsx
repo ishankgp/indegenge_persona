@@ -85,7 +85,7 @@ export function PersonaLibrary() {
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterCondition, setFilterCondition] = useState('all');
+  const [error, setError] = useState<string | null>(null);
 
   // Form data for single persona creation
   const [formData, setFormData] = useState({
@@ -138,25 +138,34 @@ export function PersonaLibrary() {
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setGenerating(true)
+    e.preventDefault();
+    setError(null); // Clear previous errors
+
+    const age = parseInt(formData.age);
+    if (isNaN(age) || age < 1 || age > 120) {
+      const errorMessage = "Please enter a valid age between 1 and 120.";
+      setError(errorMessage);
+      alert(errorMessage);
+      return;
+    }
+
+    setGenerating(true);
     try {
       const count = parseInt(formData.count) || 1;
       setGenerationProgress({ current: 0, total: count });
       
       const basePersonaData = {
-        age: parseInt(formData.age),
+        age: age,
         gender: formData.gender,
         condition: formData.condition,
         location: formData.location,
         concerns: formData.concerns
       };
 
-      // Create personas sequentially to show progress
+      const createdPersonas = [];
       for (let i = 0; i < count; i++) {
         setGenerationProgress({ current: i + 1, total: count });
         
-        // Add slight variations to avoid identical personas
         const variations = [
           '', ' with family history', ' seeking treatment options', 
           ' concerned about side effects', ' looking for lifestyle changes',
@@ -170,11 +179,12 @@ export function PersonaLibrary() {
           concerns: formData.concerns + variation
         };
         
-        await PersonasAPI.generate(personaData);
+        const newPersona = await PersonasAPI.generate(personaData);
+        createdPersonas.push(newPersona);
       }
 
-      await fetchPersonas()
-      setActiveTab("view")
+      await fetchPersonas();
+      setActiveTab("view");
       setFormData({
         age: '',
         gender: '',
@@ -184,11 +194,14 @@ export function PersonaLibrary() {
         count: '1'
       });
       setGenerationProgress({ current: 0, total: 0 });
-    } catch (error) {
-      console.error("Error generating persona:", error)
-      alert("Error generating persona. Please check if the backend is running.")
+      alert(`Successfully generated ${count} new persona${count > 1 ? 's' : ''}.`);
+    } catch (error: any) {
+      console.error("Error generating persona:", error);
+      const errorMessage = error.response?.data?.detail || "An unexpected error occurred. Please check the console and ensure the backend is running.";
+      setError(errorMessage);
+      alert(`Generation Failed: ${errorMessage}`);
     } finally {
-      setGenerating(false)
+      setGenerating(false);
     }
   }
 
@@ -231,17 +244,22 @@ export function PersonaLibrary() {
       if (!template.age || !template.gender || !template.condition || !template.location || !template.concerns) {
         errors.push(`Template ${index + 1}: All fields are required`)
       }
-      if (template.age && (Number.parseInt(template.age) < 1 || Number.parseInt(template.age) > 120)) {
-        errors.push(`Template ${index + 1}: Age must be between 1 and 120`)
+      const age = Number.parseInt(template.age);
+      if (isNaN(age) || age < 1 || age > 120) {
+        errors.push(`Template ${index + 1}: Age must be a valid number between 1 and 120`)
       }
     })
     return errors
   }
 
-  const handleBulkGenerate = async () => {
+  const handleBulkGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
     const validationErrors = validateBulkTemplates()
     if (validationErrors.length > 0) {
-      alert("Validation errors:\n" + validationErrors.join("\n"))
+      const errorMsg = "Validation errors:\n" + validationErrors.join("\n");
+      setError(errorMsg);
+      alert(errorMsg);
       return
     }
 
@@ -257,30 +275,47 @@ export function PersonaLibrary() {
         }),
       )
 
-      await Promise.all(promises)
-      await fetchPersonas()
-      setActiveTab("view")
+      const results = await Promise.allSettled(promises);
+      const successfulCreations = results.filter(r => r.status === 'fulfilled').length;
+      const failedCreations = results.length - successfulCreations;
 
-      // Reset bulk templates
-      setBulkTemplates([{ id: "1", age: "", gender: "", condition: "", location: "", concerns: "" }])
-      setCreationMode("single")
-    } catch (error) {
+      if (successfulCreations > 0) {
+        await fetchPersonas();
+        setActiveTab("view");
+        setBulkTemplates([{ id: "1", age: "", gender: "", condition: "", location: "", concerns: "" }]);
+        setCreationMode("single");
+      }
+      
+      alert(`Bulk Generation Complete: Successfully created ${successfulCreations} personas. ${failedCreations > 0 ? `Failed to create ${failedCreations}.` : ''}`);
+
+      if (failedCreations > 0) {
+        const firstError = results.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined;
+        const errorMessage = firstError?.reason?.response?.data?.detail || "Some personas could not be generated. Check the console for details.";
+        setError(errorMessage);
+      }
+
+    } catch (error: any) {
       console.error("Error generating bulk personas:", error)
-      alert("Error generating personas. Please check if the backend is running.")
+      const errorMessage = error.response?.data?.detail || "An unexpected error occurred during bulk generation.";
+      setError(errorMessage);
+      alert(`Bulk Generation Failed: ${errorMessage}`);
     } finally {
       setBulkGenerating(false)
     }
   }
 
-  const handleBulkGenerateFromPrompt = async () => {
+  const handleBulkGenerateFromPrompt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
     if (!bulkPrompt.trim()) {
-      alert("Please enter a prompt for persona generation")
+      const errorMsg = "Please enter a prompt for persona generation";
+      setError(errorMsg);
+      alert(errorMsg);
       return
     }
 
     setBulkGenerating(true)
     try {
-      // Generate personas based on prompt and filters
       const promises = Array.from({ length: bulkCount }, (_, index) => {
         const randomAge =
           Math.floor(Math.random() * (bulkFilters.ageRange.max - bulkFilters.ageRange.min + 1)) +
@@ -302,14 +337,30 @@ export function PersonaLibrary() {
         })
       })
 
-      await Promise.all(promises)
-      await fetchPersonas()
-      setActiveTab("view")
-      setBulkPrompt("")
-      setCreationMode("single")
-    } catch (error) {
+      const results = await Promise.allSettled(promises);
+      const successfulCreations = results.filter(r => r.status === 'fulfilled').length;
+      const failedCreations = results.length - successfulCreations;
+
+      if (successfulCreations > 0) {
+        await fetchPersonas();
+        setActiveTab("view");
+        setBulkPrompt("");
+        setCreationMode("single");
+      }
+
+      alert(`Prompt Generation Complete: Successfully created ${successfulCreations} personas. ${failedCreations > 0 ? `Failed to create ${failedCreations}.` : ''}`);
+
+      if (failedCreations > 0) {
+        const firstError = results.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined;
+        const errorMessage = firstError?.reason?.response?.data?.detail || "Some personas could not be generated. Check the console for details.";
+        setError(errorMessage);
+      }
+
+    } catch (error: any) {
       console.error("Error generating prompt-based personas:", error)
-      alert("Error generating personas. Please check if the backend is running.")
+      const errorMessage = error.response?.data?.detail || "An unexpected error occurred during prompt-based generation.";
+      setError(errorMessage);
+      alert(`Prompt Generation Failed: ${errorMessage}`);
     } finally {
       setBulkGenerating(false)
     }
@@ -791,6 +842,13 @@ export function PersonaLibrary() {
                         />
                       </div>
 
+                      {error && (
+                        <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 text-red-700 dark:text-red-300 rounded-lg">
+                          <p className="font-bold">Generation Error</p>
+                          <p className="text-sm">{error}</p>
+                        </div>
+                      )}
+
                       <Separator />
 
                       <div className="bg-gradient-to-r from-primary/5 to-secondary/5 rounded-xl p-4">
@@ -884,7 +942,7 @@ export function PersonaLibrary() {
                     </div>
                   </CardHeader>
                   <CardContent className="pt-6">
-                    <div className="space-y-6">
+                    <form onSubmit={handleBulkGenerate} className="space-y-6">
                       {bulkTemplates.map((template, index) => (
                         <Card key={template.id} className="border border-gray-200 dark:border-gray-700">
                           <CardHeader className="pb-3">
@@ -964,27 +1022,34 @@ export function PersonaLibrary() {
                           </CardContent>
                         </Card>
                       ))}
-                    </div>
 
-                    <Separator className="my-6" />
-
-                    <Button
-                      onClick={handleBulkGenerate}
-                      className="w-full bg-gradient-to-r from-emerald-500 to-blue-500 text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold"
-                      disabled={bulkGenerating}
-                    >
-                      {bulkGenerating ? (
-                        <>
-                          <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-                          Generating {bulkTemplates.length} Personas...
-                        </>
-                      ) : (
-                        <>
-                          <Users className="mr-3 h-5 w-5" />
-                          Generate {bulkTemplates.length} AI Personas
-                        </>
+                      {error && (
+                        <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 text-red-700 dark:text-red-300 rounded-lg">
+                          <p className="font-bold">Generation Error</p>
+                          <p className="text-sm">{error}</p>
+                        </div>
                       )}
-                    </Button>
+
+                      <Separator className="my-6" />
+
+                      <Button
+                        type="submit"
+                        className="w-full bg-gradient-to-r from-emerald-500 to-blue-500 text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold"
+                        disabled={bulkGenerating}
+                      >
+                        {bulkGenerating ? (
+                          <>
+                            <Loader2 className="mr-3 h-5 w-5 animate-spin" />
+                            Generating {bulkTemplates.length} Personas...
+                          </>
+                        ) : (
+                          <>
+                            <Users className="mr-3 h-5 w-5" />
+                            Generate {bulkTemplates.length} AI Personas
+                          </>
+                        )}
+                      </Button>
+                    </form>
                   </CardContent>
                 </Card>
               )}
@@ -1138,6 +1203,13 @@ export function PersonaLibrary() {
                         }
                       />
                     </div>
+
+                    {error && (
+                        <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 text-red-700 dark:text-red-300 rounded-lg">
+                          <p className="font-bold">Generation Error</p>
+                          <p className="text-sm">{error}</p>
+                        </div>
+                      )}
 
                     <Separator />
 

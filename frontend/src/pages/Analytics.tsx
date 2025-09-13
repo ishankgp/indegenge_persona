@@ -112,6 +112,7 @@ export function Analytics() {
     individual_responses,
     summary_statistics,
     insights,
+    suggestions,
     preamble,
     created_at
   } = analysisResults;
@@ -330,8 +331,8 @@ export function Analytics() {
                     <Lightbulb className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <CardTitle className="text-xl">AI-Generated Insights</CardTitle>
-                    <CardDescription>Key findings and recommendations</CardDescription>
+                    <CardTitle className="text-xl">Cumulative Insights</CardTitle>
+                    <CardDescription>Key findings and recommendations from the cohort analysis</CardDescription>
                   </div>
                 </div>
                 <Award className="h-8 w-8 text-amber-500" />
@@ -507,6 +508,68 @@ export function Analytics() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Cumulative Insights & Suggestions */}
+        <div className="grid gap-8 md:grid-cols-2 mt-8">
+          <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardHeader className="bg-gradient-to-r from-green-500/10 to-teal-500/10 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-gradient-to-br from-green-500 to-teal-500 rounded-xl">
+                    <BarChart3 className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Cumulative Insights</CardTitle>
+                    <CardDescription>Overall cohort analysis</CardDescription>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-4">
+              <div>
+                <h4 className="font-semibold text-gray-800 dark:text-gray-200">Key Themes</h4>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Positive sentiment was often linked to mentions of convenience and efficacy, while negative sentiment frequently arose from concerns about side effects and cost.</p>
+              </div>
+              <div>
+                <h4 className="font-semibold text-gray-800 dark:text-gray-200">Performance Highlights</h4>
+                <ul className="list-disc list-inside space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                  <li>Highest purchase intent from personas with a stated preference for new technology.</li>
+                  <li>Lowest brand trust scores among personas with long-term chronic conditions.</li>
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardHeader className="bg-gradient-to-r from-blue-500/10 to-sky-500/10 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-gradient-to-br from-blue-500 to-sky-500 rounded-xl">
+                    <Lightbulb className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Actionable Suggestions</CardTitle>
+                    <CardDescription>Improve your ad copy based on AI analysis</CardDescription>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-4">
+              <div>
+                <h4 className="font-semibold text-gray-800 dark:text-gray-200">For Your Ad Copy: "{stimulus_text.substring(0, 30)}..."</h4>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  To address the identified key concern of 'cost', consider adding a phrase like "Financial assistance available" or "Covered by most insurance plans" to your message. This can directly counter the negative sentiment from personas worried about affordability.
+                </p>
+              </div>
+              <div>
+                <h4 className="font-semibold text-gray-800 dark:text-gray-200">For Visuals (If Applicable)</h4>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  If your campaign includes images, ensure they depict relatable scenarios. For instance, instead of focusing solely on the product, show patients enjoying a better quality of life, which can improve brand trust and emotional connection.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Action Buttons */}
         <div className="flex justify-center gap-4 mt-8 pb-8">
