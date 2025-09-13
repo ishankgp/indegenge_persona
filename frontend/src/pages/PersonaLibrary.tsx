@@ -41,7 +41,6 @@ import {
 } from "lucide-react"
 import { PersonaDetailModal } from "../components/PersonaDetailModal"
 import { cn } from "@/lib/utils"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // Base URL managed centrally via lib/api
 
@@ -104,15 +103,7 @@ export function PersonaLibrary() {
     conditions: [] as string[],
     locations: [] as string[],
   })
-  const [newPersona, setNewPersona] = useState({
-    age: "",
-    gender: "",
-    condition: "",
-    location: "",
-    concerns: "",
-  })
   const [promptInput, setPromptInput] = useState("")
-  const [bulkPersonas, setBulkPersonas] = useState([{ age: "", gender: "", condition: "", location: "", concerns: "" }])
 
   useEffect(() => {
     console.log("PersonaLibrary: Starting to fetch personas...")
@@ -430,171 +421,91 @@ export function PersonaLibrary() {
     )
   }
 
-  const handleCreatePersona = async () => {
-    if (!formData.age || !formData.gender || !formData.condition || !formData.location) {
-      alert("Please fill in all required fields")
+  const handleSingleGenerate = async () => {
+    if (!formData.age || !formData.gender || !formData.condition || !formData.location || !formData.concerns) {
+      alert("Please fill in all fields")
       return
     }
 
     setGenerating(true)
     try {
-      const response = await PersonasAPI.create(formData)
-      if (response) {
-        await fetchPersonas()
-        setFormData({ age: "", gender: "", condition: "", location: "", concerns: "" })
-        setActiveTab("view")
-      }
+      const response = await PersonasAPI.generate({
+        age: formData.age,
+        gender: formData.gender,
+        condition: formData.condition,
+        location: formData.location,
+        concerns: formData.concerns,
+      })
+
+      console.log("Generated persona:", response)
+      fetchPersonas()
+      setFormData({ age: "", gender: "", condition: "", location: "", concerns: "" })
+      setActiveTab("view")
     } catch (error) {
-      console.error("Error creating persona:", error)
-      alert("Failed to create persona")
+      console.error("Error generating persona:", error)
+      alert("Failed to generate persona. Please try again.")
     } finally {
       setGenerating(false)
     }
   }
 
-  const handleBulkCreate = async () => {
+  const handleBulkTemplateGenerate = async () => {
     const validTemplates = bulkTemplates.filter(
-      (template) => template.age && template.gender && template.condition && template.location,
+      (template) => template.age && template.gender && template.condition && template.location && template.concerns,
     )
 
     if (validTemplates.length === 0) {
-      alert("Please fill in at least one complete persona template")
+      alert("Please fill in at least one complete template")
       return
     }
 
     setBulkGenerating(true)
     try {
-      const promises = validTemplates.map((template) =>
-        PersonasAPI.create({
-          age: Number.parseInt(template.age),
+      for (const template of validTemplates) {
+        await PersonasAPI.generate({
+          age: template.age,
           gender: template.gender,
           condition: template.condition,
           location: template.location,
           concerns: template.concerns,
-        }),
-      )
+        })
+      }
 
-      await Promise.all(promises)
-      await fetchPersonas()
+      console.log("Generated bulk personas")
+      fetchPersonas()
       setBulkTemplates([{ id: "1", age: "", gender: "", condition: "", location: "", concerns: "" }])
       setActiveTab("view")
     } catch (error) {
-      console.error("Error creating bulk personas:", error)
-      alert("Failed to create personas")
+      console.error("Error generating bulk personas:", error)
+      alert("Failed to generate personas. Please try again.")
     } finally {
       setBulkGenerating(false)
     }
   }
 
-  const handlePromptGenerate = async () => {
-    if (!promptInput.trim()) {
-      alert("Please enter a description for the personas you want to generate")
+  const handlePromptBasedGenerate = async () => {
+    if (!bulkPrompt.trim()) {
+      alert("Please enter a prompt")
       return
     }
 
     setBulkGenerating(true)
     try {
-      const response = await PersonasAPI.generateBulk({
-        prompt: promptInput,
+      const response = await PersonasAPI.generate({
+        prompt: bulkPrompt,
         count: bulkCount,
         filters: bulkFilters,
       })
 
-      if (response) {
-        await fetchPersonas()
-        setPromptInput("")
-        setActiveTab("view")
-      }
+      console.log("Generated personas from prompt:", response)
+      fetchPersonas()
+      setBulkPrompt("")
+      setActiveTab("view")
     } catch (error) {
-      console.error("Error generating personas:", error)
-      alert("Failed to generate personas")
+      console.error("Error generating personas from prompt:", error)
+      alert("Failed to generate personas. Please try again.")
     } finally {
       setBulkGenerating(false)
-    }
-  }
-
-  const handleCreateNewPersona = async () => {
-    if (creationMode === "single") {
-      if (!newPersona.age || !newPersona.gender || !newPersona.condition) {
-        alert("Please fill in all required fields")
-        return
-      }
-    } else if (creationMode === "bulk") {
-      const validPersonas = bulkPersonas.filter((p) => p.age && p.gender && p.condition && p.location && p.concerns)
-    } else if (creationMode === "prompt") {
-      if (!promptInput.trim()) {
-        alert("Please enter a description for AI generation")
-        return
-      }
-    }
-
-    setActiveTab("view")
-  }
-
-  const handleDeletePersona = async (id: number) => {
-    try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/personas/${id}`, {
-        method: "DELETE",
-      })
-
-      if (response.ok) {
-        setActiveTab("view")
-        fetchPersonas()
-      } else {
-        console.error("Failed to delete persona")
-      }
-    } catch (error) {
-      console.error("Error deleting persona:", error)
-    }
-  }
-
-  const handleEditPersona = async (id: number, updatedData: any) => {
-    try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/personas/${id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(updatedData),
-      })
-
-      if (response.ok) {
-        setActiveTab("view")
-        fetchPersonas()
-      } else {
-        console.error("Failed to update persona")
-      }
-    } catch (error) {
-      console.error("Error updating persona:", error)
-    }
-  }
-
-  const handleDuplicatePersona = async (persona: Persona) => {
-    try {
-      const duplicateData = {
-        age: persona.age,
-        gender: persona.gender,
-        condition: persona.condition,
-        location: persona.location,
-        concerns: JSON.parse(persona.full_persona_json).concerns || "",
-      }
-
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/personas`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(duplicateData),
-      })
-
-      if (response.ok) {
-        setActiveTab("view")
-        fetchPersonas()
-      } else {
-        console.error("Failed to duplicate persona")
-      }
-    } catch (error) {
-      console.error("Error duplicating persona:", error)
     }
   }
 
@@ -670,7 +581,7 @@ export function PersonaLibrary() {
                     className="pl-10 w-64 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm"
                   />
                 </div>
-                <Select value={filterCondition} onValueChange={setFilterCondition}>
+                {/* <Select value={filterCondition} onValueChange={setFilterCondition}>
                   <SelectTrigger className="w-48 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm">
                     <SelectValue placeholder="Filter by condition" />
                   </SelectTrigger>
@@ -683,7 +594,7 @@ export function PersonaLibrary() {
                     <SelectItem value="Depression">Depression</SelectItem>
                     <SelectItem value="Anxiety">Anxiety</SelectItem>
                   </SelectContent>
-                </Select>
+                </Select> */}
               </div>
             )}
           </div>
