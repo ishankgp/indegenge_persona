@@ -63,7 +63,8 @@ export function PersonaLibrary() {
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [activeTab, setActiveTab] = useState('view');
+  const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 });
+  const [activeTab, setActiveTab] = useState('');
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -73,7 +74,8 @@ export function PersonaLibrary() {
     gender: '',
     condition: '',
     location: '',
-    concerns: ''
+    concerns: '',
+    count: '1'
   });
 
   useEffect(() => {
@@ -108,10 +110,37 @@ export function PersonaLibrary() {
     e.preventDefault();
     setGenerating(true);
     try {
-      await PersonasAPI.generate({
-        ...formData,
-        age: parseInt(formData.age)
-      });
+      const count = parseInt(formData.count) || 1;
+      setGenerationProgress({ current: 0, total: count });
+      
+      const basePersonaData = {
+        age: parseInt(formData.age),
+        gender: formData.gender,
+        condition: formData.condition,
+        location: formData.location,
+        concerns: formData.concerns
+      };
+
+      // Create personas sequentially to show progress
+      for (let i = 0; i < count; i++) {
+        setGenerationProgress({ current: i + 1, total: count });
+        
+        // Add slight variations to avoid identical personas
+        const variations = [
+          '', ' with family history', ' seeking treatment options', 
+          ' concerned about side effects', ' looking for lifestyle changes',
+          ' with financial concerns', ' preferring natural remedies',
+          ' with mobility limitations', ' living in rural area', ' with strong family support'
+        ];
+        const variation = variations[i % variations.length];
+        
+        const personaData = {
+          ...basePersonaData,
+          concerns: formData.concerns + variation
+        };
+        
+        await PersonasAPI.generate(personaData);
+      }
 
       await fetchPersonas();
       setActiveTab('view');
@@ -120,8 +149,10 @@ export function PersonaLibrary() {
         gender: '',
         condition: '',
         location: '',
-        concerns: ''
+        concerns: '',
+        count: '1'
       });
+      setGenerationProgress({ current: 0, total: 0 });
     } catch (error) {
       console.error('Error generating persona:', error);
       alert('Error generating persona. Please check if the backend is running.');
@@ -327,7 +358,7 @@ export function PersonaLibrary() {
               </TabsTrigger>
               <TabsTrigger value="create" className="flex items-center gap-2">
                 <Plus className="h-4 w-4" />
-                Create New Persona
+                Create New Personas
               </TabsTrigger>
             </TabsList>
             
@@ -483,9 +514,9 @@ export function PersonaLibrary() {
                     </div>
                   </div>
                   <div>
-                    <CardTitle className="text-2xl">Create AI-Powered Persona</CardTitle>
+                    <CardTitle className="text-2xl">Create AI-Powered Personas</CardTitle>
                     <CardDescription className="text-base">
-                      Enter basic attributes and let AI generate a comprehensive, realistic persona
+                      Enter basic attributes and let AI generate comprehensive, realistic personas with variations
                     </CardDescription>
                   </div>
                   <div className="ml-auto">
@@ -498,7 +529,7 @@ export function PersonaLibrary() {
               </CardHeader>
               <CardContent className="pt-8">
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="grid gap-6 md:grid-cols-2">
+                  <div className="grid gap-6 md:grid-cols-3">
                     <div className="space-y-2">
                       <Label htmlFor="age" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                         <Calendar className="h-4 w-4 text-gray-500" />
@@ -529,6 +560,25 @@ export function PersonaLibrary() {
                         className="border-gray-300 focus:border-primary focus:ring-primary"
                         required
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="count" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                        <Users className="h-4 w-4 text-gray-500" />
+                        Count
+                      </Label>
+                      <Input
+                        id="count"
+                        name="count"
+                        type="number"
+                        min="1"
+                        max="10"
+                        placeholder="1"
+                        value={formData.count}
+                        onChange={handleInputChange}
+                        className="border-gray-300 focus:border-primary focus:ring-primary"
+                        required
+                      />
+                      <p className="text-xs text-gray-500">Generate 1-10 personas</p>
                     </div>
                   </div>
 
@@ -623,12 +673,12 @@ export function PersonaLibrary() {
                     {generating ? (
                       <>
                         <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-                        AI is Generating Persona...
+                        Generating Persona {generationProgress.current} of {generationProgress.total}...
                       </>
                     ) : (
                       <>
                         <Brain className="mr-3 h-5 w-5" />
-                        Generate AI Persona
+                        Generate {formData.count} AI Persona{parseInt(formData.count) !== 1 ? 's' : ''}
                       </>
                     )}
                   </Button>

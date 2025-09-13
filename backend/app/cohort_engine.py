@@ -5,6 +5,8 @@ import json
 import random
 import re
 import logging
+import asyncio
+import concurrent.futures
 from typing import Dict, Any, List, Optional
 from . import crud
 from datetime import datetime
@@ -448,6 +450,102 @@ Be specific and consider the persona's unique characteristics in your analysis.
     return prompt
 
 
+def _process_persona_multimodal(persona, stimulus_text: str, stimulus_images: List[Dict], content_type: str, metrics: List[str]) -> Dict[str, Any]:
+    """
+    Process a single persona for multimodal analysis.
+    This function is designed to be called in parallel.
+    """
+    logger.info(f"🔄 Processing persona: {persona.name} (ID: {persona.id})")
+    
+    # Parse the full persona JSON to get all the detailed information
+    try:
+        full_persona = json.loads(persona.full_persona_json) if persona.full_persona_json else {}
+        logger.info(f"✅ Parsed persona data for {persona.name}")
+    except Exception as parse_error:
+        logger.error(f"❌ Error parsing persona JSON for {persona.name}: {parse_error}")
+        full_persona = {}
+    
+    persona_data = {
+        'id': persona.id,
+        'name': persona.name,
+        'persona_type': persona.persona_type,
+        'age': persona.age,
+        'gender': persona.gender,
+        'condition': persona.condition,
+        'location': persona.location,
+        'full_persona': full_persona
+    }
+    
+    # Create multimodal prompt
+    logger.info(f"🔄 Creating multimodal prompt for {persona.name}")
+    prompt = create_multimodal_analysis_prompt(persona_data, stimulus_text, stimulus_images, content_type, metrics)
+    logger.info(f"✅ Prompt created, length: {len(prompt)} chars")
+    
+    # Prepare messages for GPT-5
+    messages = [
+        {
+            "role": "user",
+            "content": []
+        }
+    ]
+    
+    # Add text content
+    messages[0]["content"].append({
+        "type": "text",
+        "text": prompt
+    })
+    
+    # Add images if provided
+    if stimulus_images and content_type in ['image', 'both']:
+        logger.info(f"🖼️ Adding {len(stimulus_images)} images to analysis for {persona.name}")
+        for j, image_info in enumerate(stimulus_images):
+            data_url = f"data:{image_info['content_type']};base64,{image_info['data']}"
+            logger.info(f"🖼️ Image {j+1}: {image_info['filename']}, type: {image_info['content_type']}, data URL length: {len(data_url)}")
+            messages[0]["content"].append({
+                "type": "image_url",
+                "image_url": {
+                    "url": data_url
+                }
+            })
+    else:
+        logger.info(f"📝 Text-only analysis for {persona.name}")
+    
+    try:
+        logger.info(f"🚀 Calling GPT-5 for {persona.name}...")
+        logger.info(f"📊 Message content parts: {len(messages[0]['content'])}")
+        
+        data = _chat_json(messages)
+        logger.info(f"✅ GPT-5 response received for {persona.name}")
+        logger.info(f"📊 Response keys: {list(data.keys())}")
+        
+        result = {
+            'persona_id': persona.id,
+            'persona_name': persona_data.get('name', f'Persona {persona.id}'),
+            'condition': persona.condition,
+            'analysis_summary': data.get('analysis_summary', ''),
+            'metrics': data.get('metrics', {}),
+            'key_insights': data.get('key_insights', []),
+            'behavioral_prediction': data.get('behavioral_prediction', ''),
+            'raw_response': json.dumps(data)[:500]
+        }
+        logger.info(f"✅ Analysis completed for {persona.name}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Error analyzing persona {persona.id} ({persona.name}): {e}")
+        logger.error(f"❌ Full error traceback:", exc_info=True)
+        return {
+            'persona_id': persona.id,
+            'persona_name': f"Persona {persona.id}",
+            'condition': persona.condition,
+            'analysis_summary': f"Error in analysis: {str(e)}",
+            'metrics': {},
+            'key_insights': [],
+            'behavioral_prediction': 'Unable to generate prediction due to error',
+            'error': str(e)
+        }
+
+
 def run_multimodal_cohort_analysis(persona_ids: List[int], stimulus_text: str, stimulus_images: List[Dict], content_type: str, metrics: List[str], db) -> Dict[str, Any]:
     """
     Runs a multimodal cohort analysis using GPT-5's vision capabilities for image processing.
@@ -472,99 +570,44 @@ def run_multimodal_cohort_analysis(persona_ids: List[int], stimulus_text: str, s
         raise ValueError("No valid personas found")
     
     logger.info(f"✅ Loaded {len(personas)} valid personas")
+    
+    # Process all personas in parallel using ThreadPoolExecutor
+    logger.info(f"� Starting parallel processing of {len(personas)} personas...")
     individual_responses = []
     
-    # Prepare messages for GPT-5 with vision
-    for i, persona in enumerate(personas):
-        logger.info(f"🔄 Processing persona {i+1}/{len(personas)}: {persona.name} (ID: {persona.id})")
-        
-        # Parse the full persona JSON to get all the detailed information
-        try:
-            full_persona = json.loads(persona.full_persona_json) if persona.full_persona_json else {}
-            logger.info(f"✅ Parsed persona data for {persona.name}")
-        except Exception as parse_error:
-            logger.error(f"❌ Error parsing persona JSON for {persona.name}: {parse_error}")
-            full_persona = {}
-        
-        persona_data = {
-            'id': persona.id,
-            'name': persona.name,
-            'persona_type': persona.persona_type,
-            'age': persona.age,
-            'gender': persona.gender,
-            'condition': persona.condition,
-            'location': persona.location,
-            'full_persona': full_persona
+    # Determine the optimal number of workers (max 5 to avoid overwhelming OpenAI API)
+    max_workers = min(5, len(personas))
+    logger.info(f"🔧 Using {max_workers} parallel workers for processing")
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all persona processing tasks
+        future_to_persona = {
+            executor.submit(_process_persona_multimodal, persona, stimulus_text, stimulus_images, content_type, metrics): persona 
+            for persona in personas
         }
         
-        # Create multimodal prompt
-        logger.info(f"🔄 Creating multimodal prompt for {persona.name}")
-        prompt = create_multimodal_analysis_prompt(persona_data, stimulus_text, stimulus_images, content_type, metrics)
-        logger.info(f"✅ Prompt created, length: {len(prompt)} chars")
-        
-        # Prepare messages for GPT-5
-        messages = [
-            {
-                "role": "user",
-                "content": []
-            }
-        ]
-        
-        # Add text content
-        messages[0]["content"].append({
-            "type": "text",
-            "text": prompt
-        })
-        
-        # Add images if provided
-        if stimulus_images and content_type in ['image', 'both']:
-            logger.info(f"🖼️ Adding {len(stimulus_images)} images to analysis for {persona.name}")
-            for j, image_info in enumerate(stimulus_images):
-                data_url = f"data:{image_info['content_type']};base64,{image_info['data']}"
-                logger.info(f"🖼️ Image {j+1}: {image_info['filename']}, type: {image_info['content_type']}, data URL length: {len(data_url)}")
-                messages[0]["content"].append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": data_url
-                    }
+        # Collect results as they complete
+        for future in concurrent.futures.as_completed(future_to_persona):
+            persona = future_to_persona[future]
+            try:
+                result = future.result()
+                individual_responses.append(result)
+                logger.info(f"✅ Completed processing for {persona.name}")
+            except Exception as e:
+                logger.error(f"❌ Exception occurred while processing {persona.name}: {e}")
+                # Add error response for failed persona
+                individual_responses.append({
+                    'persona_id': persona.id,
+                    'persona_name': f"Persona {persona.id}",
+                    'condition': persona.condition,
+                    'analysis_summary': f"Processing error: {str(e)}",
+                    'metrics': {},
+                    'key_insights': [],
+                    'behavioral_prediction': 'Unable to generate prediction due to processing error',
+                    'error': str(e)
                 })
-        else:
-            logger.info(f"📝 Text-only analysis for {persona.name}")
-        
-        try:
-            logger.info(f"🚀 Calling GPT-5 for {persona.name}...")
-            logger.info(f"📊 Message content parts: {len(messages[0]['content'])}")
-            
-            data = _chat_json(messages)
-            logger.info(f"✅ GPT-5 response received for {persona.name}")
-            logger.info(f"📊 Response keys: {list(data.keys())}")
-            
-            individual_responses.append({
-                'persona_id': persona.id,
-                'persona_name': persona_data.get('name', f'Persona {persona.id}'),
-                'condition': persona.condition,
-                'analysis_summary': data.get('analysis_summary', ''),
-                'metrics': data.get('metrics', {}),
-                'key_insights': data.get('key_insights', []),
-                'behavioral_prediction': data.get('behavioral_prediction', ''),
-                'raw_response': json.dumps(data)[:500]
-            })
-            logger.info(f"✅ Analysis completed for {persona.name}")
-        except Exception as e:
-            logger.error(f"❌ Error analyzing persona {persona.id} ({persona.name}): {e}")
-            logger.error(f"❌ Full error traceback:", exc_info=True)
-            individual_responses.append({
-                'persona_id': persona.id,
-                'persona_name': f"Persona {persona.id}",
-                'condition': persona.condition,
-                'analysis_summary': f"Error in analysis: {str(e)}",
-                'metrics': {},
-                'key_insights': [],
-                'behavioral_prediction': 'Unable to generate prediction due to error',
-                'error': str(e)
-            })
     
-    logger.info(f"🎯 Analysis complete for all personas. Successful: {len([r for r in individual_responses if 'error' not in r])}/{len(individual_responses)}")
+    logger.info(f"🎯 Parallel analysis complete for all personas. Successful: {len([r for r in individual_responses if 'error' not in r])}/{len(individual_responses)}")
     
     # Calculate summary statistics for multimodal analysis
     logger.info("📊 Calculating summary statistics...")
