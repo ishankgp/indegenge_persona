@@ -20,7 +20,6 @@ import {
   Users,
   Activity,
   Search,
-  Filter,
   Calendar,
   Globe,
   Sparkles,
@@ -42,6 +41,7 @@ import {
 } from "lucide-react"
 import { PersonaDetailModal } from "../components/PersonaDetailModal"
 import { cn } from "@/lib/utils"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // Base URL managed centrally via lib/api
 
@@ -79,12 +79,8 @@ export function PersonaLibrary() {
   const [personas, setPersonas] = useState<Persona[]>([])
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
-  const [selectedPersonas, setSelectedPersonas] = useState<Set<number>>(new Set())
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [activeTab, setActiveTab] = useState<"single" | "bulk" | "prompt">("single")
-  const [bulkPersonas, setBulkPersonas] = useState<BulkPersonaTemplate[]>([
-    { id: "1", age: "", gender: "", condition: "", location: "", concerns: "" },
-  ])
+  const [activeTab, setActiveTab] = useState<"view" | "create">("view")
+  const [creationMode, setCreationMode] = useState<"single" | "bulk" | "prompt">("single")
   const [generating, setGenerating] = useState(false)
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
@@ -100,7 +96,6 @@ export function PersonaLibrary() {
     { id: "1", age: "", gender: "", condition: "", location: "", concerns: "" },
   ])
   const [bulkGenerating, setBulkGenerating] = useState(false)
-  const [creationMode, setCreationMode] = useState<"single" | "bulk" | "prompt">("single")
   const [bulkPrompt, setBulkPrompt] = useState("")
   const [bulkCount, setBulkCount] = useState(3)
   const [bulkFilters, setBulkFilters] = useState({
@@ -109,6 +104,15 @@ export function PersonaLibrary() {
     conditions: [] as string[],
     locations: [] as string[],
   })
+  const [newPersona, setNewPersona] = useState({
+    age: "",
+    gender: "",
+    condition: "",
+    location: "",
+    concerns: "",
+  })
+  const [promptInput, setPromptInput] = useState("")
+  const [bulkPersonas, setBulkPersonas] = useState([{ age: "", gender: "", condition: "", location: "", concerns: "" }])
 
   useEffect(() => {
     console.log("PersonaLibrary: Starting to fetch personas...")
@@ -426,6 +430,174 @@ export function PersonaLibrary() {
     )
   }
 
+  const handleCreatePersona = async () => {
+    if (!formData.age || !formData.gender || !formData.condition || !formData.location) {
+      alert("Please fill in all required fields")
+      return
+    }
+
+    setGenerating(true)
+    try {
+      const response = await PersonasAPI.create(formData)
+      if (response) {
+        await fetchPersonas()
+        setFormData({ age: "", gender: "", condition: "", location: "", concerns: "" })
+        setActiveTab("view")
+      }
+    } catch (error) {
+      console.error("Error creating persona:", error)
+      alert("Failed to create persona")
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handleBulkCreate = async () => {
+    const validTemplates = bulkTemplates.filter(
+      (template) => template.age && template.gender && template.condition && template.location,
+    )
+
+    if (validTemplates.length === 0) {
+      alert("Please fill in at least one complete persona template")
+      return
+    }
+
+    setBulkGenerating(true)
+    try {
+      const promises = validTemplates.map((template) =>
+        PersonasAPI.create({
+          age: Number.parseInt(template.age),
+          gender: template.gender,
+          condition: template.condition,
+          location: template.location,
+          concerns: template.concerns,
+        }),
+      )
+
+      await Promise.all(promises)
+      await fetchPersonas()
+      setBulkTemplates([{ id: "1", age: "", gender: "", condition: "", location: "", concerns: "" }])
+      setActiveTab("view")
+    } catch (error) {
+      console.error("Error creating bulk personas:", error)
+      alert("Failed to create personas")
+    } finally {
+      setBulkGenerating(false)
+    }
+  }
+
+  const handlePromptGenerate = async () => {
+    if (!promptInput.trim()) {
+      alert("Please enter a description for the personas you want to generate")
+      return
+    }
+
+    setBulkGenerating(true)
+    try {
+      const response = await PersonasAPI.generateBulk({
+        prompt: promptInput,
+        count: bulkCount,
+        filters: bulkFilters,
+      })
+
+      if (response) {
+        await fetchPersonas()
+        setPromptInput("")
+        setActiveTab("view")
+      }
+    } catch (error) {
+      console.error("Error generating personas:", error)
+      alert("Failed to generate personas")
+    } finally {
+      setBulkGenerating(false)
+    }
+  }
+
+  const handleCreateNewPersona = async () => {
+    if (creationMode === "single") {
+      if (!newPersona.age || !newPersona.gender || !newPersona.condition) {
+        alert("Please fill in all required fields")
+        return
+      }
+    } else if (creationMode === "bulk") {
+      const validPersonas = bulkPersonas.filter((p) => p.age && p.gender && p.condition && p.location && p.concerns)
+    } else if (creationMode === "prompt") {
+      if (!promptInput.trim()) {
+        alert("Please enter a description for AI generation")
+        return
+      }
+    }
+
+    setActiveTab("view")
+  }
+
+  const handleDeletePersona = async (id: number) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/personas/${id}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        setActiveTab("view")
+        fetchPersonas()
+      } else {
+        console.error("Failed to delete persona")
+      }
+    } catch (error) {
+      console.error("Error deleting persona:", error)
+    }
+  }
+
+  const handleEditPersona = async (id: number, updatedData: any) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/personas/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updatedData),
+      })
+
+      if (response.ok) {
+        setActiveTab("view")
+        fetchPersonas()
+      } else {
+        console.error("Failed to update persona")
+      }
+    } catch (error) {
+      console.error("Error updating persona:", error)
+    }
+  }
+
+  const handleDuplicatePersona = async (persona: Persona) => {
+    try {
+      const duplicateData = {
+        age: persona.age,
+        gender: persona.gender,
+        condition: persona.condition,
+        location: persona.location,
+        concerns: JSON.parse(persona.full_persona_json).concerns || "",
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/personas`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(duplicateData),
+      })
+
+      if (response.ok) {
+        setActiveTab("view")
+        fetchPersonas()
+      } else {
+        console.error("Failed to duplicate persona")
+      }
+    } catch (error) {
+      console.error("Error duplicating persona:", error)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
       {/* Enhanced Header Section */}
@@ -474,7 +646,7 @@ export function PersonaLibrary() {
       </div>
 
       <div className="max-w-7xl mx-auto px-8 -mt-8">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "view" | "create")}>
           <div className="flex items-center justify-between mb-6">
             <TabsList className="bg-white/90 dark:bg-gray-900/90 shadow-xl backdrop-blur-sm">
               <TabsTrigger value="view" className="flex items-center gap-2">
@@ -483,49 +655,35 @@ export function PersonaLibrary() {
               </TabsTrigger>
               <TabsTrigger value="create" className="flex items-center gap-2">
                 <Plus className="h-4 w-4" />
-                Create New Persona
+                Create Personas
               </TabsTrigger>
             </TabsList>
 
             {activeTab === "view" && (
               <div className="flex items-center gap-4">
-                {/* Search Bar - Simplified for debugging */}
-                <div className="relative z-50">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                  <input
-                    type="text"
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Input
                     placeholder="Search personas..."
                     value={searchTerm}
-                    onChange={(e) => {
-                      console.log("Search term changed to:", e.target.value)
-                      setSearchTerm(e.target.value)
-                    }}
-                    onFocus={() => console.log("Search input focused")}
-                    onBlur={() => console.log("Search input blurred")}
-                    className="pl-10 pr-4 w-64 h-10 rounded-md border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    style={{ position: "relative", zIndex: 9999 }}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 w-64 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm"
                   />
                 </div>
-
-                {/* Filter Dropdown */}
-                <div className="flex items-center gap-2">
-                  <Filter className="h-4 w-4 text-gray-500" />
-                  <select
-                    value={filterCondition}
-                    onChange={(e) => {
-                      console.log("Filter condition changed to:", e.target.value)
-                      setFilterCondition(e.target.value)
-                    }}
-                    className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm text-sm"
-                  >
-                    <option value="all">All Conditions</option>
-                    {uniqueConditions.map((condition) => (
-                      <option key={condition} value={condition.trim().toLowerCase()}>
-                        {condition.trim()}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <Select value={filterCondition} onValueChange={setFilterCondition}>
+                  <SelectTrigger className="w-48 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm">
+                    <SelectValue placeholder="Filter by condition" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Conditions</SelectItem>
+                    <SelectItem value="Diabetes">Diabetes</SelectItem>
+                    <SelectItem value="Hypertension">Hypertension</SelectItem>
+                    <SelectItem value="Asthma">Asthma</SelectItem>
+                    <SelectItem value="Arthritis">Arthritis</SelectItem>
+                    <SelectItem value="Depression">Depression</SelectItem>
+                    <SelectItem value="Anxiety">Anxiety</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             )}
           </div>
