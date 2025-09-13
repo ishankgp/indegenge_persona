@@ -75,15 +75,15 @@ const conditionColors: Record<string, string> = {
 }
 
 export function PersonaLibrary() {
-  const [personas, setPersonas] = useState<Persona[]>([])
-  const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
+  const [personas, setPersonas] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [generating, setGenerating] = useState(false)
+  const [bulkGenerating, setBulkGenerating] = useState(false)
   const [activeTab, setActiveTab] = useState<"view" | "create">("view")
   const [creationMode, setCreationMode] = useState<"single" | "bulk" | "prompt">("single")
-  const [generating, setGenerating] = useState(false)
-  const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null)
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
-  const [filterCondition, setFilterCondition] = useState("all")
+
+  // Form data for single persona creation
   const [formData, setFormData] = useState({
     age: "",
     gender: "",
@@ -91,10 +91,12 @@ export function PersonaLibrary() {
     location: "",
     concerns: "",
   })
-  const [bulkTemplates, setBulkTemplates] = useState<BulkPersonaTemplate[]>([
+
+  const [bulkTemplates, setBulkTemplates] = useState([
     { id: "1", age: "", gender: "", condition: "", location: "", concerns: "" },
   ])
-  const [bulkGenerating, setBulkGenerating] = useState(false)
+  const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null)
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
   const [bulkPrompt, setBulkPrompt] = useState("")
   const [bulkCount, setBulkCount] = useState(3)
   const [bulkFilters, setBulkFilters] = useState({
@@ -103,7 +105,6 @@ export function PersonaLibrary() {
     conditions: [] as string[],
     locations: [] as string[],
   })
-  const [promptInput, setPromptInput] = useState("")
 
   useEffect(() => {
     console.log("PersonaLibrary: Starting to fetch personas...")
@@ -284,7 +285,7 @@ export function PersonaLibrary() {
 
   // Enhanced filtering with better debugging
   const filteredPersonas = React.useMemo(() => {
-    console.log("Filtering with:", { searchTerm, filterCondition, totalPersonas: personas.length })
+    console.log("Filtering with:", { searchTerm, totalPersonas: personas.length })
     if (personas.length === 0) return []
     return personas.filter((persona) => {
       const searchLower = searchTerm.toLowerCase().trim()
@@ -293,30 +294,15 @@ export function PersonaLibrary() {
         persona.name.toLowerCase().includes(searchLower) ||
         (persona.condition || "").toLowerCase().includes(searchLower) ||
         persona.location.toLowerCase().includes(searchLower)
-      // Normalize for comparison
-      const personaCond = (persona.condition || "").trim().toLowerCase()
-      const filterCond = (filterCondition || "").trim().toLowerCase()
-      const matchesFilter = filterCond === "all" || personaCond === filterCond
-      const result = matchesSearch && matchesFilter
-      if (!result && (searchTerm !== "" || filterCondition !== "all")) {
-        console.log(`Filtered out: ${persona.name}`, {
-          searchTerm: searchTerm,
-          condition: persona.condition,
-          filterCondition: filterCondition,
-          matchesSearch,
-          matchesFilter,
-        })
-      }
-      return result
+      return matchesSearch
     })
-  }, [personas, searchTerm, filterCondition])
+  }, [personas, searchTerm])
 
   // Normalize and deduplicate conditions (trim/lowercase for robustness)
   const uniqueConditions = Array.from(new Set(personas.map((p) => (p.condition || "").trim())))
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b))
   console.log("Available conditions:", uniqueConditions)
-  console.log("Selected filter condition:", filterCondition)
 
   const PersonaCard = ({ persona }: { persona: Persona }) => {
     const personaData = JSON.parse(persona.full_persona_json)
@@ -421,92 +407,9 @@ export function PersonaLibrary() {
     )
   }
 
-  const handleSingleGenerate = async () => {
-    if (!formData.age || !formData.gender || !formData.condition || !formData.location || !formData.concerns) {
-      alert("Please fill in all fields")
-      return
-    }
-
-    setGenerating(true)
-    try {
-      const response = await PersonasAPI.generate({
-        age: formData.age,
-        gender: formData.gender,
-        condition: formData.condition,
-        location: formData.location,
-        concerns: formData.concerns,
-      })
-
-      console.log("Generated persona:", response)
-      fetchPersonas()
-      setFormData({ age: "", gender: "", condition: "", location: "", concerns: "" })
-      setActiveTab("view")
-    } catch (error) {
-      console.error("Error generating persona:", error)
-      alert("Failed to generate persona. Please try again.")
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  const handleBulkTemplateGenerate = async () => {
-    const validTemplates = bulkTemplates.filter(
-      (template) => template.age && template.gender && template.condition && template.location && template.concerns,
-    )
-
-    if (validTemplates.length === 0) {
-      alert("Please fill in at least one complete template")
-      return
-    }
-
-    setBulkGenerating(true)
-    try {
-      for (const template of validTemplates) {
-        await PersonasAPI.generate({
-          age: template.age,
-          gender: template.gender,
-          condition: template.condition,
-          location: template.location,
-          concerns: template.concerns,
-        })
-      }
-
-      console.log("Generated bulk personas")
-      fetchPersonas()
-      setBulkTemplates([{ id: "1", age: "", gender: "", condition: "", location: "", concerns: "" }])
-      setActiveTab("view")
-    } catch (error) {
-      console.error("Error generating bulk personas:", error)
-      alert("Failed to generate personas. Please try again.")
-    } finally {
-      setBulkGenerating(false)
-    }
-  }
-
-  const handlePromptBasedGenerate = async () => {
-    if (!bulkPrompt.trim()) {
-      alert("Please enter a prompt")
-      return
-    }
-
-    setBulkGenerating(true)
-    try {
-      const response = await PersonasAPI.generate({
-        prompt: bulkPrompt,
-        count: bulkCount,
-        filters: bulkFilters,
-      })
-
-      console.log("Generated personas from prompt:", response)
-      fetchPersonas()
-      setBulkPrompt("")
-      setActiveTab("view")
-    } catch (error) {
-      console.error("Error generating personas from prompt:", error)
-      alert("Failed to generate personas. Please try again.")
-    } finally {
-      setBulkGenerating(false)
-    }
+  const handleCreateNewPersona = () => {
+    setActiveTab("create")
+    setCreationMode("single")
   }
 
   return (
@@ -626,17 +529,17 @@ export function PersonaLibrary() {
                     </div>
                   </div>
                   <h3 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mt-6 mb-2">
-                    {searchTerm || filterCondition !== "all" ? "No matching personas found" : "No personas created yet"}
+                    {searchTerm ? "No matching personas found" : "No personas created yet"}
                   </h3>
                   <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
-                    {searchTerm || filterCondition !== "all"
-                      ? "Try adjusting your search or filter criteria"
+                    {searchTerm
+                      ? "Try adjusting your search criteria"
                       : "Start by creating your first AI-powered patient persona to unlock powerful insights"}
                   </p>
                   <Button
                     size="lg"
                     className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200"
-                    onClick={() => setActiveTab("create")}
+                    onClick={() => handleCreateNewPersona()}
                   >
                     <Plus className="mr-2 h-5 w-5" />
                     Create Your First Persona
