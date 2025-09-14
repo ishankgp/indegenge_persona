@@ -29,6 +29,11 @@ export interface IndividualResponseRow {
   responses: PersonaResponseScores;
 }
 
+export interface ActionableSuggestion {
+  suggestion: string;
+  reasoning: string;
+}
+
 export interface AnalysisResults {
   cohort_size: number;
   stimulus_text: string;
@@ -36,7 +41,7 @@ export interface AnalysisResults {
   individual_responses: IndividualResponseRow[];
   summary_statistics: SummaryStatistics;
   insights?: string[];
-  suggestions?: string[];
+  suggestions?: ActionableSuggestion[];
   preamble?: string;
   created_at: string;
 }

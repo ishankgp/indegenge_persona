@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { PersonasAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
@@ -8,7 +8,6 @@ import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Textarea } from "../components/ui/textarea"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Badge } from "../components/ui/badge"
 import { Separator } from "../components/ui/separator"
 import {
@@ -16,22 +15,17 @@ import {
   MapPin,
   Heart,
   Loader2,
-  Plus,
   Users,
   Calendar,
   Sparkles,
   Brain,
   Target,
   CheckCircle,
-  Copy,
   Settings,
   Wand2,
   UserPlus,
-  X,
-  ArrowRight,
   ArrowLeft,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
 
 interface BulkPersonaTemplate {
   id: string
