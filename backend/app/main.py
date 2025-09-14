@@ -70,6 +70,7 @@ def transform_to_frontend_format(backend_response: dict) -> dict:
         'individual_responses': transformed_responses,
         'summary_statistics': summary_stats,
         'insights': backend_response.get('insights', []),
+        'suggestions': backend_response.get('suggestions', []),
         'preamble': backend_response.get('content_summary', ''),
         'created_at': backend_response.get('created_at', '')
     }

@@ -87,7 +87,7 @@ def _chat_json(messages: List[Dict[str, Any]], max_completion_tokens: Optional[i
         logger.error("❌ OpenAI setup validation failed")
         return {"error": "OpenAI API not configured properly"}
     
-    # Estimate prompt tokens conservatively
+        # Estimate prompt tokens conservatively
     prompt_text = "".join([part.get("text", "") for m in messages for part in m.get("content", []) if part.get("type") == "text"])
     prompt_tokens = _estimate_tokens_for_text(prompt_text)
     logger.info(f"🤖 Calling GPT-4o: messages={len(messages)}, estimated_prompt_tokens={prompt_tokens}")
@@ -184,16 +184,16 @@ def create_cohort_analysis_prompt(persona_data: Dict[str, Any], stimulus_text: s
 
     **Output Format:**
     Generate a response in pure JSON format. Do not include any text, code block markers, or explanations before or after the JSON object. The JSON object must have the following structure:
-    {
-        "responses": {
+    {{
+        "responses": {{
             "purchase_intent": <number 1-10>,
             "sentiment": <number -1 to 1>,
             "trust_in_brand": <number 1-10>,
             "message_clarity": <number 1-10>,
             "key_concern_flagged": "<string describing their main concern>"
-        },
+        }},
         "reasoning": "<2-3 sentences explaining their response based on their persona characteristics>"
-    }
+    }}
 
     **Important Notes:**
     - Only include the metrics that were requested in the analysis
@@ -262,13 +262,42 @@ def calculate_summary_statistics(individual_responses: List[Dict[str, Any]], met
     for metric in metrics:
         if metric == 'key_concern_flagged':
             # For text-based metrics, find most common concern
-            concerns = [resp['responses'].get(metric, '') for resp in individual_responses if resp['responses'].get(metric)]
+            # Handle both 'responses' (regular analysis) and 'metrics' (multimodal analysis) formats
+            concerns = []
+            for resp in individual_responses:
+                if 'responses' in resp and resp['responses'].get(metric):
+                    concerns.append(resp['responses'][metric])
+                elif 'metrics' in resp and resp['metrics'].get(metric):
+                    metric_data = resp['metrics'][metric]
+                    if isinstance(metric_data, str):
+                        concerns.append(metric_data)
+                    elif isinstance(metric_data, dict) and 'value' in metric_data:
+                        concerns.append(metric_data['value'])
+            
             if concerns:
                 # Simple approach: take the first non-empty concern
                 summary[metric] = next((c for c in concerns if c), 'No concerns identified')
         else:
             # For numeric metrics, calculate statistics
-            values = [resp['responses'].get(metric) for resp in individual_responses if resp['responses'].get(metric) is not None]
+            # Handle both 'responses' (regular analysis) and 'metrics' (multimodal analysis) formats
+            values = []
+            for resp in individual_responses:
+                value = None
+                if 'responses' in resp and resp['responses'].get(metric) is not None:
+                    value = resp['responses'][metric]
+                elif 'metrics' in resp and resp['metrics'].get(metric) is not None:
+                    metric_data = resp['metrics'][metric]
+                    if isinstance(metric_data, (int, float)):
+                        value = metric_data
+                    elif isinstance(metric_data, dict) and 'score' in metric_data:
+                        try:
+                            value = float(metric_data['score'])
+                        except (ValueError, TypeError):
+                            continue
+                
+                if value is not None:
+                    values.append(value)
+            
             if values:
                 summary[f"{metric}_avg"] = round(sum(values) / len(values), 2)
                 summary[f"{metric}_min"] = min(values)
@@ -444,17 +473,20 @@ def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: Lis
     # Generate insights
     llm_generated_data = generate_llm_powered_insights_and_suggestions(individual_responses, summary_stats, stimulus_text)
     
-    return {
-        'cohort_size': len(personas),
-        'stimulus_text': stimulus_text,
-        'metrics_analyzed': metrics,
-        'individual_responses': individual_responses,
-        'summary_statistics': summary_stats,
-        'insights': llm_generated_data.get("cumulative_insights", []),
-        'suggestions': llm_generated_data.get("actionable_suggestions", []),
-        'preamble': preamble_text,
-        'created_at': datetime.now().isoformat()
+    # Combine all results into a single dictionary
+    final_analysis = {
+        "cohort_size": len(personas),
+        "stimulus_text": stimulus_text,
+        "metrics_analyzed": metrics,
+        "individual_responses": individual_responses,
+        "summary_statistics": summary_stats,
+        "insights": llm_generated_data.get("cumulative_insights", []),
+        "suggestions": llm_generated_data.get("actionable_suggestions", []),
+        "preamble": preamble_text,
+        "created_at": datetime.now().isoformat()
     }
+    
+    return final_analysis
 
 
 def create_multimodal_analysis_prompt(persona_data: Dict[str, Any], stimulus_text: str, stimulus_images: List[Dict], content_type: str, metrics: List[str]) -> str:
@@ -683,11 +715,11 @@ def run_multimodal_cohort_analysis(persona_ids: List[int], stimulus_text: str, s
     
     # Calculate summary statistics for multimodal analysis
     logger.info("📊 Calculating summary statistics...")
-    summary_stats = calculate_multimodal_summary_statistics(individual_responses, metrics)
+    summary_stats = calculate_summary_statistics(individual_responses, metrics)
     
-    # Generate insights for multimodal content
-    logger.info("💡 Generating cohort insights...")
-    insights = generate_multimodal_cohort_insights(individual_responses, stimulus_text, stimulus_images, content_type)
+    # Generate LLM-powered insights and suggestions (same as regular cohort analysis)
+    logger.info("💡 Generating LLM-powered insights and suggestions...")
+    llm_generated_data = generate_llm_powered_insights_and_suggestions(individual_responses, summary_stats, stimulus_text)
     
     # Create content summary
     content_summary = f"Content Type: {content_type}"
@@ -705,7 +737,8 @@ def run_multimodal_cohort_analysis(persona_ids: List[int], stimulus_text: str, s
         'metrics_analyzed': metrics,
         'individual_responses': individual_responses,
         'summary_statistics': summary_stats,
-        'insights': insights,
+        'insights': llm_generated_data.get("cumulative_insights", []),
+        'suggestions': llm_generated_data.get("actionable_suggestions", []),
         'created_at': datetime.now().isoformat()
     }
 

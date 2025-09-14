@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import MetricCard from '@/components/analytics/MetricCard';
 import { computeScoreColor, computeScoreProgress, getSentimentDescriptor } from '@/lib/analytics';
-import type { AnalysisResults, AnalyzedMetricKey, IndividualResponseRow } from '@/types/analytics';
+import type { AnalysisResults, AnalyzedMetricKey, IndividualResponseRow, ActionableSuggestion } from '@/types/analytics';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -289,6 +289,7 @@ export function Analytics() {
     individual_responses,
     summary_statistics,
     insights,
+    suggestions,
     preamble,
     created_at
   } = analysisResults;
@@ -738,17 +739,20 @@ export function Analytics() {
               </div>
             </CardHeader>
             <CardContent className="pt-6 space-y-4">
-              <div>
-                <h4 className="font-semibold text-gray-800 dark:text-gray-200">Key Themes</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Positive sentiment was often linked to mentions of convenience and efficacy, while negative sentiment frequently arose from concerns about side effects and cost.</p>
-              </div>
-              <div>
-                <h4 className="font-semibold text-gray-800 dark:text-gray-200">Performance Highlights</h4>
-                <ul className="list-disc list-inside space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                  <li>Highest purchase intent from personas with a stated preference for new technology.</li>
-                  <li>Lowest brand trust scores among personas with long-term chronic conditions.</li>
-                </ul>
-              </div>
+              {insights && insights.length > 0 ? (
+                insights.map((insight: string, index: number) => (
+                  <div key={index} className="border-l-4 border-green-500 pl-4">
+                    <p className="text-sm text-gray-700 dark:text-gray-300">{insight}</p>
+                  </div>
+                ))
+              ) : (
+                <div>
+                  <h4 className="font-semibold text-gray-800 dark:text-gray-200">Overall Cohort Analysis</h4>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Run a simulation to generate comprehensive cohort insights powered by AI analysis.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -767,18 +771,25 @@ export function Analytics() {
               </div>
             </CardHeader>
             <CardContent className="pt-6 space-y-4">
-              <div>
-                <h4 className="font-semibold text-gray-800 dark:text-gray-200">For Your Ad Copy: "{stimulus_text.substring(0, 30)}..."</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  To address the identified key concern of 'cost', consider adding a phrase like "Financial assistance available" or "Covered by most insurance plans" to your message. This can directly counter the negative sentiment from personas worried about affordability.
-                </p>
-              </div>
-              <div>
-                <h4 className="font-semibold text-gray-800 dark:text-gray-200">For Visuals (If Applicable)</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  If your campaign includes images, ensure they depict relatable scenarios. For instance, instead of focusing solely on the product, show patients enjoying a better quality of life, which can improve brand trust and emotional connection.
-                </p>
-              </div>
+              {suggestions && suggestions.length > 0 ? (
+                suggestions.map((suggestionItem: ActionableSuggestion, index: number) => (
+                  <div key={index} className="border-l-4 border-blue-500 pl-4">
+                    <h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                      {suggestionItem.suggestion}
+                    </h4>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      {suggestionItem.reasoning}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <div>
+                  <h4 className="font-semibold text-gray-800 dark:text-gray-200">Improve your ad copy based on AI analysis</h4>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Run a simulation to generate actionable suggestions powered by comprehensive persona analysis.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
