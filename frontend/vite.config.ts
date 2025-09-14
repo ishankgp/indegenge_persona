@@ -13,7 +13,7 @@ export default defineConfig({
     port: 5173,
     host: '0.0.0.0',
     proxy: [
-      '/personas', '/cohorts', '/stats', '/health', '/api', '/simulations'
+      '/personas', '/cohorts', '/stats', '/health', '/api', '/simulations', '/crm'
     ].reduce((acc, path) => {
       acc[path] = { 
         target: 'http://localhost:8000', 
