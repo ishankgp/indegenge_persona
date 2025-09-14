@@ -10,6 +10,7 @@ import { Label } from "../components/ui/label"
 import { Textarea } from "../components/ui/textarea"
 import { Badge } from "../components/ui/badge"
 import { Separator } from "../components/ui/separator"
+import { VeevaCRMImporter } from "../components/VeevaCRMImporter"
 import {
   User,
   MapPin,
@@ -25,6 +26,7 @@ import {
   Wand2,
   UserPlus,
   ArrowLeft,
+  Database,
 } from "lucide-react"
 
 interface BulkPersonaTemplate {
@@ -381,7 +383,7 @@ export function CreatePersona() {
               <CardDescription>Choose how you want to create personas</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <Button
                   variant={creationMode === "single" ? "default" : "outline"}
                   onClick={() => setCreationMode("single")}
@@ -406,6 +408,23 @@ export function CreatePersona() {
                   <Wand2 className="h-6 w-6" />
                   <span>Prompt-Based</span>
                 </Button>
+                <VeevaCRMImporter 
+                  onImportComplete={() => {
+                    alert("CRM Import Complete! Redirecting to Persona Library...");
+                    setTimeout(() => {
+                      navigate('/personas');
+                    }, 2000);
+                  }}
+                  trigger={
+                    <Button
+                      variant="outline"
+                      className="h-20 flex flex-col items-center gap-2 w-full border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50"
+                    >
+                      <Database className="h-6 w-6 text-blue-600" />
+                      <span className="text-blue-600">Import from CRM</span>
+                    </Button>
+                  }
+                />
               </div>
             </CardContent>
           </Card>

@@ -123,7 +123,8 @@ export async function checkHealth(): Promise<{ ok: boolean; personas?: number }>
 // Helper wrappers
 export const PersonasAPI = {
   list: () => api.get('/personas/').then(r => r.data),
-  generate: (payload: any) => api.post('/personas/generate', payload).then(r => r.data)
+  generate: (payload: any) => api.post('/personas/generate', payload).then(r => r.data),
+  delete: (id: number) => api.delete(`/personas/${id}`)
 };
 
 export const CohortAPI = {
@@ -157,4 +158,86 @@ export const SavedSimulationsAPI = {
   get: (id: number) => api.get<SavedSimulation>(`/simulations/saved/${id}`),
   save: (data: { name: string; simulation_data: AnalysisResults }) => api.post<SavedSimulation>('/simulations/save', data),
   delete: (id: number) => api.delete(`/simulations/saved/${id}`),
+};
+
+// Veeva CRM Integration API
+export interface HCPProfile {
+  npi: string;
+  name: string;
+  specialty: string;
+  institution: string;
+  location: string;
+  tier: string;
+  interaction_history: {
+    last_call: string;
+    call_frequency: string;
+    engagement_score: number;
+    preferred_topics: string[];
+    objections: string[];
+    call_notes: string;
+  };
+  prescribing_patterns: {
+    preferred_brands: string[];
+    patient_volume: string;
+    adoption_rate: string;
+    therapeutic_areas: string[];
+  };
+  patient_demographics: {
+    avg_age: number;
+    gender_split: { male: number; female: number };
+    insurance_mix: { commercial: number; medicare: number; medicaid: number };
+    comorbidities: string[];
+  };
+}
+
+export interface CRMConnectionStatus {
+  status: string;
+  last_sync: string;
+  sync_status: string;
+  total_hcp_profiles: number;
+  data_freshness: string;
+  environment: string;
+  vault_instance: string;
+}
+
+export interface CRMImportResult {
+  success: boolean;
+  created_personas: Array<{
+    id: number;
+    name: string;
+    source_hcp: string;
+    specialty: string;
+    condition: string;
+  }>;
+  total_created: number;
+  processing_time: string;
+  import_summary: {
+    source: string;
+    hcp_profiles_processed: number;
+    personas_generated: number;
+  };
+}
+
+export const VeevaCRMAPI = {
+  getConnectionStatus: (): Promise<CRMConnectionStatus> => 
+    api.get('/crm/connection-status').then(r => r.data),
+  
+  getHCPProfiles: (specialty?: string, tier?: string): Promise<{ 
+    profiles: HCPProfile[];
+    total_count: number;
+    filtered_by: { specialty?: string; tier?: string };
+    sync_timestamp: string;
+  }> => {
+    const params = new URLSearchParams();
+    if (specialty) params.append('specialty', specialty);
+    if (tier) params.append('tier', tier);
+    const query = params.toString();
+    return api.get(`/crm/hcp-profiles${query ? `?${query}` : ''}`).then(r => r.data);
+  },
+  
+  importPersonas: (selectedNPIs: string[], options: any = {}): Promise<CRMImportResult> =>
+    api.post('/crm/import-personas', { 
+      selected_npis: selectedNPIs, 
+      options 
+    }).then(r => r.data)
 };

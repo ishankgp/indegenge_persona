@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Badge } from "../components/ui/badge"
 import { Separator } from "../components/ui/separator"
 import { Skeleton } from "../components/ui/skeleton"
+import { VeevaCRMImporter } from "../components/VeevaCRMImporter"
 import {
   User,
   MapPin,
@@ -38,8 +39,11 @@ import {
   Wand2,
   UserPlus,
   X,
+  Database,
+  Trash2,
 } from "lucide-react"
 import { PersonaDetailModal } from "../components/PersonaDetailModal"
+import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 
 // Base URL managed centrally via lib/api
@@ -75,6 +79,7 @@ const conditionColors: Record<string, string> = {
 }
 
 export function PersonaLibrary() {
+  const { toast } = useToast();
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -129,6 +134,25 @@ export function PersonaLibrary() {
       console.log("PersonaLibrary: Finished loading")
     }
   }
+
+  const handleDeletePersona = async (personaId: number, personaName: string) => {
+    try {
+      await PersonasAPI.delete(personaId);
+      setPersonas(personas.filter(p => p.id !== personaId));
+      toast({
+        title: "Deleted",
+        description: `Persona "${personaName}" has been removed.`,
+        variant: "default"
+      });
+    } catch (error) {
+      console.error("Failed to delete persona", error);
+      toast({
+        title: "Error",
+        description: "Could not delete the persona.",
+        variant: "destructive"
+      });
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({
@@ -387,7 +411,7 @@ export function PersonaLibrary() {
     .sort((a, b) => a.localeCompare(b))
   console.log("Available conditions:", uniqueConditions)
 
-  const PersonaCard = ({ persona }: { persona: Persona }) => {
+  const PersonaCard = ({ persona, onDelete }: { persona: Persona, onDelete: (id: number, name: string) => void }) => {
     const personaData = JSON.parse(persona.full_persona_json)
     const conditionClass = conditionColors[persona.condition] || conditionColors.default
 
@@ -417,7 +441,22 @@ export function PersonaLibrary() {
               </div>
             </div>
             <div className="flex flex-col items-end gap-2">
-              <Badge className={cn("text-xs", conditionClass)}>{persona.condition}</Badge>
+              <div className="flex items-center gap-2">
+                <Badge className={cn("text-xs", conditionClass)}>{persona.condition}</Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm(`Are you sure you want to delete persona "${persona.name}"?`)) {
+                      onDelete(persona.id, persona.name);
+                    }
+                  }}
+                  className="h-6 w-6 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
               <div className="flex items-center gap-1">
                 {[...Array(5)].map((_, i) => (
                   <Star key={i} className={`h-3 w-3 ${i < 4 ? "text-amber-400 fill-amber-400" : "text-gray-300"}`} />
@@ -452,6 +491,19 @@ export function PersonaLibrary() {
                 </div>
                 <span className="font-medium text-gray-700 dark:text-gray-300">Occupation:</span>
                 <span className="text-gray-600 dark:text-gray-400">{personaData.demographics.occupation}</span>
+              </div>
+            )}
+
+            {/* CRM Data Lineage Indicator */}
+            {personaData.crm_metadata && (
+              <div className="flex items-center gap-2 text-xs bg-blue-50 dark:bg-blue-900/20 rounded-lg p-2">
+                <Database className="h-3 w-3 text-blue-600" />
+                <span className="text-blue-800 dark:text-blue-300">
+                  Generated from {personaData.crm_metadata.hcp_profile.name}'s patient data
+                </span>
+                <Badge variant="outline" className="border-blue-300 text-blue-700 text-xs">
+                  Veeva CRM
+                </Badge>
               </div>
             )}
           </div>
@@ -667,7 +719,7 @@ export function PersonaLibrary() {
                 {/* Personas Grid */}
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                   {filteredPersonas.map((persona) => (
-                    <PersonaCard key={persona.id} persona={persona} />
+                    <PersonaCard key={persona.id} persona={persona} onDelete={handleDeletePersona} />
                   ))}
                 </div>
               </>
@@ -686,7 +738,7 @@ export function PersonaLibrary() {
                   <CardDescription>Choose how you want to create personas</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <Button
                       variant={creationMode === "single" ? "default" : "outline"}
                       onClick={() => setCreationMode("single")}
@@ -711,6 +763,21 @@ export function PersonaLibrary() {
                       <Wand2 className="h-6 w-6" />
                       <span>Prompt-Based</span>
                     </Button>
+                    <VeevaCRMImporter 
+                      onImportComplete={() => {
+                        fetchPersonas();
+                        setActiveTab("view");
+                      }}
+                      trigger={
+                        <Button
+                          variant="outline"
+                          className="h-20 flex flex-col items-center gap-2 w-full border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50"
+                        >
+                          <Database className="h-6 w-6 text-blue-600" />
+                          <span className="text-blue-600">Import from CRM</span>
+                        </Button>
+                      }
+                    />
                   </div>
                 </CardContent>
               </Card>
