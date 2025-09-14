@@ -28,3 +28,11 @@ class Simulation(Base):
     response_rate = Column(Float)
     insights = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class SavedSimulation(Base):
+    __tablename__ = "saved_simulations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, unique=True)
+    simulation_data = Column(JSON)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

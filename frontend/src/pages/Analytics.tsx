@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -27,13 +28,138 @@ import {
   Gauge,
   Lightbulb,
   PlayCircle,
+  Save,
+  Trash2,
+  Loader2,
+  History,
   Shield
 } from 'lucide-react';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/components/ui/use-toast';
+import { SavedSimulationsAPI, type SavedSimulation } from '@/lib/api';
 
 export function Analytics() {
   const location = useLocation();
   const navigate = useNavigate();
-  const analysisResults = location.state?.analysisResults as AnalysisResults | undefined;
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResults | undefined>(location.state?.analysisResults);
+  
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const [simulationName, setSimulationName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [savedSimulations, setSavedSimulations] = useState<SavedSimulation[]>([]);
+  const [isLoadingSaved, setIsLoadingSaved] = useState(true);
+  const [selectedSimulation, setSelectedSimulation] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (!analysisResults) {
+      fetchSavedSimulations();
+    }
+  }, [analysisResults]);
+
+  const fetchSavedSimulations = async () => {
+    setIsLoadingSaved(true);
+    try {
+      const response = await SavedSimulationsAPI.list();
+      setSavedSimulations(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.error("Failed to fetch saved simulations", error);
+      toast({
+        title: "Error",
+        description: "Could not load saved simulations.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingSaved(false);
+    }
+  };
+
+  const handleSaveSimulation = async () => {
+    if (!simulationName || !analysisResults) return;
+    setIsSaving(true);
+    try {
+      await SavedSimulationsAPI.save({
+        name: simulationName,
+        simulation_data: analysisResults,
+      });
+      toast({
+        title: "Success!",
+        description: `Simulation "${simulationName}" has been saved.`,
+      });
+      setIsSaveDialogOpen(false);
+      setSimulationName('');
+      fetchSavedSimulations(); // Refresh the list of saved simulations
+    } catch (error) {
+      console.error("Failed to save simulation", error);
+      toast({
+        title: "Error",
+        description: "Could not save the simulation. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleLoadSimulation = async () => {
+    if (!selectedSimulation) return;
+    setIsLoading(true);
+    try {
+      const response = await SavedSimulationsAPI.get(Number(selectedSimulation));
+      setAnalysisResults(response.data.simulation_data);
+      toast({
+        title: "Success!",
+        description: `Loaded simulation: ${response.data.name}`,
+      });
+    } catch (error) {
+      console.error("Failed to load simulation", error);
+      toast({
+        title: "Error",
+        description: "Could not load the selected simulation.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteSimulation = async (id: number) => {
+    try {
+      await SavedSimulationsAPI.delete(id);
+      toast({
+        title: "Deleted",
+        description: "The saved simulation has been removed.",
+      });
+      fetchSavedSimulations(); // Refresh the list
+    } catch (error) {
+      console.error("Failed to delete simulation", error);
+      toast({
+        title: "Error",
+        description: "Could not delete the simulation.",
+        variant: "destructive",
+      });
+    }
+  };
 
   console.log('📊 Analytics page loaded:', {
     hasLocationState: !!location.state,
@@ -87,16 +213,67 @@ export function Analytics() {
                 No Analysis Results Available
               </h3>
               <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
-                Run a simulation from the Simulation Hub to see detailed analytics and insights
+                Run a simulation from the Simulation Hub or load a previously saved result.
               </p>
-              <Button 
-                size="lg"
-                className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200"
-                onClick={() => navigate('/simulation')}
-              >
-                <Activity className="mr-2 h-5 w-5" />
-                Go to Simulation Hub
-              </Button>
+              <div className="flex justify-center gap-4">
+                <Button 
+                  size="lg"
+                  className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200"
+                  onClick={() => navigate('/simulation')}
+                >
+                  <Activity className="mr-2 h-5 w-5" />
+                  Go to Simulation Hub
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Load Saved Simulations */}
+          <Card className="mt-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardHeader>
+              <div className="flex items-center space-x-3">
+                <History className="h-6 w-6 text-primary" />
+                <div>
+                  <CardTitle>Load Saved Simulation</CardTitle>
+                  <CardDescription>Review results from a previous run.</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoadingSaved ? (
+                <div className="flex items-center justify-center h-24">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : savedSimulations.length > 0 ? (
+                <div className="flex gap-4">
+                  <Select onValueChange={setSelectedSimulation} value={selectedSimulation}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a saved simulation..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {savedSimulations.map((sim) => (
+                        <SelectItem key={sim.id} value={String(sim.id)}>
+                          {sim.name} (Saved: {new Date(sim.created_at).toLocaleDateString()})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button onClick={handleLoadSimulation} disabled={!selectedSimulation || isLoading}>
+                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Load"}
+                  </Button>
+                  {selectedSimulation && (
+                     <Button 
+                        variant="destructive" 
+                        size="icon" 
+                        onClick={() => handleDeleteSimulation(Number(selectedSimulation))}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-center text-gray-500 py-8">No saved simulations found.</p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -112,7 +289,6 @@ export function Analytics() {
     individual_responses,
     summary_statistics,
     insights,
-    suggestions,
     preamble,
     created_at
   } = analysisResults;
@@ -150,6 +326,42 @@ export function Analytics() {
                 </div>
               </div>
               <div className="flex gap-3">
+                <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="secondary" className="bg-white/20 backdrop-blur-sm text-white border-white/30 hover:bg-white/30">
+                      <Save className="h-4 w-4 mr-2" />
+                      Save
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Save Simulation</DialogTitle>
+                      <DialogDescription>
+                        Enter a name for this simulation run to save it for later.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="name" className="text-right">
+                          Name
+                        </Label>
+                        <Input
+                          id="name"
+                          value={simulationName}
+                          onChange={(e) => setSimulationName(e.target.value)}
+                          className="col-span-3"
+                          placeholder="e.g., Q3 Campaign Test"
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button onClick={handleSaveSimulation} disabled={isSaving || !simulationName}>
+                        {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Save
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
                 <Button variant="secondary" className="bg-white/20 backdrop-blur-sm text-white border-white/30 hover:bg-white/30">
                   <Download className="h-4 w-4 mr-2" />
                   Export

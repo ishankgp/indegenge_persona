@@ -184,6 +184,39 @@ async def head_personas(db: Session = Depends(get_db)):
     from fastapi import Response
     return Response(status_code=200, headers={"X-Total-Personas": str(count)})
 
+# --- Saved Simulation Endpoints ---
+
+@app.post("/simulations/save", response_model=schemas.SavedSimulation)
+async def save_simulation(simulation_data: schemas.SavedSimulationCreate, db: Session = Depends(get_db)):
+    """Saves a simulation result to the database."""
+    # Check if a simulation with the same name already exists
+    existing_simulation = db.query(models.SavedSimulation).filter(models.SavedSimulation.name == simulation_data.name).first()
+    if existing_simulation:
+        raise HTTPException(status_code=400, detail="A simulation with this name already exists.")
+    
+    return crud.create_saved_simulation(db=db, simulation_data=simulation_data)
+
+@app.get("/simulations/saved", response_model=List[schemas.SavedSimulation])
+async def get_saved_simulations(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    """Returns a list of all saved simulations."""
+    return crud.get_saved_simulations(db, skip=skip, limit=limit)
+
+@app.get("/simulations/saved/{simulation_id}", response_model=schemas.SavedSimulation)
+async def get_saved_simulation(simulation_id: int, db: Session = Depends(get_db)):
+    """Returns a specific saved simulation by ID."""
+    db_simulation = crud.get_saved_simulation(db, simulation_id=simulation_id)
+    if db_simulation is None:
+        raise HTTPException(status_code=404, detail="Saved simulation not found")
+    return db_simulation
+
+@app.delete("/simulations/saved/{simulation_id}", status_code=204)
+async def delete_saved_simulation(simulation_id: int, db: Session = Depends(get_db)):
+    """Deletes a saved simulation by ID."""
+    success = crud.delete_saved_simulation(db, simulation_id=simulation_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Saved simulation not found")
+    return None
+
 # --- Cohort Analysis Endpoints ---
 
 @app.post("/cohorts/analyze")

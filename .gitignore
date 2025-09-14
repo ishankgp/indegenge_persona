@@ -19,10 +19,10 @@ backend/app/__pycache__/
 .env
 
 # Database
-*.db
-*.sqlite
-*.sqlite3
-pharma_personas.db
+# *.db
+# *.sqlite
+# *.sqlite3
+# pharma_personas.db
 
 # Environment variables
 .env
