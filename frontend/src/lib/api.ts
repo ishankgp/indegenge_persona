@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { AnalysisResults } from '@/types/analytics';
 
 // API configuration - prefer Vite dev proxy for Codespaces compatibility
 const envBase = (import.meta as any).env?.VITE_API_URL as string | undefined;
@@ -142,4 +143,18 @@ export const CohortAPI = {
 
 export const StatsAPI = {
   stats: () => api.get('/stats').then(r => r.data)
+};
+
+export interface SavedSimulation {
+  id: number;
+  name: string;
+  created_at: string;
+  simulation_data: AnalysisResults;
+}
+
+export const SavedSimulationsAPI = {
+  list: () => api.get<SavedSimulation[]>('/simulations/saved'),
+  get: (id: number) => api.get<SavedSimulation>(`/simulations/saved/${id}`),
+  save: (data: { name: string; simulation_data: AnalysisResults }) => api.post<SavedSimulation>('/simulations/save', data),
+  delete: (id: number) => api.delete(`/simulations/saved/${id}`),
 };

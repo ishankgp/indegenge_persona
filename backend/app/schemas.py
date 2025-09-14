@@ -76,3 +76,18 @@ class SimulationRequest(BaseModel):
     persona_id: int
     scenario: str
     parameters: Dict[str, Any]
+
+# Schemas for Saved Simulations
+class SavedSimulationBase(BaseModel):
+    name: str
+    simulation_data: Dict[str, Any]
+
+class SavedSimulationCreate(SavedSimulationBase):
+    pass
+
+class SavedSimulation(SavedSimulationBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
