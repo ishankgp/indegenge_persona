@@ -170,6 +170,45 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
     
     return new_persona
 
+@app.post("/personas/manual", response_model=schemas.Persona)
+async def create_manual_persona(manual_data: dict, db: Session = Depends(get_db)):
+    """
+    Create a persona manually with detailed attributes provided by the user.
+    """
+    try:
+        # Build the persona JSON from the provided data
+        persona_json = {
+            "name": manual_data.get("name", ""),
+            "demographics": manual_data.get("demographics", {}),
+            "medical_background": manual_data.get("medical_background", ""),
+            "lifestyle_and_values": manual_data.get("lifestyle_and_values", ""),
+            "pain_points": [point for point in manual_data.get("pain_points", []) if point.strip()],
+            "motivations": [motivation for motivation in manual_data.get("motivations", []) if motivation.strip()],
+            "communication_preferences": manual_data.get("communication_preferences", {})
+        }
+        
+        # Create a PersonaCreate object for database insertion
+        persona_create_data = schemas.PersonaCreate(
+            age=manual_data.get("age", 0),
+            gender=manual_data.get("gender", ""),
+            condition=manual_data.get("condition", ""),
+            location=manual_data.get("region", ""),  # Map region to location for database compatibility
+            concerns=""  # Manual personas don't have concerns field
+        )
+        
+        # Save to database
+        new_persona = crud.create_persona(
+            db=db,
+            persona_data=persona_create_data,
+            persona_json=json.dumps(persona_json)
+        )
+        
+        return new_persona
+        
+    except Exception as e:
+        logger.error(f"Error creating manual persona: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create manual persona: {str(e)}")
+
 @app.get("/personas/", response_model=List[schemas.Persona])
 async def get_all_personas(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """
@@ -1068,16 +1107,40 @@ async def import_personas_from_crm(request: dict, db: Session = Depends(get_db))
                 # Parse the JSON response from the persona engine
                 try:
                     persona_json = json.loads(generated_persona_json)
+                    
+                    # Ensure the persona has all required fields
+                    if not persona_json or not persona_json.get("name"):
+                        raise json.JSONDecodeError("Invalid or empty persona JSON", "", 0)
+                        
                 except json.JSONDecodeError:
-                    # If JSON parsing fails, create a basic structure
+                    # If JSON parsing fails, create a comprehensive fallback structure
                     persona_json = {
                         "name": f"Patient {len(created_personas) + 1}",
                         "demographics": {
                             "age": persona_data["age"],
                             "gender": persona_data["gender"],
-                            "location": persona_data["location"]
+                            "location": persona_data["location"],
+                            "occupation": "Healthcare Patient"
                         },
-                        "medical_background": f"Patient with {persona_data['condition']} from {profile['name']}'s practice."
+                        "medical_background": f"Patient with {persona_data['condition']} from {profile['name']}'s practice at {profile['institution']}. Regularly monitored by {profile['specialty']} specialists.",
+                        "lifestyle_and_values": f"Lives in {persona_data['location']} and values quality healthcare. Seeks to maintain an active lifestyle while managing {persona_data['condition']}. Family-oriented and health-conscious.",
+                        "pain_points": [
+                            f"Managing {persona_data['condition']} symptoms",
+                            "Understanding treatment options",
+                            "Healthcare costs and insurance coverage",
+                            "Balancing daily activities with health needs"
+                        ],
+                        "motivations": [
+                            "Achieving better health outcomes",
+                            "Maintaining independence and quality of life",
+                            "Staying informed about treatment advances",
+                            "Building strong relationships with healthcare providers"
+                        ],
+                        "communication_preferences": {
+                            "preferred_channels": "Direct communication with healthcare team",
+                            "information_style": "Clear, evidence-based explanations",
+                            "frequency": "Regular check-ins and updates"
+                        }
                     }
                 
                 # Add enhanced CRM metadata with user configuration

@@ -49,7 +49,6 @@ export function VeevaCRMImporter({ onImportComplete, trigger }: VeevaCRMImporter
   const [hcpProfiles, setHcpProfiles] = useState<HCPProfile[]>([])
   const [selectedProfiles, setSelectedProfiles] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
-  const [importing, setImporting] = useState(false)
   const [currentStep, setCurrentStep] = useState<'connect' | 'select' | 'configure' | 'import' | 'complete'>('connect')
   const [filters, setFilters] = useState({ specialty: 'all-specialties', tier: 'all-tiers' })
   const [importProgress, setImportProgress] = useState(0)
@@ -124,7 +123,7 @@ export function VeevaCRMImporter({ onImportComplete, trigger }: VeevaCRMImporter
   }
 
   const handleStartImport = async () => {
-    setImporting(true)
+    setLoading(true)
     setCurrentStep('import')
     
     try {
@@ -157,7 +156,7 @@ export function VeevaCRMImporter({ onImportComplete, trigger }: VeevaCRMImporter
     } catch (error) {
       console.error('Import failed:', error)
     } finally {
-      setImporting(false)
+      setLoading(false)
     }
   }
 

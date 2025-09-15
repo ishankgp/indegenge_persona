@@ -11,7 +11,10 @@ from typing import Dict, Any, List, Optional
 from . import crud
 from datetime import datetime
 
-load_dotenv()
+# Load environment variables from the project root
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
 
 # Initialize OpenAI client after loading environment variables
 client = OpenAI()
