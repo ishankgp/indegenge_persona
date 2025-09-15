@@ -124,6 +124,7 @@ export async function checkHealth(): Promise<{ ok: boolean; personas?: number }>
 export const PersonasAPI = {
   list: () => api.get('/personas/').then(r => r.data),
   generate: (payload: any) => api.post('/personas/generate', payload).then(r => r.data),
+  createManual: (payload: any) => api.post('/personas/manual', payload).then(r => r.data),
   delete: (id: number) => api.delete(`/personas/${id}`)
 };
 

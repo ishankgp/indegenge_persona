@@ -10,6 +10,7 @@ import { Label } from "../components/ui/label"
 import { Textarea } from "../components/ui/textarea"
 import { Badge } from "../components/ui/badge"
 import { Separator } from "../components/ui/separator"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { VeevaCRMImporter } from "../components/VeevaCRMImporter"
 import {
   User,
@@ -29,61 +30,186 @@ import {
   Database,
 } from "lucide-react"
 
-interface BulkPersonaTemplate {
-  id: string
-  age: string
-  gender: string
-  condition: string
-  location: string
-  concerns: string
-}
-
 export function CreatePersona() {
   const navigate = useNavigate()
   const [generating, setGenerating] = useState(false)
-  const [bulkGenerating, setBulkGenerating] = useState(false)
   const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 })
-  const [creationMode, setCreationMode] = useState<"single" | "bulk" | "prompt">("single")
+  const [creationMode, setCreationMode] = useState<"manual" | "ai" | "prompt">("manual")
   const [error, setError] = useState<string | null>(null)
 
-  // Form data for single persona creation
-  const [formData, setFormData] = useState({
+  // Form data for manual persona creation
+  const [manualFormData, setManualFormData] = useState({
+    name: "",
     age: "",
     gender: "",
     condition: "",
-    location: "",
+    region: "",
+    occupation: "",
+    medical_background: "",
+    lifestyle_and_values: "",
+    pain_points: ["", "", "", ""],
+    motivations: ["", "", "", ""],
+    communication_preferences: {
+      preferred_channels: "",
+      information_style: "",
+      frequency: ""
+    }
+  })
+
+  // Form data for AI persona creation
+  const [aiFormData, setAiFormData] = useState({
+    age: '',
+    gender: '',
+    condition: '',
+    region: '',
     concerns: "",
     count: '1'
   })
 
-  const [bulkTemplate, setBulkTemplate] = useState<Omit<BulkPersonaTemplate, "id">>({
-    age: "",
-    gender: "",
-    condition: "",
-    location: "",
-    concerns: "",
-  });
-  const [bulkCount, setBulkCount] = useState(3);
-  const [bulkPrompt, setBulkPrompt] = useState("");
-  const [bulkFilters, setBulkFilters] = useState({
-    ageRange: { min: 25, max: 75 },
-    genders: ["Male", "Female"],
-    conditions: [] as string[],
-    locations: [] as string[],
-  });
+  const handleManualInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    
+    // Check if it's a communication preference field
+    if (name.includes('.')) {
+      const [, commField] = name.split('.')
+      setManualFormData({
+        ...manualFormData,
+        communication_preferences: {
+          ...manualFormData.communication_preferences,
+          [commField]: value
+        }
+      })
+    } else {
+      setManualFormData({
+        ...manualFormData,
+        [name]: value
+      })
+    }
+  }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({
-      ...formData,
+  const handleAiInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setAiFormData({
+      ...aiFormData,
       [e.target.name]: e.target.value,
     })
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleManualSelectChange = (name: string, value: string) => {
+    setManualFormData({
+      ...manualFormData,
+      [name]: value
+    })
+  }
+
+  const handleAiSelectChange = (name: string, value: string) => {
+    setAiFormData({
+      ...aiFormData,
+      [name]: value
+    })
+  }
+
+  const handleArrayInputChange = (field: 'pain_points' | 'motivations', index: number, value: string) => {
+    setManualFormData(prev => ({
+      ...prev,
+      [field]: prev[field].map((item, i) => i === index ? value : item)
+    }))
+  }
+
+  const handleCommunicationChange = (field: string, value: string) => {
+    setManualFormData(prev => ({
+      ...prev,
+      communication_preferences: {
+        ...prev.communication_preferences,
+        [field]: value
+      }
+    }))
+  }
+
+  const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
-    const age = parseInt(formData.age)
+    const age = parseInt(manualFormData.age)
+    if (isNaN(age) || age < 1 || age > 120) {
+      const errorMessage = "Please enter a valid age between 1 and 120."
+      setError(errorMessage)
+      alert(errorMessage)
+      return
+    }
+
+    // Validate required fields
+    if (!manualFormData.name || !manualFormData.gender || !manualFormData.condition || !manualFormData.region) {
+      setError("Please fill in all required fields.")
+      alert("Please fill in all required fields.")
+      return
+    }
+
+    setGenerating(true)
+    try {
+      // Create manual persona by calling a new API endpoint
+      const personaData = {
+        name: manualFormData.name,
+        age: age,
+        gender: manualFormData.gender,
+        condition: manualFormData.condition,
+        region: manualFormData.region,
+        demographics: {
+          age: age,
+          gender: manualFormData.gender,
+          location: manualFormData.region,
+          occupation: manualFormData.occupation
+        },
+        medical_background: manualFormData.medical_background,
+        lifestyle_and_values: manualFormData.lifestyle_and_values,
+        pain_points: manualFormData.pain_points.filter(p => p.trim() !== ''),
+        motivations: manualFormData.motivations.filter(m => m.trim() !== ''),
+        communication_preferences: manualFormData.communication_preferences
+      }
+
+      const newPersona = await PersonasAPI.createManual(personaData)
+      console.log("Created manual persona:", newPersona.id)
+      
+      // Reset form
+      setManualFormData({
+        name: "",
+        age: "",
+        gender: "",
+        condition: "",
+        region: "",
+        occupation: "",
+        medical_background: "",
+        lifestyle_and_values: "",
+        pain_points: ["", "", "", ""],
+        motivations: ["", "", "", ""],
+        communication_preferences: {
+          preferred_channels: "",
+          information_style: "",
+          frequency: ""
+        }
+      })
+      
+      alert(`Successfully created manual persona. Redirecting to Persona Library...`)
+      
+      // Redirect to persona library after successful creation
+      setTimeout(() => {
+        navigate('/personas')
+      }, 2000)
+
+    } catch (error: any) {
+      console.error("Error creating manual persona:", error)
+      const errorMessage = error.response?.data?.detail || "An unexpected error occurred. Please check the console and ensure the backend is running."
+      setError(errorMessage)
+      alert(`Creation Failed: ${errorMessage}`)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handleAiSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+
+    const age = parseInt(aiFormData.age)
     if (isNaN(age) || age < 1 || age > 120) {
       const errorMessage = "Please enter a valid age between 1 and 120."
       setError(errorMessage)
@@ -93,15 +219,15 @@ export function CreatePersona() {
 
     setGenerating(true)
     try {
-      const count = parseInt(formData.count) || 1
+      const count = parseInt(aiFormData.count) || 1
       setGenerationProgress({ current: 0, total: count })
       
       const basePersonaData = {
         age: age,
-        gender: formData.gender,
-        condition: formData.condition,
-        location: formData.location,
-        concerns: formData.concerns
+        gender: aiFormData.gender,
+        condition: aiFormData.condition,
+        location: aiFormData.region,
+        concerns: aiFormData.concerns
       }
 
       const createdPersonas = []
@@ -118,18 +244,18 @@ export function CreatePersona() {
         
         const personaData = {
           ...basePersonaData,
-          concerns: formData.concerns + variation
+          concerns: aiFormData.concerns + variation
         }
         
         const newPersona = await PersonasAPI.generate(personaData)
         createdPersonas.push(newPersona)
       }
 
-      setFormData({
+      setAiFormData({
         age: '',
         gender: '',
         condition: '',
-        location: '',
+        region: '',
         concerns: '',
         count: '1'
       })
@@ -148,178 +274,6 @@ export function CreatePersona() {
       alert(`Generation Failed: ${errorMessage}`)
     } finally {
       setGenerating(false)
-    }
-  }
-
-  const handleBulkTemplateChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    setBulkTemplate({
-      ...bulkTemplate,
-      [e.target.name]: e.target.value,
-    });
-  };
-
-  const validateBulkTemplate = () => {
-    const errors: string[] = [];
-    if (
-      !bulkTemplate.age ||
-      !bulkTemplate.gender ||
-      !bulkTemplate.condition ||
-      !bulkTemplate.location ||
-      !bulkTemplate.concerns
-    ) {
-      errors.push("All fields in the template are required");
-    }
-    const age = Number.parseInt(bulkTemplate.age);
-    if (isNaN(age) || age < 1 || age > 120) {
-      errors.push("Age must be a valid number between 1 and 120");
-    }
-    if (bulkCount < 1) {
-      errors.push("Number of personas must be at least 1");
-    }
-    return errors;
-  };
-
-  const handleBulkGenerate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    const validationErrors = validateBulkTemplate();
-    if (validationErrors.length > 0) {
-      const errorMsg = "Validation errors:\n" + validationErrors.join("\n");
-      setError(errorMsg);
-      alert(errorMsg);
-      return;
-    }
-
-    setBulkGenerating(true);
-    try {
-      const promises = Array.from({ length: bulkCount }, () =>
-        PersonasAPI.generate({
-          age: Number.parseInt(bulkTemplate.age),
-          gender: bulkTemplate.gender,
-          condition: bulkTemplate.condition,
-          location: bulkTemplate.location,
-          concerns: bulkTemplate.concerns,
-        })
-      );
-
-      const results = await Promise.allSettled(promises);
-      const successfulCreations = results.filter(
-        (r) => r.status === "fulfilled"
-      ).length;
-      const failedCreations = results.length - successfulCreations;
-
-      if (successfulCreations > 0) {
-        setBulkTemplate({
-          age: "",
-          gender: "",
-          condition: "",
-          location: "",
-          concerns: "",
-        });
-        setBulkCount(3);
-        setCreationMode("single");
-      }
-
-      alert(
-        `Bulk Generation Complete: Successfully created ${successfulCreations} personas. ${
-          failedCreations > 0 ? `Failed to create ${failedCreations}.` : ""
-        } Redirecting to Persona Library...`
-      );
-
-      if (failedCreations > 0) {
-        const firstError = results.find(
-          (r) => r.status === "rejected"
-        ) as PromiseRejectedResult | undefined;
-        const errorMessage =
-          firstError?.reason?.response?.data?.detail ||
-          "Some personas could not be generated. Check the console for details.";
-        setError(errorMessage);
-      }
-
-      // Redirect to persona library after successful creation
-      if (successfulCreations > 0) {
-        setTimeout(() => {
-          navigate("/personas");
-        }, 2000);
-      }
-    } catch (error: any) {
-      console.error("Error generating bulk personas:", error);
-      const errorMessage =
-        error.response?.data?.detail ||
-        "An unexpected error occurred during bulk generation.";
-      setError(errorMessage);
-      alert(`Bulk Generation Failed: ${errorMessage}`);
-    } finally {
-      setBulkGenerating(false);
-    }
-  }
-
-  const handleBulkGenerateFromPrompt = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    if (!bulkPrompt.trim()) {
-      const errorMsg = "Please enter a prompt for persona generation"
-      setError(errorMsg)
-      alert(errorMsg)
-      return
-    }
-
-    setBulkGenerating(true)
-    try {
-      const promises = Array.from({ length: bulkCount }, (_, index) => {
-        const randomAge =
-          Math.floor(Math.random() * (bulkFilters.ageRange.max - bulkFilters.ageRange.min + 1)) +
-          bulkFilters.ageRange.min
-        const randomGender = bulkFilters.genders[Math.floor(Math.random() * bulkFilters.genders.length)]
-
-        return PersonasAPI.generate({
-          age: randomAge,
-          gender: randomGender,
-          condition:
-            bulkFilters.conditions.length > 0
-              ? bulkFilters.conditions[Math.floor(Math.random() * bulkFilters.conditions.length)]
-              : "General Health",
-          location:
-            bulkFilters.locations.length > 0
-              ? bulkFilters.locations[Math.floor(Math.random() * bulkFilters.locations.length)]
-              : "United States",
-          concerns: `${bulkPrompt} (Persona ${index + 1})`,
-        })
-      })
-
-      const results = await Promise.allSettled(promises)
-      const successfulCreations = results.filter(r => r.status === 'fulfilled').length
-      const failedCreations = results.length - successfulCreations
-
-      if (successfulCreations > 0) {
-        setBulkPrompt("")
-        setCreationMode("single")
-      }
-
-      alert(`Prompt Generation Complete: Successfully created ${successfulCreations} personas. ${failedCreations > 0 ? `Failed to create ${failedCreations}.` : ''} Redirecting to Persona Library...`)
-
-      if (failedCreations > 0) {
-        const firstError = results.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined
-        const errorMessage = firstError?.reason?.response?.data?.detail || "Some personas could not be generated. Check the console for details."
-        setError(errorMessage)
-      }
-
-      // Redirect to persona library after successful creation
-      if (successfulCreations > 0) {
-        setTimeout(() => {
-          navigate('/personas')
-        }, 2000)
-      }
-
-    } catch (error: any) {
-      console.error("Error generating prompt-based personas:", error)
-      const errorMessage = error.response?.data?.detail || "An unexpected error occurred during prompt-based generation."
-      setError(errorMessage)
-      alert(`Prompt Generation Failed: ${errorMessage}`)
-    } finally {
-      setBulkGenerating(false)
     }
   }
 
@@ -357,13 +311,23 @@ export function CreatePersona() {
                 </div>
               </div>
               <div className="flex gap-3">
-                <Button 
-                  variant="secondary" 
-                  className="bg-white/20 backdrop-blur-sm text-white border-white/30 hover:bg-white/30"
+                <Button
+                  variant="outline"
+                  size="lg"
                   onClick={() => navigate('/personas')}
+                  className="bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20"
                 >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  <ArrowLeft className="h-5 w-5 mr-2" />
                   Back to Library
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => navigate('/dashboard')}
+                  className="bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20"
+                >
+                  <Settings className="h-5 w-5 mr-2" />
+                  Dashboard
                 </Button>
               </div>
             </div>
@@ -371,34 +335,32 @@ export function CreatePersona() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-8 -mt-8">
-        <div className="space-y-6">
-          {/* Creation Mode Selector */}
-          <Card className="border-0 shadow-xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="h-5 w-5" />
-                Creation Mode
-              </CardTitle>
+      {/* Main Content */}
+      <div className="max-w-6xl mx-auto px-8 py-12">
+        <div className="space-y-8">
+          {/* Creation Mode Selection */}
+          <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
+            <CardHeader className="text-center">
+              <CardTitle className="text-2xl">Choose Creation Method</CardTitle>
               <CardDescription>Choose how you want to create personas</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <Button
-                  variant={creationMode === "single" ? "default" : "outline"}
-                  onClick={() => setCreationMode("single")}
+                  variant={creationMode === "manual" ? "default" : "outline"}
+                  onClick={() => setCreationMode("manual")}
                   className="h-20 flex flex-col items-center gap-2"
                 >
                   <User className="h-6 w-6" />
-                  <span>Single Persona</span>
+                  <span>Manual Persona</span>
                 </Button>
                 <Button
-                  variant={creationMode === "bulk" ? "default" : "outline"}
-                  onClick={() => setCreationMode("bulk")}
+                  variant={creationMode === "ai" ? "default" : "outline"}
+                  onClick={() => setCreationMode("ai")}
                   className="h-20 flex flex-col items-center gap-2"
                 >
-                  <Users className="h-6 w-6" />
-                  <span>Bulk Creation</span>
+                  <Brain className="h-6 w-6" />
+                  <span>AI Generated</span>
                 </Button>
                 <Button
                   variant={creationMode === "prompt" ? "default" : "outline"}
@@ -408,6 +370,8 @@ export function CreatePersona() {
                   <Wand2 className="h-6 w-6" />
                   <span>Prompt-Based</span>
                 </Button>
+              </div>
+              <div className="mt-4">
                 <VeevaCRMImporter 
                   onImportComplete={() => {
                     alert("CRM Import Complete! Redirecting to Persona Library...");
@@ -429,8 +393,212 @@ export function CreatePersona() {
             </CardContent>
           </Card>
 
-          {/* Single Persona Creation */}
-          {creationMode === "single" && (
+          {/* Manual Persona Creation */}
+          {creationMode === "manual" && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="space-y-6">
+                  <div className="text-center">
+                    <h3 className="text-lg font-semibold text-gray-900">Manual Persona Creation</h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Create a detailed persona manually by filling in all attributes
+                    </p>
+                  </div>
+
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-md p-4">
+                      <div className="flex">
+                        <div className="ml-3">
+                          <p className="text-sm text-red-800">{error}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleManualSubmit} className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="name">Name *</Label>
+                        <Input
+                          id="name"
+                          name="name"
+                          value={manualFormData.name}
+                          onChange={handleManualInputChange}
+                          required
+                          className="mt-1"
+                          placeholder="Enter persona name"
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="age">Age *</Label>
+                        <Input
+                          id="age"
+                          name="age"
+                          type="number"
+                          min="1"
+                          max="120"
+                          value={manualFormData.age}
+                          onChange={handleManualInputChange}
+                          required
+                          className="mt-1"
+                          placeholder="Enter age"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <Label htmlFor="gender">Gender *</Label>
+                        <Select name="gender" value={manualFormData.gender} onValueChange={(value) => handleManualSelectChange('gender', value)}>
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Select gender" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Male">Male</SelectItem>
+                            <SelectItem value="Female">Female</SelectItem>
+                            <SelectItem value="Other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="condition">Medical Condition *</Label>
+                        <Input
+                          id="condition"
+                          name="condition"
+                          value={manualFormData.condition}
+                          onChange={handleManualInputChange}
+                          required
+                          className="mt-1"
+                          placeholder="Enter medical condition"
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="region">Region *</Label>
+                        <Input
+                          id="region"
+                          name="region"
+                          value={manualFormData.region}
+                          onChange={handleManualInputChange}
+                          required
+                          className="mt-1"
+                          placeholder="Enter region"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="occupation">Occupation</Label>
+                      <Input
+                        id="occupation"
+                        name="occupation"
+                        value={manualFormData.occupation}
+                        onChange={handleManualInputChange}
+                        className="mt-1"
+                        placeholder="Enter occupation"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="medical_background">Medical Background</Label>
+                      <Textarea
+                        id="medical_background"
+                        name="medical_background"
+                        value={manualFormData.medical_background}
+                        onChange={handleManualInputChange}
+                        className="mt-1"
+                        rows={3}
+                        placeholder="Describe medical history, diagnoses, treatments..."
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="lifestyle_and_values">Lifestyle and Values</Label>
+                      <Textarea
+                        id="lifestyle_and_values"
+                        name="lifestyle_and_values"
+                        value={manualFormData.lifestyle_and_values}
+                        onChange={handleManualInputChange}
+                        className="mt-1"
+                        rows={3}
+                        placeholder="Describe lifestyle, values, beliefs..."
+                      />
+                    </div>
+
+                    <div>
+                      <Label>Pain Points</Label>
+                      <div className="space-y-2 mt-1">
+                        {manualFormData.pain_points.map((point, index) => (
+                          <Input
+                            key={index}
+                            value={point}
+                            onChange={(e) => handleArrayInputChange('pain_points', index, e.target.value)}
+                            placeholder={`Pain point ${index + 1}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>Motivations</Label>
+                      <div className="space-y-2 mt-1">
+                        {manualFormData.motivations.map((motivation, index) => (
+                          <Input
+                            key={index}
+                            value={motivation}
+                            onChange={(e) => handleArrayInputChange('motivations', index, e.target.value)}
+                            placeholder={`Motivation ${index + 1}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>Communication Preferences</Label>
+                      <div className="grid grid-cols-3 gap-4 mt-1">
+                        <div>
+                          <Label htmlFor="preferred_channels" className="text-sm">Preferred Channels</Label>
+                          <Input
+                            id="preferred_channels"
+                            value={manualFormData.communication_preferences.preferred_channels}
+                            onChange={(e) => handleCommunicationChange('preferred_channels', e.target.value)}
+                            placeholder="Email, phone, in-person..."
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="information_style" className="text-sm">Information Style</Label>
+                          <Input
+                            id="information_style"
+                            value={manualFormData.communication_preferences.information_style}
+                            onChange={(e) => handleCommunicationChange('information_style', e.target.value)}
+                            placeholder="Detailed, brief, visual..."
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="frequency" className="text-sm">Frequency</Label>
+                          <Input
+                            id="frequency"
+                            value={manualFormData.communication_preferences.frequency}
+                            onChange={(e) => handleCommunicationChange('frequency', e.target.value)}
+                            placeholder="Weekly, monthly, as needed..."
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <Button type="submit" disabled={generating} className="w-full">
+                      {generating ? "Creating..." : "Create Manual Persona"}
+                    </Button>
+                  </form>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* AI Persona Creation */}
+          {creationMode === "ai" && (
             <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
               <CardHeader className="bg-gradient-to-r from-primary/10 to-secondary/10 rounded-t-xl">
                 <div className="flex items-center space-x-4">
@@ -449,50 +617,51 @@ export function CreatePersona() {
                 </div>
               </CardHeader>
               <CardContent className="pt-8">
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={handleAiSubmit} className="space-y-6">
                   <div className="grid gap-6 md:grid-cols-3">
                     <div className="space-y-2">
-                      <Label htmlFor="age" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                      <Label htmlFor="ai-age" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                         <Calendar className="h-4 w-4 text-gray-500" />
                         Age
                       </Label>
                       <Input
-                        id="age"
+                        id="ai-age"
                         name="age"
                         type="number"
                         placeholder="e.g., 45"
-                        value={formData.age}
-                        onChange={handleInputChange}
+                        value={aiFormData.age}
+                        onChange={handleAiInputChange}
                         className="border-gray-300 focus:border-primary focus:ring-primary"
                         required
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="gender" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                      <Label htmlFor="ai-gender" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                         <User className="h-4 w-4 text-gray-500" />
                         Gender
                       </Label>
-                      <Input
-                        id="gender"
-                        name="gender"
-                        placeholder="e.g., Female"
-                        value={formData.gender}
-                        onChange={handleInputChange}
-                        className="border-gray-300 focus:border-primary focus:ring-primary"
-                        required
-                      />
+                      <Select name="gender" value={aiFormData.gender} onValueChange={(value) => handleAiSelectChange('gender', value)}>
+                        <SelectTrigger className="border-gray-300 focus:border-primary focus:ring-primary">
+                          <SelectValue placeholder="Select gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Male">Male</SelectItem>
+                          <SelectItem value="Female">Female</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="condition" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                      <Label htmlFor="ai-condition" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                         <Heart className="h-4 w-4 text-gray-500" />
                         Primary Medical Condition
                       </Label>
                       <Input
-                        id="condition"
+                        id="ai-condition"
                         name="condition"
                         placeholder="e.g., Type 2 Diabetes"
-                        value={formData.condition}
-                        onChange={handleInputChange}
+                        value={aiFormData.condition}
+                        onChange={handleAiInputChange}
                         className="border-gray-300 focus:border-primary focus:ring-primary"
                         required
                       />
@@ -501,52 +670,52 @@ export function CreatePersona() {
 
                   <div className="grid gap-6 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="location" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                      <Label htmlFor="ai-region" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                         <MapPin className="h-4 w-4 text-gray-500" />
-                        Location
+                        Region
                       </Label>
                       <Input
-                        id="location"
-                        name="location"
+                        id="ai-region"
+                        name="region"
                         placeholder="e.g., Austin, Texas"
-                        value={formData.location}
-                        onChange={handleInputChange}
+                        value={aiFormData.region}
+                        onChange={handleAiInputChange}
                         className="border-gray-300 focus:border-primary focus:ring-primary"
                         required
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="count" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                      <Label htmlFor="ai-count" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                         <Users className="h-4 w-4 text-gray-500" />
                         Number of Personas
                       </Label>
-                      <Input
-                        id="count"
-                        name="count"
-                        type="number"
-                        min="1"
-                        max="10"
-                        placeholder="1"
-                        value={formData.count}
-                        onChange={handleInputChange}
-                        className="border-gray-300 focus:border-primary focus:ring-primary"
-                      />
+                      <Select name="count" value={aiFormData.count} onValueChange={(value) => handleAiSelectChange('count', value)}>
+                        <SelectTrigger className="border-gray-300 focus:border-primary focus:ring-primary">
+                          <SelectValue placeholder="Select count" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">1 Persona</SelectItem>
+                          <SelectItem value="2">2 Personas</SelectItem>
+                          <SelectItem value="3">3 Personas</SelectItem>
+                          <SelectItem value="5">5 Personas</SelectItem>
+                          <SelectItem value="10">10 Personas</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="concerns" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    <Label htmlFor="ai-concerns" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                       <Target className="h-4 w-4 text-gray-500" />
-                      Key Concerns & Context
+                      Additional Context
                     </Label>
                     <Textarea
-                      id="concerns"
+                      id="ai-concerns"
                       name="concerns"
                       placeholder="e.g., Managing blood sugar levels, medication side effects, cost of treatment, lifestyle adjustments..."
-                      value={formData.concerns}
-                      onChange={handleInputChange}
+                      value={aiFormData.concerns}
+                      onChange={handleAiInputChange}
                       className="border-gray-300 focus:border-primary focus:ring-primary min-h-[120px]"
-                      required
                     />
                   </div>
 
@@ -592,6 +761,18 @@ export function CreatePersona() {
                     </div>
                   </div>
 
+                  {generationProgress.total > 0 && (
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                        style={{ width: `${(generationProgress.current / generationProgress.total) * 100}%` }}
+                      ></div>
+                      <p className="text-sm text-gray-600 mt-2">
+                        Generating persona {generationProgress.current} of {generationProgress.total}...
+                      </p>
+                    </div>
+                  )}
+
                   <Button 
                     type="submit" 
                     className="w-full bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold" 
@@ -605,159 +786,7 @@ export function CreatePersona() {
                     ) : (
                       <>
                         <Brain className="mr-3 h-5 w-5" />
-                        Generate {formData.count} AI Persona{parseInt(formData.count) !== 1 ? 's' : ''}
-                      </>
-                    )}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Bulk Creation Mode */}
-          {creationMode === "bulk" && (
-            <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
-              <CardHeader className="bg-gradient-to-r from-emerald-500/10 to-blue-500/10 rounded-t-xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="relative">
-                      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500 to-blue-500 rounded-xl blur-lg opacity-50"></div>
-                      <div className="relative p-3 bg-gradient-to-br from-emerald-500 to-blue-500 rounded-xl">
-                        <Users className="h-7 w-7 text-white" />
-                      </div>
-                    </div>
-                    <div>
-                      <CardTitle className="text-2xl">Bulk Persona Creation</CardTitle>
-                      <CardDescription className="text-base">
-                        Create multiple personas simultaneously with individual customization
-                      </CardDescription>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge className="bg-gradient-to-r from-emerald-500 to-blue-500 text-white border-0">
-                      <UserPlus className="h-3 w-3 mr-1" />
-                      {bulkCount} Personas
-                    </Badge>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-6">
-                <form onSubmit={handleBulkGenerate} className="space-y-6">
-                  <Card className="border border-gray-200 dark:border-gray-700">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                          1
-                        </div>
-                        Persona Template
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">Age</Label>
-                          <Input
-                            type="number"
-                            name="age"
-                            placeholder="e.g., 45"
-                            value={bulkTemplate.age}
-                            onChange={handleBulkTemplateChange}
-                            className="border-gray-300 focus:border-primary focus:ring-primary"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">Gender</Label>
-                          <Input
-                            name="gender"
-                            placeholder="e.g., Female"
-                            value={bulkTemplate.gender}
-                            onChange={handleBulkTemplateChange}
-                            className="border-gray-300 focus:border-primary focus:ring-primary"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">
-                          Primary Medical Condition
-                        </Label>
-                        <Input
-                          name="condition"
-                          placeholder="e.g., Type 2 Diabetes"
-                          value={bulkTemplate.condition}
-                          onChange={handleBulkTemplateChange}
-                          className="border-gray-300 focus:border-primary focus:ring-primary"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">Location</Label>
-                        <Input
-                          name="location"
-                          placeholder="e.g., Austin, Texas"
-                          value={bulkTemplate.location}
-                          onChange={handleBulkTemplateChange}
-                          className="border-gray-300 focus:border-primary focus:ring-primary"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">
-                          Key Concerns & Context
-                        </Label>
-                        <Textarea
-                          name="concerns"
-                          placeholder="e.g., Managing blood sugar levels, medication side effects..."
-                          value={bulkTemplate.concerns}
-                          onChange={handleBulkTemplateChange}
-                          className="border-gray-300 focus:border-primary focus:ring-primary min-h-[80px]"
-                        />
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="bulk-count"
-                      className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2"
-                    >
-                      <Users className="h-4 w-4 text-gray-500" />
-                      Number of Personas to Generate
-                    </Label>
-                    <Input
-                      id="bulk-count"
-                      name="bulk-count"
-                      type="number"
-                      min="1"
-                      max="50"
-                      placeholder="e.g., 5"
-                      value={bulkCount}
-                      onChange={(e) => setBulkCount(parseInt(e.target.value, 10))}
-                      className="border-gray-300 focus:border-primary focus:ring-primary"
-                      required
-                    />
-                  </div>
-
-                  {error && (
-                    <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 text-red-700 dark:text-red-300 rounded-lg">
-                      <p className="font-bold">Generation Error</p>
-                      <p className="text-sm">{error}</p>
-                    </div>
-                  )}
-
-                  <Separator className="my-6" />
-
-                  <Button
-                    type="submit"
-                    className="w-full bg-gradient-to-r from-emerald-500 to-blue-500 text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold"
-                    disabled={bulkGenerating}
-                  >
-                    {bulkGenerating ? (
-                      <>
-                        <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-                        Generating {bulkCount} Personas...
-                      </>
-                    ) : (
-                      <>
-                        <Users className="mr-3 h-5 w-5" />
-                        Generate {bulkCount} AI Personas
+                        Generate {aiFormData.count} AI Persona{parseInt(aiFormData.count) !== 1 ? 's' : ''}
                       </>
                     )}
                   </Button>
@@ -778,85 +807,49 @@ export function CreatePersona() {
                     </div>
                   </div>
                   <div>
-                    <CardTitle className="text-2xl">Prompt-Based Generation</CardTitle>
+                    <CardTitle className="text-2xl">Prompt-Based Persona Creation</CardTitle>
                     <CardDescription className="text-base">
-                      Describe the personas you need, and let AI create them for you
+                      Generate diverse personas using natural language prompts and smart filtering
                     </CardDescription>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="pt-6">
-                <form onSubmit={handleBulkGenerateFromPrompt} className="space-y-6">
-                  <div>
-                    <Label htmlFor="bulkPrompt" className="text-lg font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
-                      <Sparkles className="h-5 w-5 text-purple-500" />
-                      Your Persona Request
+              <CardContent className="pt-8">
+                <form onSubmit={handleAiSubmit} className="space-y-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="prompt" className="text-lg font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                      <Wand2 className="h-5 w-5 text-purple-500" />
+                      Prompt Description
                     </Label>
                     <Textarea
-                      id="bulkPrompt"
-                      value={bulkPrompt}
-                      onChange={(e) => setBulkPrompt(e.target.value)}
-                      placeholder="e.g., 'Create three personas of elderly patients with hypertension living in rural areas, who are skeptical of new medications.'"
-                      className="mt-2 min-h-[150px] text-base border-gray-300 focus:border-purple-500 focus:ring-purple-500"
+                      id="prompt"
+                      placeholder="e.g., Create personas for diabetes patients who are tech-savvy and live in urban areas, or Generate personas for elderly patients with mobility issues who prefer traditional communication..."
+                      className="border-gray-300 focus:border-primary focus:ring-primary min-h-[120px] text-base"
+                      required
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-6">
-                    <div>
-                      <Label htmlFor="bulkCount" className="font-medium">Number of Personas</Label>
-                      <Input
-                        id="bulkCount"
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={bulkCount}
-                        onChange={(e) => setBulkCount(Number(e.target.value))}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label className="font-medium">Age Range</Label>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Input
-                          type="number"
-                          placeholder="Min"
-                          value={bulkFilters.ageRange.min}
-                          onChange={(e) => setBulkFilters(f => ({ ...f, ageRange: { ...f.ageRange, min: Number(e.target.value) } }))}
-                        />
-                        <span>-</span>
-                        <Input
-                          type="number"
-                          placeholder="Max"
-                          value={bulkFilters.ageRange.max}
-                          onChange={(e) => setBulkFilters(f => ({ ...f, ageRange: { ...f.ageRange, max: Number(e.target.value) } }))}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  
                   {error && (
                     <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 text-red-700 dark:text-red-300 rounded-lg">
-                      <p className="font-bold">Generation Error</p>
+                      <p className="font-bold">Prompt Generation Error</p>
                       <p className="text-sm">{error}</p>
                     </div>
                   )}
 
-                  <Separator />
-
-                  <Button
-                    type="submit"
-                    className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold"
-                    disabled={bulkGenerating}
+                  <Button 
+                    type="submit" 
+                    className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold" 
+                    disabled={generating}
                   >
-                    {bulkGenerating ? (
+                    {generating ? (
                       <>
                         <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-                        Generating {bulkCount} Personas...
+                        Generating Personas from Prompt...
                       </>
                     ) : (
                       <>
                         <Wand2 className="mr-3 h-5 w-5" />
-                        Generate {bulkCount} AI Personas from Prompt
+                        Generate Personas from Prompt
                       </>
                     )}
                   </Button>
