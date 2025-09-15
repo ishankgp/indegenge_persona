@@ -24,7 +24,6 @@ import {
   Target,
   CheckCircle,
   Settings,
-  Wand2,
   UserPlus,
   ArrowLeft,
   Database,
@@ -34,7 +33,7 @@ export function CreatePersona() {
   const navigate = useNavigate()
   const [generating, setGenerating] = useState(false)
   const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 })
-  const [creationMode, setCreationMode] = useState<"manual" | "ai" | "prompt">("manual")
+  const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual")
   const [error, setError] = useState<string | null>(null)
 
   // Form data for manual persona creation
@@ -345,7 +344,7 @@ export function CreatePersona() {
               <CardDescription>Choose how you want to create personas</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <Button
                   variant={creationMode === "manual" ? "default" : "outline"}
                   onClick={() => setCreationMode("manual")}
@@ -361,14 +360,6 @@ export function CreatePersona() {
                 >
                   <Brain className="h-6 w-6" />
                   <span>AI Generated</span>
-                </Button>
-                <Button
-                  variant={creationMode === "prompt" ? "default" : "outline"}
-                  onClick={() => setCreationMode("prompt")}
-                  className="h-20 flex flex-col items-center gap-2"
-                >
-                  <Wand2 className="h-6 w-6" />
-                  <span>Prompt-Based</span>
                 </Button>
               </div>
               <div className="mt-4">
@@ -795,68 +786,6 @@ export function CreatePersona() {
             </Card>
           )}
 
-          {/* Prompt-Based Creation Mode */}
-          {creationMode === "prompt" && (
-            <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
-              <CardHeader className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-t-xl">
-                <div className="flex items-center space-x-4">
-                  <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl blur-lg opacity-50"></div>
-                    <div className="relative p-3 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl">
-                      <Wand2 className="h-7 w-7 text-white" />
-                    </div>
-                  </div>
-                  <div>
-                    <CardTitle className="text-2xl">Prompt-Based Persona Creation</CardTitle>
-                    <CardDescription className="text-base">
-                      Generate diverse personas using natural language prompts and smart filtering
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-8">
-                <form onSubmit={handleAiSubmit} className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="prompt" className="text-lg font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
-                      <Wand2 className="h-5 w-5 text-purple-500" />
-                      Prompt Description
-                    </Label>
-                    <Textarea
-                      id="prompt"
-                      placeholder="e.g., Create personas for diabetes patients who are tech-savvy and live in urban areas, or Generate personas for elderly patients with mobility issues who prefer traditional communication..."
-                      className="border-gray-300 focus:border-primary focus:ring-primary min-h-[120px] text-base"
-                      required
-                    />
-                  </div>
-
-                  {error && (
-                    <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 text-red-700 dark:text-red-300 rounded-lg">
-                      <p className="font-bold">Prompt Generation Error</p>
-                      <p className="text-sm">{error}</p>
-                    </div>
-                  )}
-
-                  <Button 
-                    type="submit" 
-                    className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold" 
-                    disabled={generating}
-                  >
-                    {generating ? (
-                      <>
-                        <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-                        Generating Personas from Prompt...
-                      </>
-                    ) : (
-                      <>
-                        <Wand2 className="mr-3 h-5 w-5" />
-                        Generate Personas from Prompt
-                      </>
-                    )}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          )}
         </div>
       </div>
     </div>
