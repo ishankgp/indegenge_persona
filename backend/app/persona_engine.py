@@ -2,15 +2,33 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 import json
+from typing import Optional
 
 # Load environment variables from the project root
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
-# Initialize OpenAI client after loading environment variables
-client = OpenAI()
+# Cache for the OpenAI client.  The SDK requires an API key during
+# instantiation, so we create the client lazily to avoid raising an exception
+# when the key is absent (for example in local development or during unit
+# tests).
+_openai_client: Optional[OpenAI] = None
 MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
+
+
+def get_openai_client() -> Optional[OpenAI]:
+    """Return a configured ``OpenAI`` client if an API key is available."""
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI(api_key=api_key)
+
+    return _openai_client
 
 def create_patient_persona_prompt(age, gender, condition, location, concerns):
     """Creates the exact, detailed prompt for generating a patient persona."""
@@ -46,11 +64,11 @@ def generate_persona_from_attributes(age: int, gender: str, condition: str, loca
     prompt = create_patient_persona_prompt(age, gender, condition, location, concerns)
     
     # First check if OpenAI API key is available in environment
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    client = get_openai_client()
+    if client is None:
         print("OpenAI API key not found in environment, generating mock persona")
         return generate_mock_persona(age, gender, condition, location, concerns)
-    
+
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
