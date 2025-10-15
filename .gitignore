@@ -55,9 +55,27 @@ logs/
 coverage/
 .coverage
 htmlcov/
+test_*.py
+*_test.py
 
 # Temporary files
 *.tmp
 temp/
 tmp/
 .vercel
+*.pid
+backend_uvicorn.pid
+
+# Duplicate Next.js files (using Vite in frontend/)
+/app/
+/lib/
+/components/
+/public/
+/styles/
+next.config.mjs
+tsconfig.json
+package.json
+pnpm-lock.yaml
+components.json
+vercel.json
+postcss.config.mjs

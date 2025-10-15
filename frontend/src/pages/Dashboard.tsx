@@ -204,7 +204,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent className="relative z-10">
               <div className="text-3xl font-bold bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 bg-clip-text text-transparent mb-2">
-                {loading ? "..." : `${stats.avg_response_rate || 0}%`}
+                {loading ? "..." : `${(stats.avg_response_rate || 0).toFixed(2)}%`}
               </div>
               <div className="flex items-center space-x-2">
                 <div className="flex items-center text-emerald-600 text-xs font-semibold bg-emerald-50 px-2 py-1 rounded-full">
