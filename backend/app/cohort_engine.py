@@ -16,9 +16,23 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
-# Initialize OpenAI client after loading environment variables
-client = OpenAI()
+# Initialize OpenAI client lazily to avoid requiring credentials at import time
+_openai_client: Optional[OpenAI] = None
 MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")  # Use gpt-4o for vision capabilities
+
+
+def get_openai_client() -> Optional[OpenAI]:
+    """Return a configured OpenAI client when an API key is present."""
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI(api_key=api_key)
+
+    return _openai_client
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -89,6 +103,11 @@ def _chat_json(messages: List[Dict[str, Any]], max_completion_tokens: Optional[i
     if not _validate_openai_setup():
         logger.error("❌ OpenAI setup validation failed")
         return {"error": "OpenAI API not configured properly"}
+
+    client = get_openai_client()
+    if client is None:
+        logger.error("❌ OpenAI API key missing; returning configuration error")
+        return {"error": "OpenAI API key not configured"}
     
         # Estimate prompt tokens conservatively
     prompt_text = "".join([part.get("text", "") for m in messages for part in m.get("content", []) if part.get("type") == "text"])
