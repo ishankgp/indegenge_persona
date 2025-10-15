@@ -703,17 +703,17 @@ export function SimulationHub() {
                       onChange={(e) => handleImageUpload(e.target.files)}
                       className="hidden"
                     />
-                    <label htmlFor="image-upload" className="cursor-pointer">
-                      <div className="text-center">
+                    <label htmlFor="image-upload" className="cursor-pointer block">
+                      <div className="text-center pointer-events-none">
                         <Upload className="h-12 w-12 mx-auto text-gray-400 mb-4" />
                         <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">Upload Image Ads</h3>
                         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                           Drag and drop your ad creatives here, or click to browse
                         </p>
-                        <Button type="button" variant="outline">
+                        <span className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 pointer-events-auto">
                           <Plus className="h-4 w-4 mr-2" />
                           Choose Images
-                        </Button>
+                        </span>
                       </div>
                     </label>
                   </div>

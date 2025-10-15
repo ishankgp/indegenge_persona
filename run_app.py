@@ -11,8 +11,10 @@ import time
 import socket
 import signal
 from pathlib import Path
+from dotenv import load_dotenv
 
-# Note: dotenv loading removed - pass environment variables directly
+# Load environment variables from .env file
+load_dotenv()
 
 # --- Configuration ---
 BACKEND_PORT = 8000
