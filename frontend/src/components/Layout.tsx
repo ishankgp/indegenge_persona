@@ -72,7 +72,7 @@ export function Layout() {
   }, []);
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20">
+    <div className="flex h-screen bg-gradient-to-br from-purple-50 via-violet-50/30 to-fuchsia-50/20">
       {/* Enhanced Sidebar */}
       <div className="w-72 glass border-r border-border/50 shadow-2xl">
         <div className="flex h-full flex-col">
@@ -85,13 +85,13 @@ export function Layout() {
                   <Activity className="h-7 w-7 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold text-white">PharmaPersonaSim</h1>
-                  <p className="text-blue-100 text-sm font-medium">AI-Powered Insights</p>
+                  <h1 className="text-xl font-bold text-white">Indegene PersonaSim</h1>
+                  <p className="text-purple-100 text-sm font-medium">Healthcare Intelligence</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-2 text-blue-100">
+              <div className="flex items-center space-x-2 text-purple-100">
                 <Sparkles className="h-4 w-4" />
-                <span className="text-xs font-medium">Enterprise v1.0</span>
+                <span className="text-xs font-medium">Powered by Indegene</span>
               </div>
             </div>
           </div>
@@ -132,7 +132,7 @@ export function Layout() {
                     </div>
                     <div className={cn(
                       'text-xs transition-colors',
-                      isActive ? 'text-blue-100' : 'text-muted-foreground group-hover:text-primary/70'
+                      isActive ? 'text-purple-100' : 'text-muted-foreground group-hover:text-primary/70'
                     )}>
                       {item.description}
                     </div>
@@ -159,7 +159,7 @@ export function Layout() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Transform qualitative personas into<br />quantitative pharmaceutical insights
+                Enabling healthcare organizations<br />to be future ready
               </p>
             </div>
           </div>
