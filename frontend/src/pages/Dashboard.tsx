@@ -97,12 +97,12 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <h1 className="text-4xl lg:text-6xl font-bold text-white drop-shadow-sm">Welcome Back</h1>
-                    <p className="text-blue-100 text-lg lg:text-xl font-medium drop-shadow-sm">
+                    <p className="text-purple-100 text-lg lg:text-xl font-medium drop-shadow-sm">
                       Transform qualitative personas into quantitative insights
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center space-x-6 text-blue-100">
+                <div className="flex items-center space-x-6 text-purple-100">
                   <div className="flex items-center space-x-2 bg-white/10 px-3 py-1.5 rounded-full backdrop-blur-sm">
                     <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse shadow-lg shadow-emerald-400/50"></div>
                     <span className="text-sm font-medium">Live System</span>
@@ -122,7 +122,7 @@ export default function Dashboard() {
                   <Plus className="h-4 w-4 mr-2" />
                   Create Persona
                 </Button>
-                <Button className="bg-gradient-to-r from-white to-blue-50 text-indigo-600 hover:from-blue-50 hover:to-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 font-semibold">
+                <Button className="bg-gradient-to-r from-white to-purple-50 text-purple-600 hover:from-purple-50 hover:to-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 font-semibold">
                   <Zap className="h-4 w-4 mr-2" />
                   Run Simulation
                 </Button>
@@ -181,7 +181,7 @@ export default function Dashboard() {
                 {loading ? "..." : stats.total_simulations || 0}
               </div>
               <div className="flex items-center space-x-2">
-                <div className="flex items-center text-blue-600 text-xs font-semibold bg-blue-50 px-2 py-1 rounded-full">
+                <div className="flex items-center text-purple-600 text-xs font-semibold bg-purple-50 px-2 py-1 rounded-full">
                   <Clock className="h-3 w-3 mr-1" />+{stats.monthly_simulations || 0} monthly
                 </div>
               </div>
@@ -272,7 +272,7 @@ export default function Dashboard() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="bg-white/80 hover:bg-white border-indigo-200 text-indigo-600 hover:text-indigo-700 shadow-sm hover:shadow-md transition-all duration-300"
+                    className="bg-white/80 hover:bg-white border-purple-200 text-purple-600 hover:text-purple-700 shadow-sm hover:shadow-md transition-all duration-300"
                   >
                     <Plus className="h-4 w-4 mr-1" />
                     Create
