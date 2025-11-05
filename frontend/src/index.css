@@ -4,85 +4,85 @@
 
 @layer base {
   :root {
-    /* Professional pharmaceutical color palette */
+    /* Indegene Brand Color Palette */
     --background: 0 0% 100%;
-    --foreground: 224 71.4% 4.1%;
+    --foreground: 260 30% 15%;
     --card: 0 0% 100%;
-    --card-foreground: 224 71.4% 4.1%;
+    --card-foreground: 260 30% 15%;
     --popover: 0 0% 100%;
-    --popover-foreground: 224 71.4% 4.1%;
-    
-    /* Primary: Deep teal for trust and healthcare */
-    --primary: 186 85% 22%;
-    --primary-foreground: 210 20% 98%;
-    
-    /* Secondary: Modern blue for innovation */
-    --secondary: 214 95% 45%;
-    --secondary-foreground: 210 20% 98%;
-    
-    /* Accent: Vibrant cyan for highlights */
-    --accent: 186 100% 94%;
-    --accent-foreground: 186 85% 22%;
-    
-    --muted: 220 14.3% 95.9%;
-    --muted-foreground: 220 8.9% 46.1%;
-    
+    --popover-foreground: 260 30% 15%;
+
+    /* Primary: Indegene Purple */
+    --primary: 270 50% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary: Complementary Purple */
+    --secondary: 280 45% 55%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* Accent: Light Purple for highlights */
+    --accent: 270 50% 95%;
+    --accent-foreground: 270 50% 45%;
+
+    --muted: 270 20% 96%;
+    --muted-foreground: 260 10% 45%;
+
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 20% 98%;
-    
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 186 85% 22%;
-    
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 270 15% 90%;
+    --input: 270 15% 90%;
+    --ring: 270 50% 45%;
+
     --radius: 0.75rem;
-    
-    /* Custom colors for pharmaceutical theme */
+
+    /* Custom colors for Indegene theme */
     --success: 142 76% 36%;
-    --success-foreground: 210 20% 98%;
+    --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
-    --warning-foreground: 210 20% 98%;
-    --info: 186 85% 45%;
-    --info-foreground: 210 20% 98%;
-    
-    /* Gradient colors */
-    --gradient-from: 186 85% 22%;
-    --gradient-to: 214 95% 45%;
-    --gradient-via: 200 95% 35%;
+    --warning-foreground: 0 0% 100%;
+    --info: 270 50% 55%;
+    --info-foreground: 0 0% 100%;
+
+    /* Indegene Gradient colors */
+    --gradient-from: 270 50% 45%;
+    --gradient-to: 280 45% 60%;
+    --gradient-via: 275 48% 52%;
   }
 
   .dark {
-    --background: 224 71.4% 4.1%;
-    --foreground: 210 20% 98%;
-    --card: 224 71.4% 4.1%;
-    --card-foreground: 210 20% 98%;
-    --popover: 224 71.4% 4.1%;
-    --popover-foreground: 210 20% 98%;
-    
-    --primary: 186 100% 75%;
-    --primary-foreground: 186 85% 8%;
-    
-    --secondary: 214 95% 65%;
-    --secondary-foreground: 214 95% 8%;
-    
-    --accent: 186 30% 15%;
-    --accent-foreground: 186 100% 75%;
-    
-    --muted: 215 27.9% 16.9%;
-    --muted-foreground: 217.9 10.6% 64.9%;
-    
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 20% 98%;
-    
-    --border: 215 27.9% 16.9%;
-    --input: 215 27.9% 16.9%;
-    --ring: 186 100% 75%;
-    
+    --background: 260 30% 8%;
+    --foreground: 0 0% 98%;
+    --card: 260 30% 10%;
+    --card-foreground: 0 0% 98%;
+    --popover: 260 30% 10%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 270 50% 65%;
+    --primary-foreground: 260 30% 8%;
+
+    --secondary: 280 45% 70%;
+    --secondary-foreground: 260 30% 8%;
+
+    --accent: 270 30% 20%;
+    --accent-foreground: 270 50% 75%;
+
+    --muted: 260 20% 15%;
+    --muted-foreground: 270 10% 65%;
+
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 260 20% 18%;
+    --input: 260 20% 18%;
+    --ring: 270 50% 65%;
+
     --success: 142 76% 46%;
     --success-foreground: 142 76% 8%;
     --warning: 38 92% 60%;
     --warning-foreground: 38 92% 8%;
-    --info: 186 100% 65%;
-    --info-foreground: 186 85% 8%;
+    --info: 270 50% 65%;
+    --info-foreground: 260 30% 8%;
   }
 }
 
