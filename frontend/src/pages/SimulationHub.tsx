@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { PersonasAPI, CohortAPI } from "@/lib/api"
 import { useNavigate } from "react-router-dom"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Slider } from "@/components/ui/slider"
 import {
   Users,
   Sparkles,
@@ -37,6 +39,7 @@ import {
   Upload,
   X,
   Eye,
+  Filter,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
@@ -49,45 +52,47 @@ interface Persona {
   gender: string
   condition: string
   location: string
+  persona_type: string
+  specialty?: string | null
 }
 
 const availableMetrics = [
   {
-    id: "purchase_intent",
-    label: "Purchase Intent",
-    description: "Likelihood to ask doctor about treatment",
-    icon: Target,
+    id: "emotional_response",
+    label: "Emotional Response",
+    description: "Primary emotional reaction and sentiment toward messaging",
+    icon: Brain,
     color: "text-violet-600",
     bgColor: "bg-violet-100 dark:bg-violet-900/30",
   },
   {
-    id: "sentiment",
-    label: "Sentiment Analysis",
-    description: "Emotional response to messaging",
-    icon: Brain,
+    id: "message_clarity",
+    label: "Message Clarity",
+    description: "How well they understand the key messages",
+    icon: MessageSquare,
     color: "text-blue-600",
     bgColor: "bg-blue-100 dark:bg-blue-900/30",
   },
   {
-    id: "trust_in_brand",
+    id: "brand_trust",
     label: "Brand Trust",
-    description: "Impact on brand perception",
+    description: "Credibility and trustworthiness of the message and brand",
     icon: Shield,
     color: "text-emerald-600",
     bgColor: "bg-emerald-100 dark:bg-emerald-900/30",
   },
   {
-    id: "message_clarity",
-    label: "Message Clarity",
-    description: "Understanding of key messages",
-    icon: MessageSquare,
+    id: "intent_to_action",
+    label: "Request/Prescribe Intent",
+    description: "Likelihood to request (patients) or prescribe (HCPs)",
+    icon: Target,
     color: "text-amber-600",
     bgColor: "bg-amber-100 dark:bg-amber-900/30",
   },
   {
-    id: "key_concern_flagged",
+    id: "key_concerns",
     label: "Key Concerns",
-    description: "Primary concerns identified",
+    description: "Barriers and objections identified",
     icon: AlertCircle,
     color: "text-red-600",
     bgColor: "bg-red-100 dark:bg-red-900/30",
@@ -100,11 +105,24 @@ const SAMPLE_MESSAGES = [
   "Take control of your health journey with personalized treatment plans",
 ] as const
 
+const DEFAULT_AGE_RANGE: [number, number] = [18, 100]
+const PERSONA_TYPES = ["HCP", "Patient"] as const
+
+type PersonaType = (typeof PERSONA_TYPES)[number]
+
+interface PersonaFilters {
+  ageRange: [number, number]
+  personaTypes: PersonaType[]
+  genders: string[]
+  locations: string[]
+  conditions: string[]
+}
+
 export function SimulationHub() {
   const navigate = useNavigate()
   const [personas, setPersonas] = useState<Persona[]>([])
   const [selectedPersonas, setSelectedPersonas] = useState<Set<number>>(new Set())
-  const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(new Set(["purchase_intent", "sentiment"]))
+  const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(new Set(["emotional_response", "message_clarity"]))
   const [stimulusText, setStimulusText] = useState("")
   const [stimulusImages, setStimulusImages] = useState<File[]>([])
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
@@ -113,6 +131,212 @@ export function SimulationHub() {
   const [analyzing, setAnalyzing] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [progress, setProgress] = useState(0)
+  const [filters, setFilters] = useState<PersonaFilters>({
+    ageRange: [...DEFAULT_AGE_RANGE] as [number, number],
+    personaTypes: [...PERSONA_TYPES],
+    genders: [],
+    locations: [],
+    conditions: [],
+  })
+
+  const filterOptions = useMemo(() => {
+    const genders = new Set<string>()
+    const locations = new Set<string>()
+    const conditions = new Set<string>()
+    const personaTypes = new Set<PersonaType>()
+
+    personas.forEach((persona) => {
+      const normalizedType = (persona.persona_type || "Patient").trim() as PersonaType
+      if (PERSONA_TYPES.includes(normalizedType)) {
+        personaTypes.add(normalizedType)
+      }
+      if (persona.gender) {
+        genders.add(persona.gender)
+      }
+      if (persona.location) {
+        locations.add(persona.location)
+      }
+      if (persona.condition) {
+        conditions.add(persona.condition)
+      }
+    })
+
+    return {
+      personaTypes: PERSONA_TYPES.filter((type) => personaTypes.has(type)),
+      genders: Array.from(genders).sort(),
+      locations: Array.from(locations).sort(),
+      conditions: Array.from(conditions).sort(),
+    }
+  }, [personas])
+
+  const personaTypeOptions =
+    filterOptions.personaTypes.length > 0 ? filterOptions.personaTypes : [...PERSONA_TYPES]
+
+  const personaTypeCounts = useMemo(() => {
+    return personas.reduce<Record<PersonaType, number>>(
+      (acc, persona) => {
+        const normalized = (persona.persona_type || "Patient").trim().toLowerCase()
+        if (normalized === "hcp") {
+          acc.HCP += 1
+        } else {
+          acc.Patient += 1
+        }
+        return acc
+      },
+      { HCP: 0, Patient: 0 },
+    )
+  }, [personas])
+
+  const genderCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    personas.forEach((persona) => {
+      if (!persona.gender) return
+      const key = persona.gender.trim()
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    })
+    return counts
+  }, [personas])
+
+  const locationCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    personas.forEach((persona) => {
+      if (!persona.location) return
+      const key = persona.location.trim()
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    })
+    return counts
+  }, [personas])
+
+  const conditionCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    personas.forEach((persona) => {
+      if (!persona.condition) return
+      const key = persona.condition.trim()
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    })
+    return counts
+  }, [personas])
+
+  const totalPersonas = personas.length
+
+  const isAgeRangeDefault =
+    filters.ageRange[0] === DEFAULT_AGE_RANGE[0] && filters.ageRange[1] === DEFAULT_AGE_RANGE[1]
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0
+    if (!isAgeRangeDefault) count += 1
+    if (filters.personaTypes.length > 0 && filters.personaTypes.length !== personaTypeOptions.length) count += 1
+    if (filters.genders.length > 0) count += 1
+    if (filters.locations.length > 0) count += 1
+    if (filters.conditions.length > 0) count += 1
+    return count
+  }, [filters, isAgeRangeDefault, personaTypeOptions.length])
+
+  const filterSummary = useMemo(() => {
+    const parts: string[] = []
+    if (!isAgeRangeDefault) {
+      parts.push(`Age ${filters.ageRange[0]}-${filters.ageRange[1]}`)
+    }
+    if (filters.personaTypes.length > 0 && filters.personaTypes.length !== personaTypeOptions.length) {
+      parts.push(`Type: ${filters.personaTypes.join(", ")}`)
+    }
+    if (filters.genders.length > 0) {
+      parts.push(`Gender: ${filters.genders.join(", ")}`)
+    }
+    if (filters.locations.length > 0) {
+      parts.push(`Locations: ${filters.locations.length}`)
+    }
+    if (filters.conditions.length > 0) {
+      parts.push(`Conditions: ${filters.conditions.length}`)
+    }
+    return parts.join(" • ") || "No active filters"
+  }, [filters, isAgeRangeDefault, personaTypeOptions.length])
+
+  const coveragePercent =
+    filteredPersonas.length > 0
+      ? Math.round((selectedPersonas.size / filteredPersonas.length) * 100)
+      : 0
+
+  const handleResetFilters = () => {
+    setFilters({
+      ageRange: [...DEFAULT_AGE_RANGE] as [number, number],
+      personaTypes: [...personaTypeOptions],
+      genders: [],
+      locations: [],
+      conditions: [],
+    })
+  }
+
+  const toggleFilterValue = (
+    key: "personaTypes" | "genders" | "locations" | "conditions",
+    value: string,
+  ) => {
+    setFilters((prev) => {
+      const currentValues = new Set(prev[key])
+      if (currentValues.has(value)) {
+        currentValues.delete(value)
+      } else {
+        currentValues.add(value)
+      }
+
+      return {
+        ...prev,
+        [key]: Array.from(currentValues),
+      }
+    })
+  }
+
+  const updateAgeRange = (value: number[]) => {
+    if (value.length !== 2) return
+    const [min, max] = value[0] <= value[1] ? value : [value[1], value[0]]
+    setFilters((prev) => ({
+      ...prev,
+      ageRange: [min, max] as [number, number],
+    }))
+  }
+
+  const cohortType = useMemo(() => {
+    const selectedList = personas.filter((persona) => selectedPersonas.has(persona.id))
+    if (selectedList.length === 0) {
+      return "Mixed"
+    }
+
+    let hcpCount = 0
+    let patientCount = 0
+
+    selectedList.forEach((persona) => {
+      const type = persona.persona_type?.toLowerCase()
+      if (type === "hcp") {
+        hcpCount += 1
+      } else if (type === "patient") {
+        patientCount += 1
+      }
+    })
+
+    if (hcpCount > 0 && patientCount === 0) {
+      return "HCP"
+    }
+    if (patientCount > 0 && hcpCount === 0) {
+      return "Patient"
+    }
+    return "Mixed"
+  }, [personas, selectedPersonas])
+
+  const intentLabel = useMemo(() => {
+    if (cohortType === "HCP") return "Prescribe Intent"
+    if (cohortType === "Patient") return "Request Intent"
+    return "Request/Prescribe Intent"
+  }, [cohortType])
+
+  const intentDescription = useMemo(() => {
+    if (cohortType === "HCP") {
+      return "Likelihood an HCP would prescribe after reviewing the message"
+    }
+    if (cohortType === "Patient") {
+      return "Likelihood a patient would request the therapy after seeing the message"
+    }
+    return "Likelihood to request (patients) or prescribe (HCPs) after reviewing the message"
+  }, [cohortType])
 
   useEffect(() => {
     fetchPersonas()
@@ -281,12 +505,47 @@ export function SimulationHub() {
     }
   }
 
-  const filteredPersonas = personas.filter(
-    (persona) =>
-      persona.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      persona.condition.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      persona.location.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  const filteredPersonas = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase()
+
+    return personas.filter((persona) => {
+      const normalizedPersonaType = (persona.persona_type || "Patient").trim().toLowerCase()
+      const normalizedGender = (persona.gender || "").trim().toLowerCase()
+      const normalizedLocation = (persona.location || "").trim().toLowerCase()
+      const normalizedCondition = (persona.condition || "").trim().toLowerCase()
+
+      const matchesSearch =
+        term.length === 0 ||
+        persona.name.toLowerCase().includes(term) ||
+        normalizedCondition.includes(term) ||
+        normalizedLocation.includes(term)
+
+      if (!matchesSearch) {
+        return false
+      }
+
+      const [minAge, maxAge] = filters.ageRange
+      const matchesAge = persona.age >= minAge && persona.age <= maxAge
+
+      const matchesPersonaType =
+        filters.personaTypes.length === 0 ||
+        filters.personaTypes.some((type) => type.toLowerCase() === normalizedPersonaType)
+
+      const matchesGender =
+        filters.genders.length === 0 ||
+        filters.genders.some((gender) => gender.trim().toLowerCase() === normalizedGender)
+
+      const matchesLocation =
+        filters.locations.length === 0 ||
+        filters.locations.some((location) => location.trim().toLowerCase() === normalizedLocation)
+
+      const matchesCondition =
+        filters.conditions.length === 0 ||
+        filters.conditions.some((condition) => condition.trim().toLowerCase() === normalizedCondition)
+
+      return matchesAge && matchesPersonaType && matchesGender && matchesLocation && matchesCondition
+    })
+  }, [filters, personas, searchTerm])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
@@ -408,143 +667,393 @@ export function SimulationHub() {
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {/* Search and Action Bar */}
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="relative flex-1 max-w-md">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        type="text"
-                        placeholder="Search personas by name, condition, or location..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10"
-                      />
+                <div className="flex flex-col gap-6 lg:flex-row">
+                  <div className="flex-1 space-y-4">
+                    {/* Search and Action Bar */}
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                      <div className="relative flex-1 max-w-md">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          type="text"
+                          placeholder="Search personas by name, condition, or location..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="pl-10"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedPersonas(new Set(filteredPersonas.map((p) => p.id)))}
+                          className="border-violet-300 text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-900/30"
+                        >
+                          <CheckCircle2 className="h-4 w-4 mr-1" />
+                          Select All
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedPersonas(new Set())}
+                          className="border-gray-300"
+                        >
+                          Clear All
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedPersonas(new Set(filteredPersonas.map((p) => p.id)))}
-                        className="border-violet-300 text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-900/30"
-                      >
-                        <CheckCircle2 className="h-4 w-4 mr-1" />
-                        Select All
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedPersonas(new Set())}
-                        className="border-gray-300"
-                      >
-                        Clear All
-                      </Button>
-                    </div>
-                  </div>
 
-                  {/* Stats Bar */}
-                  <div className="grid grid-cols-4 gap-3">
-                    <div className="bg-gradient-to-r from-violet-50 to-violet-100 dark:from-violet-950/30 dark:to-violet-900/30 rounded-lg p-3">
-                      <p className="text-xs text-violet-600 dark:text-violet-400">Total Available</p>
-                      <p className="text-xl font-bold text-violet-900 dark:text-violet-100">
-                        {filteredPersonas.length}
-                      </p>
-                    </div>
-                    <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/30 rounded-lg p-3">
-                      <p className="text-xs text-blue-600 dark:text-blue-400">Selected</p>
-                      <p className="text-xl font-bold text-blue-900 dark:text-blue-100">{selectedPersonas.size}</p>
-                    </div>
-                    <div className="bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/30 rounded-lg p-3">
-                      <p className="text-xs text-emerald-600 dark:text-emerald-400">Coverage</p>
-                      <p className="text-xl font-bold text-emerald-900 dark:text-emerald-100">
-                        {filteredPersonas.length > 0
-                          ? Math.round((selectedPersonas.size / filteredPersonas.length) * 100)
-                          : 0}
-                        %
-                      </p>
-                    </div>
-                    <div className="bg-gradient-to-r from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/30 rounded-lg p-3">
-                      <p className="text-xs text-amber-600 dark:text-amber-400">Conditions</p>
-                      <p className="text-xl font-bold text-amber-900 dark:text-amber-100">
-                        {
-                          new Set(filteredPersonas.filter((p) => selectedPersonas.has(p.id)).map((p) => p.condition))
-                            .size
-                        }
-                      </p>
-                    </div>
-                  </div>
+                    {/* Stats Bar */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-lg border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4 shadow-sm dark:border-violet-900/40 dark:from-violet-950/20 dark:to-gray-900">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+                          All Personas
+                        </p>
+                        <div className="mt-1 flex items-end justify-between">
+                          <p className="text-2xl font-bold text-violet-900 dark:text-violet-100">{totalPersonas}</p>
+                          <Badge className="bg-violet-500/20 text-violet-600 dark:bg-violet-900/40 dark:text-violet-200">
+                            Dataset
+                          </Badge>
+                        </div>
+                        <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                          Total personas available in your library.
+                        </p>
+                      </div>
 
-                  {/* Personas Table */}
-                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                    <div className="max-h-96 overflow-y-auto">
-                      <table className="w-full">
-                        <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
-                          <tr>
-                            <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                              <Checkbox
-                                checked={
-                                  filteredPersonas.length > 0 &&
-                                  filteredPersonas.every((p) => selectedPersonas.has(p.id))
-                                }
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setSelectedPersonas(new Set(filteredPersonas.map((p) => p.id)))
-                                  } else {
-                                    setSelectedPersonas(new Set())
-                                  }
-                                }}
-                              />
-                            </th>
-                            <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Name</th>
-                            <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Age</th>
-                            <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                              Gender
-                            </th>
-                            <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                              Condition
-                            </th>
-                            <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                              Location
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                          {filteredPersonas.map((persona) => (
-                            <tr
-                              key={persona.id}
-                              className={`hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer ${
-                                selectedPersonas.has(persona.id) ? "bg-violet-50 dark:bg-violet-900/20" : ""
-                              }`}
-                              onClick={() => togglePersona(persona.id)}
-                            >
-                              <td className="p-4">
+                      <div className="rounded-lg border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm dark:border-blue-900/40 dark:from-blue-950/20 dark:to-gray-900">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-300">
+                          Filtered Cohort
+                        </p>
+                        <div className="mt-1 flex items-end justify-between">
+                          <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                            {filteredPersonas.length}
+                          </p>
+                          <span className="text-xs text-blue-600/80 dark:text-blue-300/80">
+                            of {totalPersonas}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                          Personas matching your current filters.
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm dark:border-emerald-900/40 dark:from-emerald-950/20 dark:to-gray-900">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-300">
+                          Selected Personas
+                        </p>
+                        <div className="mt-1 flex items-end justify-between">
+                          <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">
+                            {selectedPersonas.size}
+                          </p>
+                          <span className="text-xs text-emerald-600/80 dark:text-emerald-300/80">
+                            {coveragePercent}%
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                          Coverage of filtered cohort selected for simulation.
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 shadow-sm dark:border-amber-900/40 dark:from-amber-950/20 dark:to-gray-900">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-300">
+                          Active Filters
+                        </p>
+                        <div className="mt-1 flex items-end justify-between">
+                          <p className="text-2xl font-bold text-amber-900 dark:text-amber-100">{activeFiltersCount}</p>
+                          <span className="text-xs text-amber-600/80 dark:text-amber-300/80">in play</span>
+                        </div>
+                        <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">{filterSummary}</p>
+                      </div>
+                    </div>
+
+                    {/* Personas Table */}
+                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                      <div className="max-h-96 overflow-y-auto">
+                        <table className="w-full">
+                          <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
+                            <tr>
+                              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
                                 <Checkbox
-                                  checked={selectedPersonas.has(persona.id)}
-                                  onChange={() => togglePersona(persona.id)}
-                                  onClick={(e) => e.stopPropagation()}
+                                  checked={
+                                    filteredPersonas.length > 0 &&
+                                    filteredPersonas.every((p) => selectedPersonas.has(p.id))
+                                  }
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedPersonas(new Set(filteredPersonas.map((p) => p.id)))
+                                    } else {
+                                      setSelectedPersonas(new Set())
+                                    }
+                                  }}
                                 />
-                              </td>
-                              <td className="p-4">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-xs font-bold">
-                                    {persona.name.charAt(0)}
-                                  </div>
-                                  <span className="font-medium text-gray-900 dark:text-gray-100">{persona.name}</span>
-                                </div>
-                              </td>
-                              <td className="p-4 text-sm text-gray-600 dark:text-gray-400">{persona.age}</td>
-                              <td className="p-4 text-sm text-gray-600 dark:text-gray-400">{persona.gender}</td>
-                              <td className="p-4">
-                                <Badge variant="outline" className="text-xs">
-                                  {persona.condition}
-                                </Badge>
-                              </td>
-                              <td className="p-4 text-sm text-gray-600 dark:text-gray-400">{persona.location}</td>
+                              </th>
+                              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Name</th>
+                              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Type</th>
+                              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Age</th>
+                              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Gender
+                              </th>
+                              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Condition
+                              </th>
+                              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Location
+                              </th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                            {filteredPersonas.map((persona) => {
+                              const isHCP = (persona.persona_type || "").trim().toLowerCase() === "hcp"
+                              const personaTypeLabel = isHCP ? "HCP" : "Patient"
+
+                              return (
+                                <tr
+                                  key={persona.id}
+                                  className={`hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer ${
+                                    selectedPersonas.has(persona.id) ? "bg-violet-50 dark:bg-violet-900/20" : ""
+                                  }`}
+                                  onClick={() => togglePersona(persona.id)}
+                                >
+                                <td className="p-4">
+                                  <Checkbox
+                                    checked={selectedPersonas.has(persona.id)}
+                                    onChange={() => togglePersona(persona.id)}
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                </td>
+                                <td className="p-4">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-xs font-bold">
+                                      {persona.name.charAt(0)}
+                                    </div>
+                                    <span className="font-medium text-gray-900 dark:text-gray-100">{persona.name}</span>
+                                  </div>
+                                </td>
+                                <td className="p-4">
+                                  <Badge
+                                    variant="secondary"
+                                    className={
+                                      isHCP
+                                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
+                                        : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
+                                    }
+                                  >
+                                    {personaTypeLabel}
+                                  </Badge>
+                                </td>
+                                <td className="p-4 text-sm text-gray-600 dark:text-gray-400">{persona.age}</td>
+                                <td className="p-4 text-sm text-gray-600 dark:text-gray-400">{persona.gender}</td>
+                                <td className="p-4">
+                                  <Badge variant="outline" className="text-xs">
+                                    {persona.condition}
+                                  </Badge>
+                                </td>
+                                <td className="p-4 text-sm text-gray-600 dark:text-gray-400">{persona.location}</td>
+                              </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
+                  </div>
+
+                  {/* Filters Sidebar */}
+                  <div className="w-full lg:w-80 xl:w-96">
+                    <Card className="border border-violet-200/60 shadow-lg backdrop-blur-sm bg-white/95 dark:bg-gray-900/80 dark:border-violet-900/40">
+                      <CardHeader className="pb-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="rounded-lg bg-gradient-to-br from-violet-500 to-purple-500 p-2 text-white">
+                              <Filter className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <CardTitle className="text-lg">Recruitment Filters</CardTitle>
+                              <CardDescription>Refine personas by demographics and attributes</CardDescription>
+                            </div>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-6">
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Age Range</Label>
+                            <span className="text-sm font-semibold text-primary">
+                              {filters.ageRange[0]} - {filters.ageRange[1]}
+                            </span>
+                          </div>
+                          <div className="mt-4">
+                            <Slider
+                              value={filters.ageRange}
+                              onValueChange={updateAgeRange}
+                              min={DEFAULT_AGE_RANGE[0]}
+                              max={DEFAULT_AGE_RANGE[1]}
+                              step={1}
+                            />
+                            <div className="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                              <span>{DEFAULT_AGE_RANGE[0]}</span>
+                              <span>{DEFAULT_AGE_RANGE[1]}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <Separator />
+
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Persona Type</Label>
+                          <div className="mt-3 space-y-2">
+                            {personaTypeOptions.map((type) => {
+                              const count = personaTypeCounts[type as PersonaType] ?? 0
+                              const checked = filters.personaTypes.includes(type)
+                              return (
+                                <label
+                                  key={type}
+                                  className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 shadow-sm transition hover:border-violet-300 dark:border-gray-700 dark:bg-gray-900/60 dark:hover:border-violet-700"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <Checkbox
+                                      checked={checked}
+                                      onChange={() => toggleFilterValue("personaTypes", type)}
+                                      className="border-gray-300"
+                                    />
+                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{type}</span>
+                                  </div>
+                                  <Badge
+                                    variant="secondary"
+                                    className="ml-auto bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200"
+                                  >
+                                    {count}
+                                  </Badge>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Gender</Label>
+                          <div className="mt-3 space-y-2">
+                            {filterOptions.genders.map((gender) => {
+                              const count = genderCounts.get(gender) ?? 0
+                              const checked = filters.genders.includes(gender)
+                              return (
+                                <label
+                                  key={gender}
+                                  className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 shadow-sm transition hover:border-violet-300 dark:border-gray-700 dark:bg-gray-900/60 dark:hover:border-violet-700"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <Checkbox
+                                      checked={checked}
+                                      onChange={() => toggleFilterValue("genders", gender)}
+                                      className="border-gray-300"
+                                    />
+                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{gender}</span>
+                                  </div>
+                                  <Badge
+                                    variant="secondary"
+                                    className="ml-auto bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200"
+                                  >
+                                    {count}
+                                  </Badge>
+                                </label>
+                              )
+                            })}
+                            {filterOptions.genders.length === 0 && (
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                No gender attributes available for current personas.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Location</Label>
+                          <ScrollArea className="mt-3 h-40 pr-1">
+                            <div className="space-y-2">
+                              {filterOptions.locations.map((location) => {
+                                const count = locationCounts.get(location) ?? 0
+                                const checked = filters.locations.includes(location)
+                                return (
+                                  <label
+                                    key={location}
+                                    className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 shadow-sm transition hover:border-violet-300 dark:border-gray-700 dark:bg-gray-900/60 dark:hover:border-violet-700"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <Checkbox
+                                        checked={checked}
+                                        onChange={() => toggleFilterValue("locations", location)}
+                                        className="border-gray-300"
+                                      />
+                                      <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                        {location}
+                                      </span>
+                                    </div>
+                                    <Badge
+                                      variant="secondary"
+                                      className="ml-auto bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200"
+                                    >
+                                      {count}
+                                    </Badge>
+                                  </label>
+                                )
+                              })}
+                              {filterOptions.locations.length === 0 && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  No location data available for current personas.
+                                </p>
+                              )}
+                            </div>
+                          </ScrollArea>
+                        </div>
+
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Condition</Label>
+                          <ScrollArea className="mt-3 h-40 pr-1">
+                            <div className="space-y-2">
+                              {filterOptions.conditions.map((condition) => {
+                                const count = conditionCounts.get(condition) ?? 0
+                                const checked = filters.conditions.includes(condition)
+                                return (
+                                  <label
+                                    key={condition}
+                                    className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 shadow-sm transition hover:border-violet-300 dark:border-gray-700 dark:bg-gray-900/60 dark:hover:border-violet-700"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <Checkbox
+                                        checked={checked}
+                                        onChange={() => toggleFilterValue("conditions", condition)}
+                                        className="border-gray-300"
+                                      />
+                                      <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                        {condition}
+                                      </span>
+                                    </div>
+                                    <Badge
+                                      variant="secondary"
+                                      className="ml-auto bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200"
+                                    >
+                                      {count}
+                                    </Badge>
+                                  </label>
+                                )
+                              })}
+                              {filterOptions.conditions.length === 0 && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  No condition data available for current personas.
+                                </p>
+                              )}
+                            </div>
+                          </ScrollArea>
+                        </div>
+
+                        <Button
+                          variant="outline"
+                          className="w-full border-dashed border-violet-300 text-violet-700 transition hover:bg-violet-50 dark:border-violet-800 dark:text-violet-200 dark:hover:bg-violet-900/40"
+                          onClick={handleResetFilters}
+                        >
+                          Reset Filters
+                        </Button>
+                      </CardContent>
+                    </Card>
                   </div>
                 </div>
               )}
@@ -767,6 +1276,8 @@ export function SimulationHub() {
                 <div className="grid gap-3 md:grid-cols-2">
                   {availableMetrics.map((metric) => {
                     const isSelected = selectedMetrics.has(metric.id)
+                    const label = metric.id === "intent_to_action" ? intentLabel : metric.label
+                    const description = metric.id === "intent_to_action" ? intentDescription : metric.description
                     return (
                       <div
                         key={metric.id}
@@ -790,10 +1301,10 @@ export function SimulationHub() {
                             </div>
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <span className="font-medium text-gray-900 dark:text-gray-100">{metric.label}</span>
+                                <span className="font-medium text-gray-900 dark:text-gray-100">{label}</span>
                                 {isSelected && <CheckCircle2 className="h-4 w-4 text-primary" />}
                               </div>
-                              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{metric.description}</p>
+                              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{description}</p>
                             </div>
                           </div>
                         </div>

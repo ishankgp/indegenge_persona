@@ -15,9 +15,9 @@ def build_personas() -> List[Dict[str, str]]:
 
     personas = [
         {
-            "name": "Dr. Michael Chen",
+            "name": "Essential HCP",
             "persona_type": "HCP",
-            "persona_subtype": "Dr. Michael Chen",
+            "persona_subtype": "Essential",
             "tagline": "Minimalist, rep-only, no time for fluff.",
             "age": 49,
             "gender": "Male",
@@ -92,9 +92,9 @@ def build_personas() -> List[Dict[str, str]]:
             },
         },
         {
-            "name": "Dr. Anita Rao",
+            "name": "Traditionalist HCP",
             "persona_type": "HCP",
-            "persona_subtype": "Dr. Anita Rao",
+            "persona_subtype": "Traditionalist",
             "tagline": "Rep-first, relationship-driven, pragmatic prescriber.",
             "age": 55,
             "gender": "Female",
@@ -165,9 +165,9 @@ def build_personas() -> List[Dict[str, str]]:
             },
         },
         {
-            "name": "Dr. Elena Petrova",
+            "name": "Seeker HCP",
             "persona_type": "HCP",
-            "persona_subtype": "Dr. Elena Petrova",
+            "persona_subtype": "Seeker",
             "tagline": "Data-hungry, hybrid, open to being convinced.",
             "age": 38,
             "gender": "Female",
@@ -238,9 +238,9 @@ def build_personas() -> List[Dict[str, str]]:
             },
         },
         {
-            "name": "Dr. Luis Martinez",
+            "name": "Constrained HCP",
             "persona_type": "HCP",
-            "persona_subtype": "Dr. Luis Martinez",
+            "persona_subtype": "Constrained",
             "tagline": "Wants to engage, blocked by system, admin, or context.",
             "age": 42,
             "gender": "Male",
@@ -311,9 +311,9 @@ def build_personas() -> List[Dict[str, str]]:
             },
         },
         {
-            "name": "Dr. Sara Nilsson",
+            "name": "Enthusiast HCP",
             "persona_type": "HCP",
-            "persona_subtype": "Dr. Sara Nilsson",
+            "persona_subtype": "Enthusiast",
             "tagline": "Digital-native, omni-engaged, influence amplifier.",
             "age": 34,
             "gender": "Female",
@@ -394,7 +394,10 @@ def populate_personas(session: Session) -> None:
     for persona_data in personas:
         existing = (
             session.query(models.Persona)
-            .filter(models.Persona.name == persona_data["name"])
+            .filter(
+                (models.Persona.name == persona_data["name"])
+                | (models.Persona.persona_subtype == persona_data["persona_subtype"])
+            )
             .first()
         )
 

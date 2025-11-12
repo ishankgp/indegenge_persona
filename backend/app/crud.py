@@ -80,8 +80,8 @@ def create_cohort_simulation(db: Session, persona_ids: list, stimulus_text: str,
     response_rates = []
     for response in results.get('individual_responses', []):
         # Calculate a response rate based on purchase intent (normalized to 0-100)
-        if 'purchase_intent' in response.get('responses', {}):
-            response_rates.append(response['responses']['purchase_intent'] * 10)  # Convert 1-10 to 10-100
+        if 'intent_to_action' in response.get('responses', {}):
+            response_rates.append(response['responses']['intent_to_action'] * 10)  # Convert 1-10 to 10-100
     
     avg_response_rate = sum(response_rates) / len(response_rates) if response_rates else 0
     
