@@ -11,6 +11,16 @@ class PersonaBase(BaseModel):
     condition: str
     location: str
     full_persona_json: str
+    persona_subtype: Optional[str] = None
+    tagline: Optional[str] = None
+    specialty: Optional[str] = None
+    practice_setup: Optional[str] = None
+    system_context: Optional[str] = None
+    decision_influencers: Optional[str] = None
+    adherence_to_protocols: Optional[str] = None
+    channel_use: Optional[str] = None
+    decision_style: Optional[str] = None
+    core_insight: Optional[str] = None
 
 class PersonaCreate(BaseModel):
     # This schema is for the input data to the generation endpoint
