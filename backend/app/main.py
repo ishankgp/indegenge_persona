@@ -182,8 +182,9 @@ async def create_manual_persona(manual_data: dict, db: Session = Depends(get_db)
             "demographics": manual_data.get("demographics", {}),
             "medical_background": manual_data.get("medical_background", ""),
             "lifestyle_and_values": manual_data.get("lifestyle_and_values", ""),
-            "pain_points": [point for point in manual_data.get("pain_points", []) if point.strip()],
             "motivations": [motivation for motivation in manual_data.get("motivations", []) if motivation.strip()],
+            "beliefs": [belief for belief in manual_data.get("beliefs", []) if belief.strip()],
+            "pain_points": [point for point in manual_data.get("pain_points", []) if point.strip()],
             "communication_preferences": manual_data.get("communication_preferences", {})
         }
         

@@ -48,6 +48,7 @@ export function CreatePersona() {
     lifestyle_and_values: "",
     pain_points: ["", "", "", ""],
     motivations: ["", "", "", ""],
+    beliefs: ["", "", "", ""],
     communication_preferences: {
       preferred_channels: "",
       information_style: "",
@@ -107,7 +108,7 @@ export function CreatePersona() {
     })
   }
 
-  const handleArrayInputChange = (field: 'pain_points' | 'motivations', index: number, value: string) => {
+  const handleArrayInputChange = (field: 'pain_points' | 'motivations' | 'beliefs', index: number, value: string) => {
     setManualFormData(prev => ({
       ...prev,
       [field]: prev[field].map((item, i) => i === index ? value : item)
@@ -160,8 +161,9 @@ export function CreatePersona() {
         },
         medical_background: manualFormData.medical_background,
         lifestyle_and_values: manualFormData.lifestyle_and_values,
-        pain_points: manualFormData.pain_points.filter(p => p.trim() !== ''),
         motivations: manualFormData.motivations.filter(m => m.trim() !== ''),
+        beliefs: manualFormData.beliefs.filter(b => b.trim() !== ''),
+        pain_points: manualFormData.pain_points.filter(p => p.trim() !== ''),
         communication_preferences: manualFormData.communication_preferences
       }
 
@@ -180,6 +182,7 @@ export function CreatePersona() {
         lifestyle_and_values: "",
         pain_points: ["", "", "", ""],
         motivations: ["", "", "", ""],
+      beliefs: ["", "", "", ""],
         communication_preferences: {
           preferred_channels: "",
           information_style: "",
@@ -520,6 +523,9 @@ export function CreatePersona() {
 
                     <div>
                       <Label>Pain Points</Label>
+                      <p className="text-sm text-gray-500 mt-1 mb-2">
+                        What obstacles or challenges stand in their way?
+                      </p>
                       <div className="space-y-2 mt-1">
                         {manualFormData.pain_points.map((point, index) => (
                           <Input
@@ -534,6 +540,9 @@ export function CreatePersona() {
 
                     <div>
                       <Label>Motivations</Label>
+                      <p className="text-sm text-gray-500 mt-1 mb-2">
+                        What goals do they want to achieve?
+                      </p>
                       <div className="space-y-2 mt-1">
                         {manualFormData.motivations.map((motivation, index) => (
                           <Input
@@ -541,6 +550,23 @@ export function CreatePersona() {
                             value={motivation}
                             onChange={(e) => handleArrayInputChange('motivations', index, e.target.value)}
                             placeholder={`Motivation ${index + 1}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>Beliefs</Label>
+                      <p className="text-sm text-gray-500 mt-1 mb-2">
+                        What core convictions drive their behavior and decisions?
+                      </p>
+                      <div className="space-y-2 mt-1">
+                        {manualFormData.beliefs.map((belief, index) => (
+                          <Input
+                            key={index}
+                            value={belief}
+                            onChange={(e) => handleArrayInputChange('beliefs', index, e.target.value)}
+                            placeholder={`Belief ${index + 1}`}
                           />
                         ))}
                       </div>

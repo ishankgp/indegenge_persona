@@ -50,8 +50,9 @@ def create_patient_persona_prompt(age, gender, condition, location, concerns):
     - "demographics": An object with "age", "gender", "location", and "occupation".
     - "medical_background": A brief, narrative summary of their diagnosis and treatment history for the specified condition.
     - "lifestyle_and_values": A paragraph describing their daily life, hobbies, family situation, and what they value most.
-    - "pain_points": An array of 3-5 specific challenges they face related to their condition.
     - "motivations": An array of 3-5 goals or desires related to managing their health.
+    - "beliefs": An array of 3-5 core convictions or assumptions they hold about their condition, treatment, or healthcare system.
+    - "pain_points": An array of 3-5 specific challenges they face related to their condition.
     - "communication_preferences": An object describing how they prefer to receive health information.
     """
     return prompt
@@ -132,6 +133,11 @@ def generate_mock_persona(age: int, gender: str, condition: str, location: str, 
                 "Learning about new diabetes management technologies",
                 "Building confidence in self-management skills"
             ],
+            "beliefs": [
+                "Advanced glucose monitoring technology can help maintain better control",
+                "Collaboration with healthcare providers leads to better outcomes",
+                "Consistent lifestyle choices are vital for preventing complications"
+            ],
             "medical_bg": "Diagnosed with Type 2 diabetes 3 years ago. Initially managed with metformin, recently added SGLT2 inhibitor. Regular A1C monitoring shows gradual improvement."
         },
         "hypertension": {
@@ -147,6 +153,11 @@ def generate_mock_persona(age: int, gender: str, condition: str, location: str, 
                 "Maintaining an active lifestyle without restrictions",
                 "Setting a good health example for family"
             ],
+            "beliefs": [
+                "Stress management has a direct impact on blood pressure control",
+                "Medication adherence is essential even when symptoms are not noticeable",
+                "Lifestyle adjustments can reduce reliance on additional medications"
+            ],
             "medical_bg": "Diagnosed with essential hypertension 2 years ago. Currently on ACE inhibitor with good blood pressure control. Regular monitoring at home."
         },
         "default": {
@@ -161,6 +172,11 @@ def generate_mock_persona(age: int, gender: str, condition: str, location: str, 
                 "Maintaining quality of life",
                 "Staying informed about latest treatments",
                 "Building strong healthcare relationships"
+            ],
+            "beliefs": [
+                "Proactive communication with clinicians leads to better care decisions",
+                "Personal research complements physician guidance",
+                "Small, consistent changes create meaningful health improvements"
             ],
             "medical_bg": f"Recently diagnosed with {condition}. Working closely with healthcare team to develop effective treatment plan."
         }
@@ -184,8 +200,9 @@ def generate_mock_persona(age: int, gender: str, condition: str, location: str, 
         },
         "medical_background": data["medical_bg"],
         "lifestyle_and_values": f"Lives in {location} and works as a {occupation}. Values family time and maintaining good health. Enjoys staying active and informed about health topics. Prioritizes open communication with healthcare providers and appreciates evidence-based treatment approaches.",
-        "pain_points": data["pain_points"],
         "motivations": data["motivations"],
+        "beliefs": data["beliefs"],
+        "pain_points": data["pain_points"],
         "communication_preferences": {
             "preferred_channels": "Healthcare provider discussions, reputable medical websites, patient education materials",
             "information_style": "Clear, factual explanations with practical applications",
