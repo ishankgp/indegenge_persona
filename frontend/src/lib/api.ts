@@ -38,7 +38,7 @@ api.interceptors.request.use(
       dataType: config.data instanceof FormData ? 'FormData' : typeof config.data,
       timestamp: new Date().toISOString()
     });
-    
+
     if (config.data instanceof FormData) {
       console.log('📤 FormData contents:');
       for (const [key, value] of config.data.entries()) {
@@ -51,7 +51,7 @@ api.interceptors.request.use(
     } else if (config.data) {
       console.log('📤 Request body:', config.data);
     }
-    
+
     return config;
   },
   (error) => {
@@ -72,14 +72,14 @@ api.interceptors.response.use(
       dataSize: JSON.stringify(response.data).length,
       timestamp: new Date().toISOString()
     });
-    
+
     if (response.data) {
       console.log('📥 Response data keys:', Object.keys(response.data));
       if (response.data.individual_responses) {
         console.log('📥 Individual responses count:', response.data.individual_responses.length);
       }
     }
-    
+
     return response;
   },
   async (error) => {
@@ -91,7 +91,7 @@ api.interceptors.response.use(
       responseData: error.response?.data,
       timestamp: new Date().toISOString()
     });
-    
+
     // Simple exponential backoff retry for idempotent GET requests only
     const config: any = error.config;
     if (config && config.method === 'get') {
@@ -104,7 +104,7 @@ api.interceptors.response.use(
         return api(config);
       }
     }
-    
+
     return Promise.reject(error);
   }
 );
@@ -125,7 +125,8 @@ export const PersonasAPI = {
   list: () => api.get('/personas/').then(r => r.data),
   generate: (payload: any) => api.post('/personas/generate', payload).then(r => r.data),
   createManual: (payload: any) => api.post('/personas/manual', payload).then(r => r.data),
-  delete: (id: number) => api.delete(`/personas/${id}`)
+  delete: (id: number) => api.delete(`/personas/${id}`),
+  recruit: (prompt: string) => api.post('/personas/recruit', { prompt }).then(r => r.data)
 };
 
 export const CohortAPI = {
@@ -220,10 +221,10 @@ export interface CRMImportResult {
 }
 
 export const VeevaCRMAPI = {
-  getConnectionStatus: (): Promise<CRMConnectionStatus> => 
+  getConnectionStatus: (): Promise<CRMConnectionStatus> =>
     api.get('/crm/connection-status').then(r => r.data),
-  
-  getHCPProfiles: (specialty?: string, tier?: string): Promise<{ 
+
+  getHCPProfiles: (specialty?: string, tier?: string): Promise<{
     profiles: HCPProfile[];
     total_count: number;
     filtered_by: { specialty?: string; tier?: string };
@@ -235,10 +236,10 @@ export const VeevaCRMAPI = {
     const query = params.toString();
     return api.get(`/crm/hcp-profiles${query ? `?${query}` : ''}`).then(r => r.data);
   },
-  
+
   importPersonas: (selectedNPIs: string[], options: any = {}): Promise<CRMImportResult> =>
-    api.post('/crm/import-personas', { 
-      selected_npis: selectedNPIs, 
-      options 
+    api.post('/crm/import-personas', {
+      selected_npis: selectedNPIs,
+      options
     }).then(r => r.data)
 };

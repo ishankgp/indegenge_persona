@@ -42,6 +42,18 @@ class Persona(PersonaBase):
     class Config:
         from_attributes = True
 
+class PersonaSearchRequest(BaseModel):
+    prompt: str
+
+class PersonaSearchFilters(BaseModel):
+    age_min: Optional[int] = None
+    age_max: Optional[int] = None
+    gender: Optional[str] = None
+    condition: Optional[str] = None
+    location: Optional[str] = None
+    persona_type: Optional[str] = None
+    limit: int = 10
+
 # Cohort Analysis Schemas
 class CohortAnalysisRequest(BaseModel):
     persona_ids: List[int]

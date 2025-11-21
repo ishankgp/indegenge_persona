@@ -219,6 +219,27 @@ async def get_all_personas(skip: int = 0, limit: int = 100, db: Session = Depend
     personas = crud.get_personas(db, skip=skip, limit=limit)
     return personas
 
+@app.post("/personas/recruit", response_model=List[schemas.Persona])
+async def recruit_personas(request: schemas.PersonaSearchRequest, db: Session = Depends(get_db)):
+    """
+    Recruit personas based on a natural language prompt.
+    """
+    # 1. Parse the prompt into structured filters
+    filters_dict = persona_engine.parse_recruitment_prompt(request.prompt)
+    
+    # 2. Convert to Pydantic model
+    try:
+        filters = schemas.PersonaSearchFilters(**filters_dict)
+    except Exception as e:
+        # If parsing fails or returns empty, default to basic search or empty
+        logger.warning(f"Failed to parse filters from prompt: {e}")
+        filters = schemas.PersonaSearchFilters()
+
+    # 3. Search the database
+    personas = crud.search_personas(db, filters)
+    
+    return personas
+
 @app.head("/personas/")
 async def head_personas(db: Session = Depends(get_db)):
     """Lightweight HEAD endpoint to allow health probes without transferring payload."""
