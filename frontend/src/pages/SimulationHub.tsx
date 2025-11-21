@@ -252,11 +252,6 @@ export function SimulationHub() {
     return parts.join(" • ") || "No active filters"
   }, [filters, isAgeRangeDefault, personaTypeOptions.length])
 
-  const coveragePercent =
-    filteredPersonas.length > 0
-      ? Math.round((selectedPersonas.size / filteredPersonas.length) * 100)
-      : 0
-
   const handleResetFilters = () => {
     setFilters({
       ageRange: [...DEFAULT_AGE_RANGE] as [number, number],
@@ -546,6 +541,11 @@ export function SimulationHub() {
       return matchesAge && matchesPersonaType && matchesGender && matchesLocation && matchesCondition
     })
   }, [filters, personas, searchTerm])
+
+  const coveragePercent =
+    filteredPersonas.length > 0
+      ? Math.round((selectedPersonas.size / filteredPersonas.length) * 100)
+      : 0
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
