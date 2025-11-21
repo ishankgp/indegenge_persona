@@ -26,6 +26,7 @@ backend/app/__pycache__/
 
 # Environment variables
 .env
+*.env
 .env.local
 .env.production
 
