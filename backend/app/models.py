@@ -46,3 +46,21 @@ class SavedSimulation(Base):
     name = Column(String, index=True, unique=True)
     simulation_data = Column(JSON)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Brand(Base):
+    __tablename__ = "brands"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, unique=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class BrandDocument(Base):
+    __tablename__ = "brand_documents"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    brand_id = Column(Integer, index=True)
+    filename = Column(String)
+    filepath = Column(String)
+    category = Column(String)
+    summary = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

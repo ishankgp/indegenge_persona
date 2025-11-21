@@ -101,3 +101,34 @@ class SavedSimulation(SavedSimulationBase):
 
     class Config:
         from_attributes = True
+
+# Brand Library Schemas
+class BrandBase(BaseModel):
+    name: str
+
+class BrandCreate(BrandBase):
+    pass
+
+class Brand(BrandBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class BrandDocumentBase(BaseModel):
+    brand_id: int
+    filename: str
+    category: str
+    summary: Optional[str] = None
+
+class BrandDocumentCreate(BrandDocumentBase):
+    filepath: str
+
+class BrandDocument(BrandDocumentBase):
+    id: int
+    filepath: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

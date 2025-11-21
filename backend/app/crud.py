@@ -156,3 +156,24 @@ def delete_saved_simulation(db: Session, simulation_id: int):
         db.commit()
         return True
     return False
+
+# CRUD for Brand Library
+def create_brand(db: Session, brand: schemas.BrandCreate):
+    db_brand = models.Brand(name=brand.name)
+    db.add(db_brand)
+    db.commit()
+    db.refresh(db_brand)
+    return db_brand
+
+def get_brands(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.Brand).offset(skip).limit(limit).all()
+
+def create_brand_document(db: Session, document: schemas.BrandDocumentCreate):
+    db_document = models.BrandDocument(**document.dict())
+    db.add(db_document)
+    db.commit()
+    db.refresh(db_document)
+    return db_document
+
+def get_brand_documents(db: Session, brand_id: int):
+    return db.query(models.BrandDocument).filter(models.BrandDocument.brand_id == brand_id).all()
