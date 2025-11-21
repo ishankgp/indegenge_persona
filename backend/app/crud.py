@@ -80,8 +80,8 @@ def create_cohort_simulation(db: Session, persona_ids: list, stimulus_text: str,
     response_rates = []
     for response in results.get('individual_responses', []):
         # Calculate a response rate based on purchase intent (normalized to 0-100)
-        if 'purchase_intent' in response.get('responses', {}):
-            response_rates.append(response['responses']['purchase_intent'] * 10)  # Convert 1-10 to 10-100
+        if 'intent_to_action' in response.get('responses', {}):
+            response_rates.append(response['responses']['intent_to_action'] * 10)  # Convert 1-10 to 10-100
     
     avg_response_rate = sum(response_rates) / len(response_rates) if response_rates else 0
     
@@ -134,3 +134,25 @@ def get_simulation_stats(db: Session):
         "avg_response_rate": avg_response_rate or 0,
         "total_insights": total_insights
     }
+
+# CRUD for Saved Simulations
+def create_saved_simulation(db: Session, simulation_data: schemas.SavedSimulationCreate):
+    db_saved_simulation = models.SavedSimulation(**simulation_data.dict())
+    db.add(db_saved_simulation)
+    db.commit()
+    db.refresh(db_saved_simulation)
+    return db_saved_simulation
+
+def get_saved_simulation(db: Session, simulation_id: int):
+    return db.query(models.SavedSimulation).filter(models.SavedSimulation.id == simulation_id).first()
+
+def get_saved_simulations(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.SavedSimulation).order_by(models.SavedSimulation.created_at.desc()).offset(skip).limit(limit).all()
+
+def delete_saved_simulation(db: Session, simulation_id: int):
+    db_saved_simulation = db.query(models.SavedSimulation).filter(models.SavedSimulation.id == simulation_id).first()
+    if db_saved_simulation:
+        db.delete(db_saved_simulation)
+        db.commit()
+        return True
+    return False

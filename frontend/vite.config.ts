@@ -9,4 +9,19 @@ export default defineConfig({
       '@': '/src',
     },
   },
+  server: {
+    port: 5173,
+    host: '0.0.0.0',
+    proxy: [
+      '/personas', '/cohorts', '/stats', '/health', '/api', '/simulations', '/crm'
+    ].reduce((acc, path) => {
+      acc[path] = { 
+        target: 'http://localhost:8000', 
+        changeOrigin: true,
+        secure: false,
+        ws: true
+      };
+      return acc;
+    }, {} as Record<string, any>)
+  }
 })

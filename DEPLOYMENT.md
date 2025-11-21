@@ -19,7 +19,7 @@
 
 ### Option 2: Deploy via Vercel CLI
 
-```bash
+\`\`\`bash
 # Install Vercel CLI
 npm i -g vercel
 
@@ -36,7 +36,7 @@ vercel
 # - Project name: pharmapersonasim-frontend
 # - Directory: ./
 # - Override settings: No
-```
+\`\`\`
 
 ## 🖥️ Backend Deployment Options
 
@@ -57,22 +57,22 @@ vercel
 ### Option 2: Heroku
 
 1. **Create** `backend/Procfile`:
-```
+\`\`\`
 web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-```
+\`\`\`
 
 2. **Create** `backend/runtime.txt`:
-```
+\`\`\`
 python-3.10.0
-```
+\`\`\`
 
 3. **Deploy**:
-```bash
+\`\`\`bash
 cd backend
 heroku create your-app-name
 heroku config:set OPENAI_API_KEY=your_key_here
 git push heroku main
-```
+\`\`\`
 
 ### Option 3: Render
 
@@ -104,20 +104,20 @@ After deploying the backend, update the frontend:
 
 For production databases (PostgreSQL):
 
-```python
+\`\`\`python
 # Update backend/app/database.py
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./pharma_personas.db")
 
 # For PostgreSQL on Heroku/Railway
 if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
-```
+\`\`\`
 
 ### CORS Configuration
 
 Update `backend/app/main.py` with your frontend URL:
 
-```python
+\`\`\`python
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -128,7 +128,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-```
+\`\`\`
 
 ## 📊 Monitoring
 

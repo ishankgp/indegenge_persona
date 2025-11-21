@@ -13,8 +13,26 @@ interface PersonaDetailModalProps {
 export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailModalProps) {
   if (!persona) return null;
 
-  const personaData = JSON.parse(persona.full_persona_json);
-  const createdDate = new Date(persona.created_at).toLocaleDateString();
+  const personaData = JSON.parse(persona.full_persona_json)
+  const createdDate = new Date(persona.created_at).toLocaleDateString()
+
+  const getMBTData = () => {
+    if (personaData?.mbt) {
+      return {
+        motivations: personaData.mbt.goals_motivations,
+        beliefs: personaData.mbt.beliefs,
+        pain_points: personaData.mbt.tensions_and_pain_points,
+      }
+    }
+
+    return {
+      motivations: personaData?.motivations,
+      beliefs: personaData?.beliefs,
+      pain_points: personaData?.pain_points,
+    }
+  }
+
+  const mbtData = getMBTData()
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -189,25 +207,25 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
               </Card>
             )}
 
-            {/* Pain Points */}
-            {personaData.pain_points && (
+            {/* Motivations */}
+            {mbtData.motivations && (
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Target className="h-4 w-4 text-primary" />
-                    Pain Points
+                    Motivations
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {Array.isArray(personaData.pain_points) 
-                      ? personaData.pain_points.map((point: string, idx: number) => (
+                    {Array.isArray(mbtData.motivations)
+                      ? mbtData.motivations.map((motivation: string, idx: number) => (
                           <div key={idx} className="flex items-start gap-2">
-                            <div className="w-2 h-2 bg-red-500 rounded-full mt-2"></div>
-                            <p className="text-base">{point}</p>
+                            <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+                            <p className="text-base">{motivation}</p>
                           </div>
                         ))
-                      : Object.entries(personaData.pain_points).map(([key, value]) => (
+                      : Object.entries(mbtData.motivations).map(([key, value]) => (
                           <div key={key}>
                             <label className="text-sm font-medium text-gray-600 capitalize">
                               {key.replace(/_/g, ' ')}
@@ -221,25 +239,57 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
               </Card>
             )}
 
-            {/* Motivations */}
-            {personaData.motivations && (
+            {/* Beliefs */}
+            {mbtData.beliefs && (
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg flex items-center gap-2">
-                    <Target className="h-4 w-4 text-primary" />
-                    Motivations
+                    <Brain className="h-4 w-4 text-primary" />
+                    Beliefs
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {Array.isArray(personaData.motivations)
-                      ? personaData.motivations.map((motivation: string, idx: number) => (
+                    {Array.isArray(mbtData.beliefs)
+                      ? mbtData.beliefs.map((belief: string, idx: number) => (
                           <div key={idx} className="flex items-start gap-2">
-                            <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
-                            <p className="text-base">{motivation}</p>
+                            <div className="w-2 h-2 bg-purple-500 rounded-full mt-2"></div>
+                            <p className="text-base">{belief}</p>
                           </div>
                         ))
-                      : Object.entries(personaData.motivations).map(([key, value]) => (
+                      : Object.entries(mbtData.beliefs).map(([key, value]) => (
+                          <div key={key}>
+                            <label className="text-sm font-medium text-gray-600 capitalize">
+                              {key.replace(/_/g, ' ')}
+                            </label>
+                            <p className="text-base">{value as string}</p>
+                          </div>
+                        ))
+                    }
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Pain Points */}
+            {mbtData.pain_points && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Target className="h-4 w-4 text-primary" />
+                    Pain Points
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {Array.isArray(mbtData.pain_points) 
+                      ? mbtData.pain_points.map((point: string, idx: number) => (
+                          <div key={idx} className="flex items-start gap-2">
+                            <div className="w-2 h-2 bg-red-500 rounded-full mt-2"></div>
+                            <p className="text-base">{point}</p>
+                          </div>
+                        ))
+                      : Object.entries(mbtData.pain_points).map(([key, value]) => (
                           <div key={key}>
                             <label className="text-sm font-medium text-gray-600 capitalize">
                               {key.replace(/_/g, ' ')}
@@ -292,7 +342,45 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
               </Card>
             )}
 
-            {/* Raw JSON (for debugging) */}
+            {/* HCP Professional Context */}
+            {persona.persona_type === "HCP" && (persona.specialty || persona.practice_setup || persona.system_context || persona.decision_influencers) && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-primary" />
+                    Professional Context
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-2 gap-4">
+                  {persona.specialty && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Specialty</label>
+                      <p className="text-base">{persona.specialty}</p>
+                    </div>
+                  )}
+                  {persona.practice_setup && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Practice Setup</label>
+                      <p className="text-base">{persona.practice_setup}</p>
+                    </div>
+                  )}
+                  {persona.system_context && (
+                    <div className="col-span-2">
+                      <label className="text-sm font-medium text-gray-600">System Context</label>
+                      <p className="text-base">{persona.system_context}</p>
+                    </div>
+                  )}
+                  {persona.decision_influencers && (
+                    <div className="col-span-2">
+                      <label className="text-sm font-medium text-gray-600">Decision Influencers</label>
+                      <p className="text-base">{persona.decision_influencers}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Metadata */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center gap-2">

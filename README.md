@@ -21,13 +21,13 @@ A sophisticated AI-powered pharmaceutical persona simulation platform that helps
 ### Installation
 
 1. **Clone the repository**
-```bash
+\`\`\`bash
 git clone https://github.com/ishankgp/indegenge_persona.git
 cd indegenge_persona
-```
+\`\`\`
 
 2. **Set up the backend**
-```bash
+\`\`\`bash
 cd backend
 python -m venv venv
 # Windows
@@ -36,30 +36,30 @@ venv\Scripts\activate
 source venv/bin/activate
 
 pip install -r requirements.txt
-```
+\`\`\`
 
 3. **Set up the frontend**
-```bash
+\`\`\`bash
 cd ../frontend
 npm install
-```
+\`\`\`
 
 4. **Configure environment variables**
-```bash
+\`\`\`bash
 # In the root directory
 cp .env.example .env
 # Edit .env and add your OpenAI API key
-```
+\`\`\`
 
 5. **Initialize the database**
-```bash
-python populate_db.py
-```
+\`\`\`bash
+python populate_db.py  # Seeds personas via API (uses canonical backend DB)
+\`\`\`
 
 6. **Run the application**
-```bash
+\`\`\`bash
 python run_app.py
-```
+\`\`\`
 
 The application will be available at:
 - Frontend: http://localhost:5173
@@ -67,7 +67,7 @@ The application will be available at:
 
 ## 🏗️ Project Structure
 
-```
+\`\`\`
 pharmapersonasim/
 ├── backend/
 │   ├── app/
@@ -86,7 +86,7 @@ pharmapersonasim/
 │   └── package.json
 ├── run_app.py               # Application launcher
 └── populate_db.py           # Database seeder
-```
+\`\`\`
 
 ## 📱 Key Features
 
@@ -125,15 +125,15 @@ pharmapersonasim/
 ### Vercel Deployment (Frontend)
 
 1. Install Vercel CLI:
-```bash
+\`\`\`bash
 npm i -g vercel
-```
+\`\`\`
 
 2. Deploy:
-```bash
+\`\`\`bash
 cd frontend
 vercel
-```
+\`\`\`
 
 ### Backend Deployment
 
@@ -148,10 +148,17 @@ The backend can be deployed to any platform that supports Python applications:
 
 ### Environment Variables
 
+We use a single canonical SQLite database file stored at `backend/pharma_personas.db`.
+
+Key variables:
 - `OPENAI_API_KEY`: Your OpenAI API key (required)
-- `DATABASE_URL`: Database connection string (optional, defaults to SQLite)
+- `DATABASE_URL`: Set to `sqlite:///backend/pharma_personas.db` (already in `.env.example`)
 - `BACKEND_HOST`: Backend server host
 - `BACKEND_PORT`: Backend server port
+- `BACKEND_URL`: (optional) Override used by `populate_db.py` for seeding
+- `VITE_API_URL`: Frontend points here for API calls (e.g. Railway backend URL in production)
+
+If you previously had a duplicate `pharma_personas.db` at the repo root, it has been removed to prevent divergence. Always interact through the API or operate directly on `backend/pharma_personas.db`.
 
 ## 📝 API Documentation
 

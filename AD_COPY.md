@@ -109,25 +109,25 @@ Try Pharma Persona Simulator today.
 
 ---
 
-## **VIDEO SCRIPT (30 seconds):**
+## **DEMO SCRIPT:**
 
 **[Opening]** 
-"Your pharma company just spent $500K on a patient campaign. You launch it... and it flops.
+"Hi everyone, I am Ishan representing Team Fintuners. We have built a persona simulator.
 
-**[Problem]**
-Patients don't engage. Your message doesn't resonate. Money wasted.
+**[Problem Setup]**
+Pharmaceutical companies spend millions on campaigns without knowing if patients will respond. Traditional market research is slow and expensive.
 
-**[Solution]**
-Pharma Persona Simulator uses AI to create realistic patient personas and test your messaging before launch.
+**[Solution Introduction]**
+Our Pharma Persona Simulator uses AI to create realistic patient personas and test messaging before launch.
 
-**[Demo]**
-Watch as we generate patient profiles and predict their responses to your campaign materials.
+**[Demo Walkthrough]**
+Let me show you how it works. First, I'll create a patient persona based on demographics and medical conditions. Then, I'll test how this persona responds to a sample campaign message.
 
-**[Results]**
-Get actionable insights in minutes, not months. Save millions in failed campaigns.
+**[Results Demonstration]**
+As you can see, we get quantitative insights on purchase intent, brand trust, message clarity, and key concerns - all in minutes, not months.
 
-**[CTA]**
-Stop guessing. Start predicting. Try Pharma Persona Simulator today."
+**[Closing]**
+This tool helps companies avoid expensive campaign failures and make data-driven decisions about patient communications."
 
 ---
 

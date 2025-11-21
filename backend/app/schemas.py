@@ -11,6 +11,16 @@ class PersonaBase(BaseModel):
     condition: str
     location: str
     full_persona_json: str
+    persona_subtype: Optional[str] = None
+    tagline: Optional[str] = None
+    specialty: Optional[str] = None
+    practice_setup: Optional[str] = None
+    system_context: Optional[str] = None
+    decision_influencers: Optional[str] = None
+    adherence_to_protocols: Optional[str] = None
+    channel_use: Optional[str] = None
+    decision_style: Optional[str] = None
+    core_insight: Optional[str] = None
 
 class PersonaCreate(BaseModel):
     # This schema is for the input data to the generation endpoint
@@ -76,3 +86,18 @@ class SimulationRequest(BaseModel):
     persona_id: int
     scenario: str
     parameters: Dict[str, Any]
+
+# Schemas for Saved Simulations
+class SavedSimulationBase(BaseModel):
+    name: str
+    simulation_data: Dict[str, Any]
+
+class SavedSimulationCreate(SavedSimulationBase):
+    pass
+
+class SavedSimulation(SavedSimulationBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
