@@ -1,50 +1,31 @@
-import { Outlet, Link, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
-import { getApiBaseUrl, checkHealth } from '@/lib/api';
-import {
-  LayoutDashboard,
-  Users,
-  PlayCircle,
-  BarChart3,
-  Activity,
-  Sparkles,
-  ChevronRight,
-  UserPlus,
-  Library
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-
-const navigation = [
-  {
-    name: 'Dashboard',
-    href: '/',
-    icon: LayoutDashboard,
+href: '/',
+  icon: LayoutDashboard,
     description: 'Overview & metrics'
   },
-  {
-    name: 'Create Persona',
+{
+  name: 'Create Persona',
     href: '/create-persona',
-    icon: UserPlus,
-    description: 'Generate new personas'
-  },
-  {
-    name: 'Brand Library',
+      icon: UserPlus,
+        description: 'Generate new personas'
+},
+{
+  name: 'Brand Library',
     href: '/brand-library',
-    icon: Library,
-    description: 'Brand knowledge & assets'
-  },
-  {
-    name: 'Simulation Hub',
+      icon: Library,
+        description: 'Brand knowledge & assets'
+},
+{
+  name: 'Simulation Hub',
     href: '/simulation',
-    icon: PlayCircle,
-    description: 'Run AI simulations'
-  },
-  {
-    name: 'Analytics',
+      icon: PlayCircle,
+        description: 'Run AI simulations'
+},
+{
+  name: 'Analytics',
     href: '/analytics',
-    icon: BarChart3,
-    description: 'Insights & reports'
-  },
+      icon: BarChart3,
+        description: 'Insights & reports'
+},
 ];
 
 export function Layout() {
