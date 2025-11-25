@@ -534,39 +534,101 @@ export function Analytics() {
           />
         </div>
 
-        {/* AI Insights - Enhanced */}
-        {insights && insights.length > 0 && (
-          <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
-            <CardHeader className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 rounded-t-xl">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2.5 bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl">
-                    <Lightbulb className="h-5 w-5 text-white" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-xl">Cumulative Insights</CardTitle>
-                    <CardDescription>Key findings and recommendations from the cohort analysis</CardDescription>
-                  </div>
-                </div>
-                <Award className="h-8 w-8 text-amber-500" />
-              </div>
+        {/* Charts Section */}
+        <div className="grid gap-6 md:grid-cols-2 mb-8">
+          {/* Sentiment Distribution Chart */}
+          <Card className="border-0 shadow-xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-primary" />
+                Sentiment Distribution
+              </CardTitle>
             </CardHeader>
-            <CardContent className="pt-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                {insights.map((insight: string, index: number) => (
-                  <div key={index} className="relative p-4 bg-gradient-to-r from-primary/5 to-secondary/5 rounded-xl border border-primary/20">
-                    <div className="flex items-start space-x-3">
-                      <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center text-white text-sm font-bold">
-                        {index + 1}
+            <CardContent>
+              <div className="h-64 flex items-end justify-around gap-4 px-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+                {(() => {
+                  const sentiments = analysisResults?.individual_responses
+                    .map(r => r.responses.sentiment)
+                    .filter((s): s is number => s !== undefined) || [];
+
+                  const positive = sentiments.filter(s => s > 0.2).length;
+                  const neutral = sentiments.filter(s => s >= -0.2 && s <= 0.2).length;
+                  const negative = sentiments.filter(s => s < -0.2).length;
+                  const total = sentiments.length || 1;
+
+                  const maxCount = Math.max(positive, neutral, negative, 1);
+
+                  return (
+                    <>
+                      <div className="flex flex-col items-center gap-2 w-1/3 group">
+                        <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {positive} ({Math.round(positive / total * 100)}%)
+                        </div>
+                        <div
+                          className="w-full bg-emerald-500 rounded-t-md transition-all duration-500 hover:bg-emerald-400"
+                          style={{ height: `${(positive / maxCount) * 100}%`, minHeight: '4px' }}
+                        />
+                        <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Positive</span>
                       </div>
-                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{insight}</p>
+                      <div className="flex flex-col items-center gap-2 w-1/3 group">
+                        <div className="text-sm font-bold text-gray-600 dark:text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {neutral} ({Math.round(neutral / total * 100)}%)
+                        </div>
+                        <div
+                          className="w-full bg-gray-400 rounded-t-md transition-all duration-500 hover:bg-gray-300"
+                          style={{ height: `${(neutral / maxCount) * 100}%`, minHeight: '4px' }}
+                        />
+                        <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Neutral</span>
+                      </div>
+                      <div className="flex flex-col items-center gap-2 w-1/3 group">
+                        <div className="text-sm font-bold text-red-600 dark:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {negative} ({Math.round(negative / total * 100)}%)
+                        </div>
+                        <div
+                          className="w-full bg-red-500 rounded-t-md transition-all duration-500 hover:bg-red-400"
+                          style={{ height: `${(negative / maxCount) * 100}%`, minHeight: '4px' }}
+                        />
+                        <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Negative</span>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Metric Overview Chart */}
+          <Card className="border-0 shadow-xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5 text-primary" />
+                Metric Overview
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {[
+                  { label: 'Purchase Intent', value: summary_statistics?.purchase_intent_avg, color: 'bg-blue-500' },
+                  { label: 'Brand Trust', value: summary_statistics?.trust_in_brand_avg, color: 'bg-indigo-500' },
+                  { label: 'Message Clarity', value: summary_statistics?.message_clarity_avg, color: 'bg-violet-500' }
+                ].map((metric, i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="flex justify-between text-sm font-medium">
+                      <span>{metric.label}</span>
+                      <span>{metric.value?.toFixed(1) || 'N/A'} / 10</span>
+                    </div>
+                    <div className="h-3 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${metric.color} transition-all duration-1000 ease-out`}
+                        style={{ width: `${(metric.value || 0) * 10}%` }}
+                      />
                     </div>
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
-        )}
+        </div>
 
         {/* Individual Responses - Enhanced Table */}
         <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
