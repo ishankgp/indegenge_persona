@@ -42,6 +42,18 @@ class Persona(PersonaBase):
     class Config:
         from_attributes = True
 
+class PersonaSearchRequest(BaseModel):
+    prompt: str
+
+class PersonaSearchFilters(BaseModel):
+    age_min: Optional[int] = None
+    age_max: Optional[int] = None
+    gender: Optional[str] = None
+    condition: Optional[str] = None
+    location: Optional[str] = None
+    persona_type: Optional[str] = None
+    limit: int = 10
+
 # Cohort Analysis Schemas
 class CohortAnalysisRequest(BaseModel):
     persona_ids: List[int]
@@ -97,6 +109,37 @@ class SavedSimulationCreate(SavedSimulationBase):
 
 class SavedSimulation(SavedSimulationBase):
     id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# Brand Library Schemas
+class BrandBase(BaseModel):
+    name: str
+
+class BrandCreate(BrandBase):
+    pass
+
+class Brand(BrandBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class BrandDocumentBase(BaseModel):
+    brand_id: int
+    filename: str
+    category: str
+    summary: Optional[str] = None
+
+class BrandDocumentCreate(BrandDocumentBase):
+    filepath: str
+
+class BrandDocument(BrandDocumentBase):
+    id: int
+    filepath: str
     created_at: datetime
 
     class Config:

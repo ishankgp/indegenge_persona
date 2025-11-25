@@ -211,3 +211,158 @@ def generate_mock_persona(age: int, gender: str, condition: str, location: str, 
     }
     
     return json.dumps(persona, indent=2)
+
+def parse_recruitment_prompt(prompt: str) -> dict:
+    """
+    Parses a natural language recruitment prompt into structured filters using OpenAI Tools.
+    """
+    client = get_openai_client()
+    if client is None:
+        print("❌ OpenAI API key not found. Attempting regex fallback.")
+        import re
+        filters = {}
+        
+        # Extract limit (e.g., "2 patients", "find 5")
+        limit_match = re.search(r'\b(\d+)\b', prompt)
+        if limit_match:
+            filters['limit'] = int(limit_match.group(1))
+            
+        # Extract gender - be careful with word boundaries to avoid "female" matching "male"
+        # Check for female first since it contains "male"
+        if re.search(r'\b(female|women|woman|ladies)\b', prompt, re.IGNORECASE):
+            filters['gender'] = 'Female'
+        elif re.search(r'\b(male|men|man|gentleman|gentlemen)\b', prompt, re.IGNORECASE):
+            # Only set Male if Female wasn't already set
+            if 'gender' not in filters:
+                filters['gender'] = 'Male'
+            
+        # Extract persona type
+        if re.search(r'\b(patient|patients)\b', prompt, re.IGNORECASE):
+            filters['persona_type'] = 'Patient'
+        elif re.search(r'\b(doctor|doctors|hcp|physician|physicians|clinician|clinicians)\b', prompt, re.IGNORECASE):
+            filters['persona_type'] = 'HCP'
+            
+        # Extract age ranges
+        elderly_match = re.search(r'\b(elderly|senior|seniors|aged)\b', prompt, re.IGNORECASE)
+        young_match = re.search(r'\b(young|youth)\b', prompt, re.IGNORECASE)
+        middle_aged_match = re.search(r'\b(middle[\s-]aged)\b', prompt, re.IGNORECASE)
+        
+        if elderly_match:
+            filters['age_min'] = 65
+        elif young_match:
+            filters['age_max'] = 30
+        elif middle_aged_match:
+            filters['age_min'] = 40
+            filters['age_max'] = 60
+            
+        # Extract common conditions
+        conditions_map = {
+            r'\b(diabet(es|ic))\b': 'Diabetes',
+            r'\b(hypertension|high blood pressure)\b': 'Hypertension',
+            r'\b(copd|chronic obstructive)\b': 'COPD',
+            r'\b(arthritis|rheumatoid)\b': 'Arthritis',
+            r'\b(migraine|migraines|headache)\b': 'Migraine'
+        }
+        
+        for pattern, condition in conditions_map.items():
+            if re.search(pattern, prompt, re.IGNORECASE):
+                filters['condition'] = condition
+                break
+            
+        print(f"⚠️ Regex Fallback Filters: {filters}")
+        return filters
+    else:
+        print("✅ OpenAI Client initialized successfully.")
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_personas",
+                "description": "Search for personas based on specific criteria",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "age_min": {"type": "integer", "description": "Minimum age"},
+                        "age_max": {"type": "integer", "description": "Maximum age"},
+                        "gender": {"type": "string", "enum": ["Male", "Female"], "description": "Gender"},
+                        "condition": {"type": "string", "description": "Medical condition (e.g., Diabetes)"},
+                        "location": {"type": "string", "description": "Location or region"},
+                        "persona_type": {"type": "string", "enum": ["Patient", "HCP"], "description": "Type of persona"},
+                        "limit": {"type": "integer", "description": "Number of personas to find", "default": 10}
+                    },
+                    "required": ["limit"]
+                }
+            }
+        }
+    ]
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that extracts search criteria for recruiting personas. Use the search_personas tool."},
+                {"role": "user", "content": prompt}
+            ],
+            tools=tools,
+            tool_choice={"type": "function", "function": {"name": "search_personas"}},
+            max_tokens=200,
+        )
+        
+        tool_calls = response.choices[0].message.tool_calls
+        if tool_calls:
+            args = json.loads(tool_calls[0].function.arguments)
+            print(f"✅ Parsed filters via Tools: {args}")
+            return args
+            
+        print("⚠️ No tool calls returned by OpenAI")
+        return {}
+        
+    except Exception as e:
+        print(f"Error parsing recruitment prompt with tools: {e}")
+        print("⚠️ Falling back to regex parsing.")
+        import re
+        filters = {}
+        
+        # Extract limit
+        limit_match = re.search(r'\b(\d+)\b', prompt)
+        if limit_match:
+            filters['limit'] = int(limit_match.group(1))
+            
+        # Extract gender - check female first
+        if re.search(r'\b(female|women|woman|ladies)\b', prompt, re.IGNORECASE):
+            filters['gender'] = 'Female'
+        elif re.search(r'\b(male|men|man|gentleman|gentlemen)\b', prompt, re.IGNORECASE):
+            if 'gender' not in filters:
+                filters['gender'] = 'Male'
+            
+        # Extract persona type
+        if re.search(r'\b(patient|patients)\b', prompt, re.IGNORECASE):
+            filters['persona_type'] = 'Patient'
+        elif re.search(r'\b(doctor|doctors|hcp|physician|physicians|clinician|clinicians)\b', prompt, re.IGNORECASE):
+            filters['persona_type'] = 'HCP'
+            
+        # Extract age ranges
+        if re.search(r'\b(elderly|senior|seniors|aged)\b', prompt, re.IGNORECASE):
+            filters['age_min'] = 65
+        elif re.search(r'\b(young|youth)\b', prompt, re.IGNORECASE):
+            filters['age_max'] = 30
+        elif re.search(r'\b(middle[\s-]aged)\b', prompt, re.IGNORECASE):
+            filters['age_min'] = 40
+            filters['age_max'] = 60
+            
+        # Extract conditions
+        conditions_map = {
+            r'\b(diabet(es|ic))\b': 'Diabetes',
+            r'\b(hypertension|high blood pressure)\b': 'Hypertension',
+            r'\b(copd|chronic obstructive)\b': 'COPD',
+            r'\b(arthritis|rheumatoid)\b': 'Arthritis',
+            r'\b(migraine|migraines|headache)\b': 'Migraine'
+        }
+        
+        for pattern, condition in conditions_map.items():
+            if re.search(pattern, prompt, re.IGNORECASE):
+                filters['condition'] = condition
+                break
+            
+        return filters

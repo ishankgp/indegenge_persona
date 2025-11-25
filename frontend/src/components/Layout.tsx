@@ -1,46 +1,46 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { getApiBaseUrl, checkHealth } from '@/lib/api';
-import { 
-  LayoutDashboard, 
-  Users, 
-  PlayCircle, 
+import {
+  LayoutDashboard,
+  PlayCircle,
   BarChart3,
   Activity,
   Sparkles,
   ChevronRight,
-  UserPlus
+  UserPlus,
+  Library
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navigation = [
-  { 
-    name: 'Dashboard', 
-    href: '/', 
+  {
+    name: 'Dashboard',
+    href: '/',
     icon: LayoutDashboard,
     description: 'Overview & metrics'
   },
-  { 
-    name: 'Create Persona', 
-    href: '/create-persona', 
+  {
+    name: 'Create Persona',
+    href: '/create-persona',
     icon: UserPlus,
     description: 'Generate new personas'
   },
-  { 
-    name: 'Persona Library', 
-    href: '/personas', 
-    icon: Users,
-    description: 'Manage patient personas'
+  {
+    name: 'Brand Library',
+    href: '/brand-library',
+    icon: Library,
+    description: 'Brand knowledge & assets'
   },
-  { 
-    name: 'Simulation Hub', 
-    href: '/simulation', 
+  {
+    name: 'Simulation Hub',
+    href: '/simulation',
     icon: PlayCircle,
     description: 'Run AI simulations'
   },
-  { 
-    name: 'Analytics', 
-    href: '/analytics', 
+  {
+    name: 'Analytics',
+    href: '/analytics',
     icon: BarChart3,
     description: 'Insights & reports'
   },
@@ -116,13 +116,13 @@ export function Layout() {
                 >
                   <div className={cn(
                     'flex items-center justify-center w-10 h-10 rounded-xl mr-4 transition-all duration-300',
-                    isActive 
-                      ? 'bg-white/20 text-white' 
+                    isActive
+                      ? 'bg-white/20 text-white'
                       : 'bg-muted/50 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary'
                   )}>
                     <item.icon className="h-5 w-5" />
                   </div>
-                  
+
                   <div className="flex-1">
                     <div className={cn(
                       'font-semibold transition-colors',
@@ -137,7 +137,7 @@ export function Layout() {
                       {item.description}
                     </div>
                   </div>
-                  
+
                   {isActive && (
                     <ChevronRight className="h-4 w-4 text-white ml-2" />
                   )}

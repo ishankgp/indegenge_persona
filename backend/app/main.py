@@ -16,8 +16,9 @@ from datetime import datetime
 
 # Note: dotenv loading removed - pass environment variables directly
 
-from . import crud, models, schemas, persona_engine, cohort_engine
+from . import crud, models, schemas, persona_engine, cohort_engine, document_processor
 from .database import engine, get_db
+import shutil
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -216,6 +217,27 @@ async def get_all_personas(skip: int = 0, limit: int = 100, db: Session = Depend
     Returns a list of all personas from the database.
     """
     personas = crud.get_personas(db, skip=skip, limit=limit)
+    return personas
+
+@app.post("/personas/recruit", response_model=List[schemas.Persona])
+async def recruit_personas(request: schemas.PersonaSearchRequest, db: Session = Depends(get_db)):
+    """
+    Recruit personas based on a natural language prompt.
+    """
+    # 1. Parse the prompt into structured filters
+    filters_dict = persona_engine.parse_recruitment_prompt(request.prompt)
+    
+    # 2. Convert to Pydantic model
+    try:
+        filters = schemas.PersonaSearchFilters(**filters_dict)
+    except Exception as e:
+        # If parsing fails or returns empty, default to basic search or empty
+        logger.warning(f"Failed to parse filters from prompt: {e}")
+        filters = schemas.PersonaSearchFilters()
+
+    # 3. Search the database
+    personas = crud.search_personas(db, filters)
+    
     return personas
 
 @app.head("/personas/")
@@ -480,6 +502,115 @@ async def health_db(db: Session = Depends(get_db)):
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+
+
+# --- Brand Library Endpoints ---
+
+@app.post("/api/brands", response_model=schemas.Brand)
+async def create_brand(brand: schemas.BrandCreate, db: Session = Depends(get_db)):
+    """Create a new brand context."""
+    # Check if brand exists
+    existing = db.query(models.Brand).filter(models.Brand.name == brand.name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Brand already exists")
+    return crud.create_brand(db, brand)
+
+@app.get("/api/brands", response_model=List[schemas.Brand])
+async def get_brands(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    """List all brands."""
+    return crud.get_brands(db, skip, limit)
+
+@app.post("/api/brands/{brand_id}/upload", response_model=schemas.BrandDocument)
+async def upload_brand_document(
+    brand_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Upload a document, extract text, classify it, and save to DB."""
+    # Verify brand exists
+    brand = db.query(models.Brand).filter(models.Brand.id == brand_id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    # Create uploads directory if not exists
+    upload_dir = "uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    # Save file locally
+    file_location = f"{upload_dir}/{int(time.time())}_{file.filename}"
+    with open(file_location, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    # Extract text
+    text = document_processor.extract_text(file_location)
+    
+    # Classify
+    category = document_processor.classify_document(text)
+    
+    # Create document record
+    doc_create = schemas.BrandDocumentCreate(
+        brand_id=brand_id,
+        filename=file.filename,
+        filepath=file_location,
+        category=category,
+        summary=text[:200] + "..." if text else "No text extracted"
+    )
+    
+    return crud.create_brand_document(db, doc_create)
+
+@app.get("/api/brands/{brand_id}/documents", response_model=List[schemas.BrandDocument])
+async def get_brand_documents(brand_id: int, db: Session = Depends(get_db)):
+    """List documents for a specific brand."""
+    return crud.get_brand_documents(db, brand_id)
+
+@app.post("/api/brands/{brand_id}/seed", response_model=List[schemas.BrandDocument])
+async def seed_brand_documents(brand_id: int, db: Session = Depends(get_db)):
+    """Populate the brand with mock documents for demo purposes."""
+    # Verify brand exists
+    brand = db.query(models.Brand).filter(models.Brand.id == brand_id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    # Mock data for 7 categories
+    mock_data = {
+        "Disease & Patient Journey Overview": "This document covers the epidemiology, pathophysiology, and patient journey for Type 2 Diabetes. It highlights the emotional burden of diagnosis and the progressive nature of the disease.",
+        "Treatment Landscape / SoC": "Current Standard of Care involves Metformin as first-line, followed by GLP-1 RAs or SGLT2 inhibitors. This review analyzes the efficacy and safety profiles of leading competitors.",
+        "Brand Value Proposition & Core Messaging": "Our brand offers superior glycemic control with weight loss benefits. Key message: 'Power to control, freedom to live.' Differentiators include once-weekly dosing.",
+        "Safety & Tolerability Summary": "Summary of adverse events from Phase 3 trials. GI side effects are most common but transient. No new safety signals observed in long-term extension studies.",
+        "HCP & Patient Segmentation": "HCP Segments: 1. Efficacy-Driven Experts, 2. Safety-First Prescribers. Patient Archetypes: 1. The Proactive Manager, 2. The Overwhelmed Struggler.",
+        "Market Research & Insight Summaries": "Qualitative research indicates that HCPs are hesitant to switch stable patients. Patients desire treatments that minimize lifestyle disruption.",
+        "Adherence / Persistence / Discontinuation Insights": "Data shows 20% discontinuation rate at 6 months due to cost and GI issues. Persistence is higher with the autoinjector device compared to vials."
+    }
+
+    created_docs = []
+    upload_dir = "uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+
+    for category, text in mock_data.items():
+        # Create a dummy file
+        filename = f"Mock_{category.replace(' ', '_').replace('/', '-')}.txt"
+        filepath = f"{upload_dir}/{int(time.time())}_{filename}"
+        
+        with open(filepath, "w") as f:
+            f.write(text)
+            
+        # Classify (we know the category, but let's run it through processor to be safe/consistent, 
+        # or just assign it since it's a seed)
+        # For speed and reliability of the demo, we can force the category or let the AI do it.
+        # Let's force it to ensure the demo works perfectly for the user's specific request.
+        
+        doc_create = schemas.BrandDocumentCreate(
+            brand_id=brand_id,
+            filename=filename,
+            filepath=filepath,
+            category=category,
+            summary=text
+        )
+        
+        new_doc = crud.create_brand_document(db, doc_create)
+        created_docs.append(new_doc)
+        
+    return created_docs
 
 # --- Veeva CRM Integration Simulation Endpoints ---
 

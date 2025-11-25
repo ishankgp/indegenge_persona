@@ -6,6 +6,26 @@ def get_personas(db: Session, skip: int = 0, limit: int = 100):
     """Retrieve all personas from the database."""
     return db.query(models.Persona).offset(skip).limit(limit).all()
 
+def search_personas(db: Session, filters: schemas.PersonaSearchFilters):
+    """Search personas based on structured filters."""
+    print(f"🔍 Searching with filters: {filters.dict()}")
+    query = db.query(models.Persona)
+    
+    if filters.age_min is not None:
+        query = query.filter(models.Persona.age >= filters.age_min)
+    if filters.age_max is not None:
+        query = query.filter(models.Persona.age <= filters.age_max)
+    if filters.gender:
+        query = query.filter(models.Persona.gender.ilike(filters.gender))
+    if filters.condition:
+        query = query.filter(models.Persona.condition.ilike(f"%{filters.condition}%"))
+    if filters.location:
+        query = query.filter(models.Persona.location.ilike(f"%{filters.location}%"))
+    if filters.persona_type:
+        query = query.filter(models.Persona.persona_type.ilike(filters.persona_type))
+        
+    return query.limit(filters.limit).all()
+
 def create_persona(db: Session, persona_data: schemas.PersonaCreate, persona_json: str):
     """
     Create a new persona entry in the database.
@@ -156,3 +176,24 @@ def delete_saved_simulation(db: Session, simulation_id: int):
         db.commit()
         return True
     return False
+
+# CRUD for Brand Library
+def create_brand(db: Session, brand: schemas.BrandCreate):
+    db_brand = models.Brand(name=brand.name)
+    db.add(db_brand)
+    db.commit()
+    db.refresh(db_brand)
+    return db_brand
+
+def get_brands(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.Brand).offset(skip).limit(limit).all()
+
+def create_brand_document(db: Session, document: schemas.BrandDocumentCreate):
+    db_document = models.BrandDocument(**document.dict())
+    db.add(db_document)
+    db.commit()
+    db.refresh(db_document)
+    return db_document
+
+def get_brand_documents(db: Session, brand_id: int):
+    return db.query(models.BrandDocument).filter(models.BrandDocument.brand_id == brand_id).all()

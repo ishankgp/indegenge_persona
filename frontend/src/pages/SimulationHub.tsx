@@ -139,6 +139,49 @@ export function SimulationHub() {
     conditions: [],
   })
 
+  const [recruitmentMode, setRecruitmentMode] = useState<"manual" | "ai">("manual")
+  const [recruitmentPrompt, setRecruitmentPrompt] = useState("")
+  const [isRecruiting, setIsRecruiting] = useState(false)
+
+  const handleRecruit = async () => {
+    if (!recruitmentPrompt.trim()) return
+    setIsRecruiting(true)
+    try {
+      const recruitedPersonas = await PersonasAPI.recruit(recruitmentPrompt)
+
+      if (recruitedPersonas.length === 0) {
+        alert(`No personas found matching: "${recruitmentPrompt}"\n\nTry adjusting your search criteria.`)
+        return
+      }
+
+      const newSelected = new Set(selectedPersonas)
+      recruitedPersonas.forEach((p: Persona) => newSelected.add(p.id))
+      setSelectedPersonas(newSelected)
+
+      // Show detailed summary
+      const genders = Array.from(new Set(recruitedPersonas.map((p: Persona) => p.gender)))
+      const ageRange = recruitedPersonas.length > 0
+        ? `${Math.min(...recruitedPersonas.map((p: Persona) => p.age))}-${Math.max(...recruitedPersonas.map((p: Persona) => p.age))}`
+        : 'N/A'
+
+      alert(
+        `✅ Recruitment Complete!\n\n` +
+        `Found and selected ${recruitedPersonas.length} personas:\n` +
+        `• Genders: ${genders.join(', ')}\n` +
+        `• Age range: ${ageRange}\n` +
+        `• Total selected: ${newSelected.size}`
+      )
+
+      // Clear the prompt after successful recruitment
+      setRecruitmentPrompt("")
+    } catch (error) {
+      console.error("Recruitment failed", error)
+      alert("❌ Recruitment Failed\n\nCould not recruit personas. Please check your connection and try again.")
+    } finally {
+      setIsRecruiting(false)
+    }
+  }
+
   const filterOptions = useMemo(() => {
     const genders = new Set<string>()
     const locations = new Set<string>()
@@ -672,36 +715,91 @@ export function SimulationHub() {
                 <div className="flex flex-col gap-6 lg:flex-row">
                   <div className="flex-1 space-y-4">
                     {/* Search and Action Bar */}
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                      <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                        <Input
-                          type="text"
-                          placeholder="Search personas by name, condition, or location..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="pl-10"
-                        />
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+                          <Button
+                            variant={recruitmentMode === "manual" ? "secondary" : "ghost"}
+                            size="sm"
+                            onClick={() => setRecruitmentMode("manual")}
+                            className={recruitmentMode === "manual" ? "shadow-sm" : ""}
+                          >
+                            <Filter className="h-4 w-4 mr-2" />
+                            Manual Filter
+                          </Button>
+                          <Button
+                            variant={recruitmentMode === "ai" ? "secondary" : "ghost"}
+                            size="sm"
+                            onClick={() => setRecruitmentMode("ai")}
+                            className={recruitmentMode === "ai" ? "shadow-sm" : ""}
+                          >
+                            <Sparkles className="h-4 w-4 mr-2 text-violet-600" />
+                            AI Recruitment
+                          </Button>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedPersonas(new Set(filteredPersonas.map((p) => p.id)))}
+                            className="border-violet-300 text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-900/30"
+                          >
+                            <CheckCircle2 className="h-4 w-4 mr-1" />
+                            Select All
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedPersonas(new Set())}
+                            className="border-gray-300"
+                          >
+                            Clear All
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSelectedPersonas(new Set(filteredPersonas.map((p) => p.id)))}
-                          className="border-violet-300 text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-900/30"
-                        >
-                          <CheckCircle2 className="h-4 w-4 mr-1" />
-                          Select All
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSelectedPersonas(new Set())}
-                          className="border-gray-300"
-                        >
-                          Clear All
-                        </Button>
-                      </div>
+
+                      {recruitmentMode === "manual" ? (
+                        <div className="relative flex-1">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <Input
+                            type="text"
+                            placeholder="Search personas by name, condition, or location..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <Sparkles className="absolute left-3 top-3 h-4 w-4 text-violet-600" />
+                            <Textarea
+                              placeholder="Describe the cohort you want to recruit (e.g., 'Find 5 elderly male patients with diabetes who are concerned about lifestyle changes')..."
+                              value={recruitmentPrompt}
+                              onChange={(e) => setRecruitmentPrompt(e.target.value)}
+                              className="pl-10 min-h-[80px] resize-none"
+                            />
+                          </div>
+                          <Button
+                            onClick={handleRecruit}
+                            disabled={isRecruiting || !recruitmentPrompt.trim()}
+                            className="h-auto bg-gradient-to-r from-violet-600 to-purple-600 text-white"
+                          >
+                            {isRecruiting ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Recruiting...
+                              </>
+                            ) : (
+                              <>
+                                <Zap className="h-4 w-4 mr-2" />
+                                Recruit
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Stats Bar */}
@@ -810,47 +908,46 @@ export function SimulationHub() {
                               return (
                                 <tr
                                   key={persona.id}
-                                  className={`hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer ${
-                                    selectedPersonas.has(persona.id) ? "bg-violet-50 dark:bg-violet-900/20" : ""
-                                  }`}
+                                  className={`hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer ${selectedPersonas.has(persona.id) ? "bg-violet-50 dark:bg-violet-900/20" : ""
+                                    }`}
                                   onClick={() => togglePersona(persona.id)}
                                 >
-                                <td className="p-4">
-                                  <Checkbox
-                                    checked={selectedPersonas.has(persona.id)}
-                                    onChange={() => togglePersona(persona.id)}
-                                    onClick={(e) => e.stopPropagation()}
-                                  />
-                                </td>
-                                <td className="p-4">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-xs font-bold">
-                                      {persona.name.charAt(0)}
+                                  <td className="p-4">
+                                    <Checkbox
+                                      checked={selectedPersonas.has(persona.id)}
+                                      onChange={() => togglePersona(persona.id)}
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </td>
+                                  <td className="p-4">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-xs font-bold">
+                                        {persona.name.charAt(0)}
+                                      </div>
+                                      <span className="font-medium text-gray-900 dark:text-gray-100">{persona.name}</span>
                                     </div>
-                                    <span className="font-medium text-gray-900 dark:text-gray-100">{persona.name}</span>
-                                  </div>
-                                </td>
-                                <td className="p-4">
-                                  <Badge
-                                    variant="secondary"
-                                    className={
-                                      isHCP
-                                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
-                                        : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
-                                    }
-                                  >
-                                    {personaTypeLabel}
-                                  </Badge>
-                                </td>
-                                <td className="p-4 text-sm text-gray-600 dark:text-gray-400">{persona.age}</td>
-                                <td className="p-4 text-sm text-gray-600 dark:text-gray-400">{persona.gender}</td>
-                                <td className="p-4">
-                                  <Badge variant="outline" className="text-xs">
-                                    {persona.condition}
-                                  </Badge>
-                                </td>
-                                <td className="p-4 text-sm text-gray-600 dark:text-gray-400">{persona.location}</td>
-                              </tr>
+                                  </td>
+                                  <td className="p-4">
+                                    <Badge
+                                      variant="secondary"
+                                      className={
+                                        isHCP
+                                          ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
+                                          : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
+                                      }
+                                    >
+                                      {personaTypeLabel}
+                                    </Badge>
+                                  </td>
+                                  <td className="p-4 text-sm text-gray-600 dark:text-gray-400">{persona.age}</td>
+                                  <td className="p-4 text-sm text-gray-600 dark:text-gray-400">{persona.gender}</td>
+                                  <td className="p-4">
+                                    <Badge variant="outline" className="text-xs">
+                                      {persona.condition}
+                                    </Badge>
+                                  </td>
+                                  <td className="p-4 text-sm text-gray-600 dark:text-gray-400">{persona.location}</td>
+                                </tr>
                               )
                             })}
                           </tbody>
@@ -1283,11 +1380,10 @@ export function SimulationHub() {
                     return (
                       <div
                         key={metric.id}
-                        className={`relative rounded-xl border-2 transition-all cursor-pointer ${
-                          isSelected
-                            ? "border-primary bg-gradient-to-r from-primary/5 to-secondary/5"
-                            : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
-                        }`}
+                        className={`relative rounded-xl border-2 transition-all cursor-pointer ${isSelected
+                          ? "border-primary bg-gradient-to-r from-primary/5 to-secondary/5"
+                          : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                          }`}
                         onClick={() => toggleMetric(metric.id)}
                       >
                         <div className="p-4">
