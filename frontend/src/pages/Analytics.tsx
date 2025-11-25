@@ -7,14 +7,14 @@ import { Progress } from '@/components/ui/progress';
 import MetricCard from '@/components/analytics/MetricCard';
 import { computeScoreColor, computeScoreProgress, getSentimentDescriptor } from '@/lib/analytics';
 import type { AnalysisResults, AnalyzedMetricKey, IndividualResponseRow, ActionableSuggestion } from '@/types/analytics';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Minus, 
-  Users, 
-  Target, 
-  Brain, 
-  MessageSquare, 
+import {
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Users,
+  Target,
+  Brain,
+  MessageSquare,
   Activity,
   BarChart3,
   Sparkles,
@@ -34,12 +34,12 @@ import {
   History,
   Shield
 } from 'lucide-react';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
@@ -59,7 +59,7 @@ export function Analytics() {
   const location = useLocation();
   const navigate = useNavigate();
   const [analysisResults, setAnalysisResults] = useState<AnalysisResults | undefined>(location.state?.analysisResults);
-  
+
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [simulationName, setSimulationName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -216,7 +216,7 @@ export function Analytics() {
                 Run a simulation from the Simulation Hub or load a previously saved result.
               </p>
               <div className="flex justify-center gap-4">
-                <Button 
+                <Button
                   size="lg"
                   className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200"
                   onClick={() => navigate('/simulation')}
@@ -262,13 +262,13 @@ export function Analytics() {
                     {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Load"}
                   </Button>
                   {selectedSimulation && (
-                     <Button 
-                        variant="destructive" 
-                        size="icon" 
-                        onClick={() => handleDeleteSimulation(Number(selectedSimulation))}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      onClick={() => handleDeleteSimulation(Number(selectedSimulation))}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   )}
                 </div>
               ) : (
@@ -373,7 +373,7 @@ export function Analytics() {
                 </Button>
               </div>
             </div>
-            
+
             {/* Quick Stats Bar */}
             <div className="grid grid-cols-4 gap-4 mt-8">
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
@@ -461,35 +461,39 @@ export function Analytics() {
           </CardHeader>
           <CardContent className="pt-6">
             <blockquote className="border-l-4 border-primary pl-6 py-2 mb-6">
-              <p className="text-lg text-gray-700 dark:text-gray-300 italic">"{stimulus_text}"</p>
+              <p className="text-lg text-gray-700 dark:text-gray-300 italic">
+                "{stimulus_text || "No stimulus text available for this analysis."}"
+              </p>
             </blockquote>
             <div className="flex flex-wrap gap-2">
-              {metrics_analyzed.map((metric: AnalyzedMetricKey) => (
-                <Badge key={metric} variant="outline" className="px-3 py-1">
-                  <CheckCircle className="h-3 w-3 mr-1 text-emerald-500" />
-                  {metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                </Badge>
-              ))}
+              {metrics_analyzed && metrics_analyzed.length > 0 ? (
+                metrics_analyzed.map((metric: AnalyzedMetricKey) => (
+                  <Badge key={metric} variant="outline" className="px-3 py-1">
+                    <CheckCircle className="h-3 w-3 mr-1 text-emerald-500" />
+                    {metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-sm text-muted-foreground">No specific metrics recorded.</span>
+              )}
             </div>
           </CardContent>
         </Card>
 
         {/* Key Metrics Grid - Enhanced */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          {summary_statistics.purchase_intent_avg !== undefined && (
-            <MetricCard
-              title="Average Purchase Intent"
-              value={summary_statistics.purchase_intent_avg.toFixed(1)}
-              subtitle="Scale of 1-10"
-              icon={Target}
-              trend={summary_statistics.purchase_intent_avg > 5 ? 'up' : 'down'}
-              color="primary"
-            />
-          )}
-          {summary_statistics.sentiment_avg !== undefined && (
-            <MetricCard
-              title="Average Sentiment"
-              value={
+          <MetricCard
+            title="Average Purchase Intent"
+            value={summary_statistics?.purchase_intent_avg !== undefined ? summary_statistics.purchase_intent_avg.toFixed(1) : "N/A"}
+            subtitle="Scale of 1-10"
+            icon={Target}
+            trend={summary_statistics?.purchase_intent_avg !== undefined && summary_statistics.purchase_intent_avg > 5 ? 'up' : 'down'}
+            color="primary"
+          />
+          <MetricCard
+            title="Average Sentiment"
+            value={
+              summary_statistics?.sentiment_avg !== undefined ? (
                 <div className="flex items-center gap-2">
                   {(() => {
                     const d = getSentimentDescriptor(summary_statistics.sentiment_avg);
@@ -506,32 +510,28 @@ export function Analytics() {
                     return <Minus className="h-4 w-4 text-gray-500" />;
                   })()}
                 </div>
-              }
-              subtitle="Scale of -1 to 1"
-              icon={Brain}
-              color="secondary"
-            />
-          )}
-          {summary_statistics.trust_in_brand_avg !== undefined && (
-            <MetricCard
-              title="Average Brand Trust"
-              value={summary_statistics.trust_in_brand_avg.toFixed(1)}
-              subtitle="Scale of 1-10"
-              icon={Shield}
-              trend={summary_statistics.trust_in_brand_avg > 5 ? 'up' : 'down'}
-              color="success"
-            />
-          )}
-          {summary_statistics.message_clarity_avg !== undefined && (
-            <MetricCard
-              title="Message Clarity"
-              value={summary_statistics.message_clarity_avg.toFixed(1)}
-              subtitle="Scale of 1-10"
-              icon={MessageSquare}
-              trend={summary_statistics.message_clarity_avg > 7 ? 'up' : 'neutral'}
-              color="warning"
-            />
-          )}
+              ) : "N/A"
+            }
+            subtitle="Scale of -1 to 1"
+            icon={Brain}
+            color="secondary"
+          />
+          <MetricCard
+            title="Average Brand Trust"
+            value={summary_statistics?.trust_in_brand_avg !== undefined ? summary_statistics.trust_in_brand_avg.toFixed(1) : "N/A"}
+            subtitle="Scale of 1-10"
+            icon={Shield}
+            trend={summary_statistics?.trust_in_brand_avg !== undefined && summary_statistics.trust_in_brand_avg > 5 ? 'up' : 'down'}
+            color="success"
+          />
+          <MetricCard
+            title="Message Clarity"
+            value={summary_statistics?.message_clarity_avg !== undefined ? summary_statistics.message_clarity_avg.toFixed(1) : "N/A"}
+            subtitle="Scale of 1-10"
+            icon={MessageSquare}
+            trend={summary_statistics?.message_clarity_avg !== undefined && summary_statistics.message_clarity_avg > 7 ? 'up' : 'neutral'}
+            color="warning"
+          />
         </div>
 
         {/* AI Insights - Enhanced */}
@@ -659,8 +659,8 @@ export function Analytics() {
                             <span className={`text-lg font-bold ${computeScoreColor(response.responses.purchase_intent || 0)}`}>
                               {response.responses.purchase_intent}
                             </span>
-                            <Progress 
-                              value={computeScoreProgress(response.responses.purchase_intent || 0)} 
+                            <Progress
+                              value={computeScoreProgress(response.responses.purchase_intent || 0)}
                               className="w-16 h-1.5"
                             />
                           </div>
@@ -687,8 +687,8 @@ export function Analytics() {
                             <span className={`text-lg font-bold ${computeScoreColor(response.responses.trust_in_brand || 0)}`}>
                               {response.responses.trust_in_brand}
                             </span>
-                            <Progress 
-                              value={computeScoreProgress(response.responses.trust_in_brand || 0)} 
+                            <Progress
+                              value={computeScoreProgress(response.responses.trust_in_brand || 0)}
                               className="w-16 h-1.5"
                             />
                           </div>
@@ -700,8 +700,8 @@ export function Analytics() {
                             <span className={`text-lg font-bold ${computeScoreColor(response.responses.message_clarity || 0)}`}>
                               {response.responses.message_clarity}
                             </span>
-                            <Progress 
-                              value={computeScoreProgress(response.responses.message_clarity || 0)} 
+                            <Progress
+                              value={computeScoreProgress(response.responses.message_clarity || 0)}
                               className="w-16 h-1.5"
                             />
                           </div>
@@ -796,7 +796,7 @@ export function Analytics() {
 
         {/* Action Buttons */}
         <div className="flex justify-center gap-4 mt-8 pb-8">
-          <Button 
+          <Button
             size="lg"
             className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl"
             onClick={() => navigate('/simulation')}
@@ -804,7 +804,7 @@ export function Analytics() {
             <PlayCircle className="h-5 w-5 mr-2" />
             Run New Simulation
           </Button>
-          <Button 
+          <Button
             size="lg"
             variant="outline"
             onClick={() => window.print()}

@@ -107,6 +107,7 @@ class SavedSimulationBase(BaseModel):
 class SavedSimulationCreate(SavedSimulationBase):
     pass
 
+
 class SavedSimulation(SavedSimulationBase):
     id: int
     created_at: datetime

@@ -264,6 +264,14 @@ async def save_simulation(simulation_data: schemas.SavedSimulationCreate, db: Se
     if existing_simulation:
         raise HTTPException(status_code=400, detail="A simulation with this name already exists.")
     
+    # Validate that critical fields are present in the data
+    data = simulation_data.simulation_data
+    required_fields = ['stimulus_text', 'metrics_analyzed', 'individual_responses', 'summary_statistics']
+    missing_fields = [field for field in required_fields if field not in data]
+    
+    if missing_fields:
+        logger.warning(f"Saving simulation with missing fields: {missing_fields}")
+    
     return crud.create_saved_simulation(db=db, simulation_data=simulation_data)
 
 @app.get("/simulations/saved", response_model=List[schemas.SavedSimulation])
