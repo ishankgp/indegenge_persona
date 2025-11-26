@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
 import json
 
@@ -29,6 +29,25 @@ class PersonaCreate(BaseModel):
     condition: str
     location: str
     concerns: str
+
+class PersonaUpdate(BaseModel):
+    name: Optional[str] = None
+    persona_type: Optional[str] = None
+    persona_subtype: Optional[str] = None
+    tagline: Optional[str] = None
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    condition: Optional[str] = None
+    location: Optional[str] = None
+    specialty: Optional[str] = None
+    practice_setup: Optional[str] = None
+    system_context: Optional[str] = None
+    decision_influencers: Optional[str] = None
+    adherence_to_protocols: Optional[str] = None
+    channel_use: Optional[str] = None
+    decision_style: Optional[str] = None
+    core_insight: Optional[str] = None
+    full_persona_json: Optional[Union[str, Dict[str, Any]]] = None
 
 class Persona(PersonaBase):
     id: int
@@ -129,11 +148,20 @@ class Brand(BrandBase):
     class Config:
         from_attributes = True
 
+class BrandInsight(BaseModel):
+    type: str
+    text: str
+    segment: Optional[str] = "General"
+    source_snippet: Optional[str] = None
+    source_document: Optional[str] = None
+
+
 class BrandDocumentBase(BaseModel):
     brand_id: int
     filename: str
     category: str
     summary: Optional[str] = None
+    extracted_insights: Optional[List[BrandInsight]] = None
 
 class BrandDocumentCreate(BrandDocumentBase):
     filepath: str
@@ -145,3 +173,33 @@ class BrandDocument(BrandDocumentBase):
 
     class Config:
         from_attributes = True
+
+
+class BrandContextResponse(BaseModel):
+    brand_id: int
+    brand_name: str
+    motivations: List[BrandInsight]
+    beliefs: List[BrandInsight]
+    tensions: List[BrandInsight]
+
+
+class PersonaBrandEnrichmentRequest(BaseModel):
+    brand_id: int
+    target_segment: Optional[str] = None
+    target_fields: Optional[List[str]] = None
+
+
+class BrandSuggestionRequest(BaseModel):
+    target_segment: Optional[str] = None
+    persona_type: Optional[str] = "Patient"
+    limit_per_category: int = 5
+
+
+class BrandSuggestionResponse(BaseModel):
+    brand_id: int
+    brand_name: str
+    target_segment: Optional[str] = None
+    persona_type: Optional[str] = "Patient"
+    motivations: List[str]
+    beliefs: List[str]
+    tensions: List[str]

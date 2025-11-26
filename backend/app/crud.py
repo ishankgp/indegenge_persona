@@ -54,10 +54,14 @@ def create_persona(db: Session, persona_data: schemas.PersonaCreate, persona_jso
 def get_persona(db: Session, persona_id: int):
     return db.query(models.Persona).filter(models.Persona.id == persona_id).first()
 
-def update_persona(db: Session, persona_id: int, persona: schemas.PersonaCreate):
+def update_persona(db: Session, persona_id: int, persona: schemas.PersonaUpdate):
     db_persona = db.query(models.Persona).filter(models.Persona.id == persona_id).first()
     if db_persona:
-        for key, value in persona.dict().items():
+        update_data = persona.dict(exclude_unset=True)
+        full_payload = update_data.get("full_persona_json")
+        if isinstance(full_payload, dict):
+            update_data["full_persona_json"] = json.dumps(full_payload)
+        for key, value in update_data.items():
             setattr(db_persona, key, value)
         db.commit()
         db.refresh(db_persona)

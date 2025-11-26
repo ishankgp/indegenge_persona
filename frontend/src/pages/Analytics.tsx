@@ -46,28 +46,22 @@ export function Analytics() {
   if (!analysisResults) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
-        {/* Header */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-secondary">
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute top-20 left-10 w-72 h-72 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
-            <div className="absolute bottom-0 right-20 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse animation-delay-2000"></div>
-          </div>
-
-          <div className="relative z-10 px-8 py-12">
-            <div className="max-w-7xl mx-auto">
-              <div className="flex items-center space-x-6">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-white/20 rounded-2xl blur-xl"></div>
-                  <div className="relative p-4 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20">
-                    <Activity className="h-10 w-10 text-white" />
-                  </div>
+        {/* Indegene Purple Header */}
+        <div className="bg-gradient-to-r from-[hsl(262,60%,38%)] via-[hsl(262,60%,42%)] to-[hsl(280,60%,45%)]">
+          <div className="max-w-7xl mx-auto px-8 py-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                <BarChart3 className="h-8 w-8 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-3xl font-bold text-white tracking-tight">Analytics Dashboard</h1>
+                  <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30 font-normal">
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    Insights & Reports
+                  </Badge>
                 </div>
-                <div>
-                  <h1 className="text-5xl font-bold text-white">Analytics Dashboard</h1>
-                  <p className="text-white/90 text-lg mt-2">
-                    View and analyze cohort simulation results
-                  </p>
-                </div>
+                <p className="text-white/80 mt-1">View and analyze cohort simulation results</p>
               </div>
             </div>
           </div>
@@ -118,85 +112,73 @@ export function Analytics() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
-      {/* Enhanced Header Section */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-secondary">
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-20 left-10 w-72 h-72 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-0 right-20 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse animation-delay-2000"></div>
-        </div>
-
-        <div className="relative z-10 px-8 py-12">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-6">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-white/20 rounded-2xl blur-xl"></div>
-                  <div className="relative p-4 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20">
-                    <Activity className="h-10 w-10 text-white" />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <h1 className="text-5xl font-bold text-white">Analytics Dashboard</h1>
-                    <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30 px-3 py-1">
-                      <Sparkles className="h-3 w-3 mr-1" />
-                      Live Results
-                    </Badge>
-                  </div>
-                  <p className="text-white/90 text-lg">
-                    Comprehensive analysis for {cohort_size} personas
-                  </p>
-                </div>
+      {/* Indegene Purple Header Section */}
+      <div className="bg-gradient-to-r from-[hsl(262,60%,38%)] via-[hsl(262,60%,42%)] to-[hsl(280,60%,45%)]">
+        <div className="max-w-7xl mx-auto px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                <BarChart3 className="h-8 w-8 text-white" />
               </div>
-              <div className="flex gap-3">
-                <Button variant="secondary" className="bg-white/20 backdrop-blur-sm text-white border-white/30 hover:bg-white/30">
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
-                </Button>
-                <Button variant="secondary" className="bg-white/20 backdrop-blur-sm text-white border-white/30 hover:bg-white/30">
-                  <Share2 className="h-4 w-4 mr-2" />
-                  Share
-                </Button>
+              <div>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-3xl font-bold text-white tracking-tight">Analytics Dashboard</h1>
+                  <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30 font-normal">
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    Live Results
+                  </Badge>
+                </div>
+                <p className="text-white/80 mt-1">Comprehensive analysis for {cohort_size} personas</p>
               </div>
             </div>
-            
-            {/* Quick Stats Bar */}
-            <div className="grid grid-cols-4 gap-4 mt-8">
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-white/70 text-sm">Completed</p>
-                    <p className="text-2xl font-bold text-white">{new Date(created_at).toLocaleTimeString()}</p>
-                  </div>
-                  <Clock className="h-8 w-8 text-white/50" />
+            <div className="flex gap-3">
+              <Button variant="outline" className="bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20">
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </Button>
+              <Button variant="outline" className="bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20">
+                <Share2 className="h-4 w-4 mr-2" />
+                Share
+              </Button>
+            </div>
+          </div>
+          
+          {/* Quick Stats Bar */}
+          <div className="grid grid-cols-4 gap-4 mt-6">
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-white/70 text-sm">Completed</p>
+                  <p className="text-xl font-bold text-white">{new Date(created_at).toLocaleTimeString()}</p>
                 </div>
+                <Clock className="h-6 w-6 text-white/50" />
               </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-white/70 text-sm">Cohort Size</p>
-                    <p className="text-2xl font-bold text-white">{cohort_size}</p>
-                  </div>
-                  <Users className="h-8 w-8 text-white/50" />
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-white/70 text-sm">Cohort Size</p>
+                  <p className="text-xl font-bold text-white">{cohort_size}</p>
                 </div>
+                <Users className="h-6 w-6 text-white/50" />
               </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-white/70 text-sm">Metrics</p>
-                    <p className="text-2xl font-bold text-white">{metrics_analyzed.length}</p>
-                  </div>
-                  <Gauge className="h-8 w-8 text-white/50" />
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-white/70 text-sm">Metrics</p>
+                  <p className="text-xl font-bold text-white">{metrics_analyzed.length}</p>
                 </div>
+                <Gauge className="h-6 w-6 text-white/50" />
               </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-white/70 text-sm">Insights</p>
-                    <p className="text-2xl font-bold text-white">{insights?.length || 0}</p>
-                  </div>
-                  <Lightbulb className="h-8 w-8 text-white/50" />
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-white/70 text-sm">Insights</p>
+                  <p className="text-xl font-bold text-white">{insights?.length || 0}</p>
                 </div>
+                <Lightbulb className="h-6 w-6 text-white/50" />
               </div>
             </div>
           </div>

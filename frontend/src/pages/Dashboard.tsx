@@ -1,8 +1,10 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
 import { PersonasAPI, StatsAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import {
   Users,
   PlayCircle,
@@ -12,7 +14,8 @@ import {
   Sparkles,
   Plus,
   Zap,
-  ArrowRight
+  ArrowRight,
+  LayoutDashboard
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -29,6 +32,7 @@ interface Persona {
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate()
   const [personas, setPersonas] = useState<Persona[]>([])
   const [stats, setStats] = useState<any>({
     total_simulations: 0,
@@ -73,26 +77,48 @@ export default function Dashboard() {
   const conditionStats = getConditionStats()
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Overview of your personas and simulation activities.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline">
-            <Plus className="h-4 w-4 mr-2" />
-            Create Persona
-          </Button>
-          <Button>
-            <Zap className="h-4 w-4 mr-2" />
-            Run Simulation
-          </Button>
+    <div className="min-h-screen bg-background animate-fade-in">
+      {/* Indegene Purple Page Header */}
+      <div className="bg-gradient-to-r from-[hsl(262,60%,38%)] via-[hsl(262,60%,42%)] to-[hsl(280,60%,45%)]">
+        <div className="max-w-7xl mx-auto px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                <LayoutDashboard className="h-8 w-8 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-3xl font-bold text-white tracking-tight">Dashboard</h1>
+                  <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30 font-normal">
+                    <Activity className="h-3 w-3 mr-1" />
+                    Live
+                  </Badge>
+                </div>
+                <p className="text-white/80 mt-1">Overview of your personas and simulation activities</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="outline" 
+                className="bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20"
+                onClick={() => navigate('/create-persona')}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create Persona
+              </Button>
+              <Button 
+                className="bg-white text-primary hover:bg-white/90"
+                onClick={() => navigate('/simulation')}
+              >
+                <Zap className="h-4 w-4 mr-2" />
+                Run Simulation
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
+
+      <div className="max-w-7xl mx-auto px-8 py-8 space-y-8">
 
       {/* Stats Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -268,6 +294,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </div>
+      </div>
       </div>
     </div>
   )

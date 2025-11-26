@@ -126,7 +126,46 @@ export const PersonasAPI = {
   generate: (payload: any) => api.post('/personas/generate', payload).then(r => r.data),
   createManual: (payload: any) => api.post('/personas/manual', payload).then(r => r.data),
   delete: (id: number) => api.delete(`/personas/${id}`),
-  recruit: (prompt: string) => api.post('/personas/recruit', { prompt }).then(r => r.data)
+  recruit: (prompt: string) => api.post('/personas/recruit', { prompt }).then(r => r.data),
+  update: (id: number, payload: any) => api.put(`/personas/${id}`, payload).then(r => r.data),
+  enrichFromBrand: (id: number, payload: { brand_id: number; target_segment?: string; target_fields?: string[] }) =>
+    api.post(`/personas/${id}/enrich-from-brand`, payload).then(r => r.data),
+};
+
+export interface BrandInsight {
+  type: "Motivation" | "Belief" | "Tension";
+  text: string;
+  segment?: string;
+  source_snippet?: string;
+  source_document?: string;
+}
+
+export interface BrandContextResponse {
+  brand_id: number;
+  brand_name: string;
+  motivations: BrandInsight[];
+  beliefs: BrandInsight[];
+  tensions: BrandInsight[];
+}
+
+export interface BrandSuggestionResponse {
+  brand_id: number;
+  brand_name: string;
+  target_segment?: string;
+  persona_type?: string;
+  motivations: string[];
+  beliefs: string[];
+  tensions: string[];
+}
+
+export const BrandsAPI = {
+  list: () => api.get('/api/brands').then(r => r.data),
+  getContext: (brandId: number, params?: { target_segment?: string; limit_per_category?: number }) =>
+    api.get<BrandContextResponse>(`/api/brands/${brandId}/context`, { params }).then(r => r.data),
+  getSuggestions: (brandId: number, payload: { target_segment?: string; persona_type?: string; limit_per_category?: number }) =>
+    api.post<BrandSuggestionResponse>(`/api/brands/${brandId}/persona-suggestions`, payload).then(r => r.data),
+  enrichPersona: (personaId: number, payload: { brand_id: number; target_segment?: string; target_fields?: string[] }) =>
+    api.post(`/personas/${personaId}/enrich-from-brand`, payload).then(r => r.data)
 };
 
 export const CohortAPI = {

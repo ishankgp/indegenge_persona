@@ -63,4 +63,5 @@ class BrandDocument(Base):
     filepath = Column(String)
     category = Column(String)
     summary = Column(Text, nullable=True)
+    extracted_insights = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -592,29 +592,32 @@ export function SimulationHub() {
 
   return (
     <div className="min-h-screen bg-background animate-fade-in">
-      {/* Standard Page Header */}
-      <div className="border-b border-border bg-card">
+      {/* Indegene Purple Page Header */}
+      <div className="bg-gradient-to-r from-[hsl(262,60%,38%)] via-[hsl(262,60%,42%)] to-[hsl(280,60%,45%)]">
         <div className="max-w-7xl mx-auto px-8 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-primary/10 rounded-lg">
-                <PlayCircle className="h-8 w-8 text-primary" />
+              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                <PlayCircle className="h-8 w-8 text-white" />
               </div>
               <div>
                 <div className="flex items-center gap-3">
-                  <h1 className="text-2xl font-bold text-foreground tracking-tight">Simulation Hub</h1>
-                  <Badge variant="secondary" className="font-normal">
-                    <Zap className="h-3 w-3 mr-1 text-amber-500" />
+                  <h1 className="text-3xl font-bold text-white tracking-tight">Simulation Hub</h1>
+                  <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30 font-normal">
+                    <Zap className="h-3 w-3 mr-1 text-amber-300" />
                     Real-time Analysis
                   </Badge>
                 </div>
-                <p className="text-muted-foreground mt-1">Test marketing messages with AI-powered persona simulations</p>
+                <p className="text-white/80 mt-1">Test marketing messages with AI-powered persona simulations</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <div className="text-right hidden sm:block">
-                <div className="text-2xl font-bold text-foreground">{selectedPersonas.size}</div>
-                <div className="text-xs text-muted-foreground">Selected Personas</div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3 text-right">
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-white/70" />
+                  <div className="text-2xl font-bold text-white">{selectedPersonas.size}</div>
+                </div>
+                <div className="text-xs text-white/60">Selected Personas</div>
               </div>
             </div>
           </div>

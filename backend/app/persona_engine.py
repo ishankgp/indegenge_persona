@@ -2,7 +2,8 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 import json
-from typing import Optional
+from typing import Optional, List, Dict, Any
+import re
 
 # Load environment variables from the project root
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -366,3 +367,246 @@ def parse_recruitment_prompt(prompt: str) -> dict:
                 break
             
         return filters
+
+
+def extract_mbt_from_text(document_text: str, max_chars: int = 6000) -> List[Dict[str, str]]:
+    """
+    Extract motivations, beliefs, and tensions/pain points from a document.
+    Each item includes a type, text, optional segment, and source snippet.
+    """
+    text = (document_text or "").strip()
+    if not text:
+        return []
+
+    truncated_text = text[:max_chars]
+    client = get_openai_client()
+
+    if client is None:
+        return _fallback_mbt_extraction(truncated_text)
+
+    system_prompt = (
+        "You are an insights analyst using the Motivations-Beliefs-Tensions (MBT) framework. "
+        "Given a pharma brand document, extract up to 5 items for each category. "
+        "For each item provide: type ('Motivation' | 'Belief' | 'Tension'), "
+        "text (short sentence), segment (e.g., 'General', 'Elderly Patients', 'HCP Endocrinologists'), "
+        "and a short source_snippet quoting the text you derived it from."
+    )
+
+    extraction_request = [
+        {
+            "role": "system",
+            "content": system_prompt,
+        },
+        {
+            "role": "user",
+            "content": f"Document:\n```\n{truncated_text}\n```",
+        },
+    ]
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=extraction_request,
+            response_format={"type": "json_object"},
+            max_tokens=900,
+        )
+        content = response.choices[0].message.content or "{}"
+        parsed = json.loads(content)
+        raw_insights = parsed.get("insights") or parsed.get("items") or parsed
+
+        if isinstance(raw_insights, dict):
+            # Some models might return {"motivations": [], "beliefs": [], ...}
+            normalized = []
+            for insight_type, entries in raw_insights.items():
+                if not isinstance(entries, list):
+                    continue
+                for entry in entries:
+                    normalized.append(
+                        {
+                            "type": entry.get("type", insight_type[:-1].title()),
+                            "text": entry.get("text", "").strip(),
+                            "segment": entry.get("segment", "General"),
+                            "source_snippet": entry.get("source_snippet", "").strip(),
+                        }
+                    )
+        elif isinstance(raw_insights, list):
+            normalized = [
+                {
+                    "type": entry.get("type", "Motivation"),
+                    "text": entry.get("text", "").strip(),
+                    "segment": entry.get("segment", "General"),
+                    "source_snippet": entry.get("source_snippet", "").strip(),
+                }
+                for entry in raw_insights
+            ]
+        else:
+            normalized = []
+
+        return [
+            insight
+            for insight in normalized
+            if insight.get("text")
+        ]
+    except Exception as exc:
+        print(f"⚠️ MBT extraction failed ({exc}). Falling back to heuristics.")
+        return _fallback_mbt_extraction(truncated_text)
+
+
+def _fallback_mbt_extraction(text: str) -> List[Dict[str, str]]:
+    """
+    Very lightweight keyword-based extraction so the feature still works offline.
+    """
+    lowered = text.lower()
+    insights: List[Dict[str, str]] = []
+
+    def add_insight(insight_type: str, phrase: str):
+        insights.append(
+            {
+                "type": insight_type,
+                "text": phrase,
+                "segment": "General",
+                "source_snippet": "",
+            }
+        )
+
+    if any(word in lowered for word in ["cost", "afford", "price", "reimbursement"]):
+        add_insight("Tension", "Cost and affordability barriers.")
+    if any(word in lowered for word in ["side effect", "safety", "tolerability"]):
+        add_insight("Belief", "Safety profile requires ongoing reassurance.")
+        add_insight("Tension", "Worries about tolerability and side effects.")
+    if any(word in lowered for word in ["efficacy", "outcome", "results", "control"]):
+        add_insight("Motivation", "Seeking better clinical outcomes and control.")
+    if any(word in lowered for word in ["convenient", "once-weekly", "device", "autoinjector"]):
+        add_insight("Motivation", "Prefers convenient dosing and delivery formats.")
+    if any(word in lowered for word in ["support", "education", "coaching"]):
+        add_insight("Belief", "Education and support improve adherence.")
+
+    if not insights:
+        add_insight("Motivation", "Desire to manage the condition more confidently.")
+
+    return insights
+
+
+def enrich_persona_from_brand_context(
+    persona_payload: Dict[str, Any],
+    brand_insights: List[Dict[str, str]],
+    target_fields: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """
+    Enrich an existing persona JSON using curated brand insights.
+    """
+    target_fields = target_fields or ["motivations", "beliefs", "pain_points"]
+    client = get_openai_client()
+    limited_insights = brand_insights[:20]
+
+    if client is None:
+        return _fallback_persona_enrichment(persona_payload, limited_insights, target_fields)
+
+    system_prompt = (
+        "You are updating a healthcare persona using verified brand insights. "
+        "Only modify the requested fields and keep all other persona content intact. "
+        "Return the full persona JSON."
+    )
+
+    user_payload = json.dumps(
+        {
+            "persona": persona_payload,
+            "target_fields": target_fields,
+            "brand_insights": limited_insights,
+        }
+    )[:8000]
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_payload},
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=1200,
+        )
+        content = response.choices[0].message.content or "{}"
+        updated = json.loads(content)
+        if isinstance(updated, dict):
+            return updated
+    except Exception as exc:
+        print(f"⚠️ Persona enrichment failed ({exc}). Using fallback.")
+
+    return _fallback_persona_enrichment(persona_payload, limited_insights, target_fields)
+
+
+def suggest_persona_attributes(
+    brand_insights: List[Dict[str, str]],
+    persona_type: str = "Patient"
+) -> Dict[str, List[str]]:
+    """
+    Suggest motivations/beliefs/tensions for manual persona creation.
+    """
+    client = get_openai_client()
+    limited_insights = brand_insights[:25]
+
+    if client is None:
+        return _fallback_persona_suggestions(limited_insights)
+
+    system_prompt = (
+        f"You are helping craft a {persona_type} persona. "
+        "Convert the provided brand insights into actionable lists of motivations, "
+        "beliefs, and tensions. Provide 3-5 items per list."
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": json.dumps({"brand_insights": limited_insights})[:8000],
+                },
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=600,
+        )
+        content = response.choices[0].message.content or "{}"
+        parsed = json.loads(content)
+        return {
+            "motivations": parsed.get("motivations", []),
+            "beliefs": parsed.get("beliefs", []),
+            "tensions": parsed.get("tensions", []),
+        }
+    except Exception as exc:
+        print(f"⚠️ Persona suggestion generation failed ({exc}). Using fallback.")
+        return _fallback_persona_suggestions(limited_insights)
+
+
+def _fallback_persona_enrichment(
+    persona_payload: Dict[str, Any],
+    brand_insights: List[Dict[str, str]],
+    target_fields: List[str]
+) -> Dict[str, Any]:
+    """Append simple text snippets to persona fields when LLM is unavailable."""
+    persona_copy = json.loads(json.dumps(persona_payload))
+    summary_texts = [insight.get("text") for insight in brand_insights if insight.get("text")]
+    summary = summary_texts[:3]
+
+    if "motivations" in target_fields and summary:
+        persona_copy.setdefault("motivations", [])
+        persona_copy["motivations"].extend(summary)
+    if "beliefs" in target_fields and summary:
+        persona_copy.setdefault("beliefs", [])
+        persona_copy["beliefs"].extend(summary)
+    if "pain_points" in target_fields and summary:
+        persona_copy.setdefault("pain_points", [])
+        persona_copy["pain_points"].extend(summary)
+
+    return persona_copy
+
+
+def _fallback_persona_suggestions(brand_insights: List[Dict[str, str]]) -> Dict[str, List[str]]:
+    texts = [insight.get("text") for insight in brand_insights if insight.get("text")]
+    return {
+        "motivations": texts[:3],
+        "beliefs": texts[3:6] or texts[:2],
+        "tensions": texts[6:9] or texts[:2],
+    }

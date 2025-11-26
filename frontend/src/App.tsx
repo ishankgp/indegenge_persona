@@ -5,7 +5,7 @@ import { PersonaLibrary } from './pages/PersonaLibrary';
 import BrandLibrary from './pages/BrandLibrary';
 import { CreatePersona } from './pages/CreatePersona';
 import { SimulationHub } from './pages/SimulationHub';
-import { AnalyticsEnhanced } from './pages/AnalyticsEnhanced';
+import { Analytics } from './pages/Analytics';
 
 function App() {
   return (
@@ -17,7 +17,7 @@ function App() {
           <Route path="brand-library" element={<BrandLibrary />} />
           <Route path="create-persona" element={<CreatePersona />} />
           <Route path="simulation" element={<SimulationHub />} />
-          <Route path="analytics" element={<AnalyticsEnhanced />} />
+          <Route path="analytics" element={<Analytics />} />
         </Route>
       </Routes>
     </Router>

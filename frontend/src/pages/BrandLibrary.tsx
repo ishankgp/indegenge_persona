@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileText, CheckCircle, Circle, Plus, Loader2, Sparkles } from 'lucide-react';
+import { Upload, FileText, CheckCircle, Circle, Plus, Loader2, Sparkles, Library } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 
 interface Brand {
@@ -169,38 +169,56 @@ const BrandLibrary = () => {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-8">
-      <div className="flex justify-between items-center border-b border-border pb-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Brand Library</h1>
-          <p className="text-muted-foreground mt-1">Manage brand knowledge and ground your personas.</p>
-        </div>
+    <div className="min-h-screen bg-background">
+      {/* Indegene Purple Page Header */}
+      <div className="bg-gradient-to-r from-[hsl(262,60%,38%)] via-[hsl(262,60%,42%)] to-[hsl(280,60%,45%)]">
+        <div className="max-w-7xl mx-auto px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                <Library className="h-8 w-8 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-3xl font-bold text-white tracking-tight">Brand Library</h1>
+                  <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30 font-normal">
+                    <FileText className="h-3 w-3 mr-1" />
+                    Knowledge Assets
+                  </Badge>
+                </div>
+                <p className="text-white/80 mt-1">Manage brand knowledge and ground your personas</p>
+              </div>
+            </div>
 
-        <div className="flex items-center gap-4">
-          <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
-            <SelectTrigger className="w-[240px] shadow-sm">
-              <SelectValue placeholder="Select Brand Context" />
-            </SelectTrigger>
-            <SelectContent>
-              {brands.map(b => (
-                <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <div className="flex items-center gap-4">
+              <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
+                <SelectTrigger className="w-[240px] bg-white/10 backdrop-blur-sm border-white/20 text-white">
+                  <SelectValue placeholder="Select Brand Context" />
+                </SelectTrigger>
+                <SelectContent>
+                  {brands.map(b => (
+                    <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="New Brand Name"
-              value={newBrandName}
-              onChange={(e) => setNewBrandName(e.target.value)}
-              className="w-[200px] shadow-sm"
-            />
-            <Button onClick={handleCreateBrand} disabled={isCreatingBrand || !newBrandName} className="btn-primary">
-              {isCreatingBrand ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            </Button>
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="New Brand Name"
+                  value={newBrandName}
+                  onChange={(e) => setNewBrandName(e.target.value)}
+                  className="w-[200px] bg-white/10 backdrop-blur-sm border-white/20 text-white placeholder:text-white/50"
+                />
+                <Button onClick={handleCreateBrand} disabled={isCreatingBrand || !newBrandName} className="bg-white text-primary hover:bg-white/90">
+                  {isCreatingBrand ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      <div className="max-w-7xl mx-auto px-8 py-8">
 
       {selectedBrandId ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -316,6 +334,7 @@ const BrandLibrary = () => {
           </p>
         </div>
       )}
+      </div>
     </div>
   );
 };
