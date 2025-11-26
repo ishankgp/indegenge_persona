@@ -22,13 +22,11 @@ import {
   BarChart3,
   Target,
   Brain,
-  Activity,
   Zap,
   Shield,
   MessageSquare,
   AlertCircle,
   PlayCircle,
-  Award,
   Plus,
   CheckCircle2,
   Gauge,
@@ -593,93 +591,75 @@ export function SimulationHub() {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
-      {/* Enhanced Header Section */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-secondary">
-        {/* Animated Background */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-20 left-10 w-72 h-72 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-0 right-20 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse animation-delay-2000"></div>
-        </div>
-
-        <div className="relative z-10 px-8 py-12">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-6">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-white/20 rounded-2xl blur-xl"></div>
-                  <div className="relative p-4 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20">
-                    <PlayCircle className="h-10 w-10 text-white" />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <h1 className="text-5xl font-bold text-white">Simulation Hub</h1>
-                    <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30 px-3 py-1">
-                      <Zap className="h-3 w-3 mr-1" />
-                      Real-time Analysis
-                    </Badge>
-                  </div>
-                  <p className="text-white/90 text-lg">Test marketing messages with AI-powered persona simulations</p>
-                </div>
+    <div className="min-h-screen bg-background animate-fade-in">
+      {/* Standard Page Header */}
+      <div className="border-b border-border bg-card">
+        <div className="max-w-7xl mx-auto px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-primary/10 rounded-lg">
+                <PlayCircle className="h-8 w-8 text-primary" />
               </div>
-              <div className="text-right">
-                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
-                  <div className="text-4xl font-bold text-white flex items-center gap-2">
-                    <Activity className="h-8 w-8 text-yellow-300" />
-                    {selectedPersonas.size}
-                  </div>
-                  <div className="text-white/80 text-sm mt-1">Selected Personas</div>
+              <div>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-2xl font-bold text-foreground tracking-tight">Simulation Hub</h1>
+                  <Badge variant="secondary" className="font-normal">
+                    <Zap className="h-3 w-3 mr-1 text-amber-500" />
+                    Real-time Analysis
+                  </Badge>
                 </div>
+                <p className="text-muted-foreground mt-1">Test marketing messages with AI-powered persona simulations</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right hidden sm:block">
+                <div className="text-2xl font-bold text-foreground">{selectedPersonas.size}</div>
+                <div className="text-xs text-muted-foreground">Selected Personas</div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-8 -mt-8">
+      <div className="max-w-7xl mx-auto px-8 py-8">
         {/* Progress Bar */}
         {analyzing && (
-          <Card className="mb-6 border-0 shadow-xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+          <Card className="mb-6 border border-primary/20 bg-primary/5 shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Running Parallel AI Analysis...</span>
+                <span className="text-sm font-medium text-primary">Running Parallel AI Analysis...</span>
                 <span className="text-sm font-bold text-primary">{progress}%</span>
               </div>
-              <Progress value={progress} className="h-2" />
+              <Progress value={progress} className="h-2 bg-primary/20" />
             </CardContent>
           </Card>
         )}
 
         <div className="space-y-8">
           {/* Step 1: Select Cohort - Enhanced */}
-          <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90 overflow-hidden">
-            <CardHeader className="bg-gradient-to-r from-violet-500/10 to-purple-500/10">
+          <Card className="card-base overflow-hidden">
+            <CardHeader className="border-b border-border/50 bg-muted/30 pb-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
-                  <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-purple-500 rounded-xl blur-lg opacity-50"></div>
-                    <div className="relative p-3 bg-gradient-to-br from-violet-500 to-purple-500 rounded-xl">
-                      <Users className="h-6 w-6 text-white" />
-                    </div>
+                  <div className="p-2 bg-primary/10 rounded-md">
+                    <Users className="h-5 w-5 text-primary" />
                   </div>
                   <div>
                     <div className="flex items-center gap-3">
-                      <CardTitle className="text-2xl">Step 1: Build Your Cohort</CardTitle>
-                      <Badge variant="outline" className="border-violet-300 text-violet-700 dark:text-violet-300">
+                      <CardTitle className="text-lg font-semibold">Step 1: Build Your Cohort</CardTitle>
+                      <Badge variant="outline" className="text-xs font-normal text-muted-foreground">
                         Required
                       </Badge>
                     </div>
-                    <CardDescription className="text-base mt-1">
+                    <CardDescription className="mt-1">
                       Select personas to include in your simulation cohort
                     </CardDescription>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Award className="h-8 w-8 text-amber-500" />
                   <div className="text-right">
-                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{selectedPersonas.size}</p>
-                    <p className="text-xs text-gray-500">Selected</p>
+                    <p className="text-2xl font-bold text-foreground">{selectedPersonas.size}</p>
+                    <p className="text-xs text-muted-foreground">Selected</p>
                   </div>
                 </div>
               </div>
@@ -693,18 +673,15 @@ export function SimulationHub() {
                 </div>
               ) : personas.length === 0 ? (
                 <div className="text-center py-16">
-                  <div className="relative inline-block">
-                    <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-purple-500 rounded-full blur-2xl opacity-30"></div>
-                    <div className="relative p-6 bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-950/30 dark:to-purple-900/30 rounded-full">
-                      <Users className="h-12 w-12 text-violet-600 dark:text-violet-400" />
-                    </div>
+                  <div className="inline-flex items-center justify-center p-4 bg-muted rounded-full mb-4">
+                    <Users className="h-8 w-8 text-muted-foreground" />
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mt-6 mb-2">
+                  <h3 className="text-lg font-semibold text-foreground mb-2">
                     No Personas Available
                   </h3>
-                  <p className="text-gray-600 dark:text-gray-400 mb-6">Create personas first to run simulations</p>
+                  <p className="text-muted-foreground mb-6">Create personas first to run simulations</p>
                   <Button
-                    className="bg-gradient-to-r from-violet-600 to-purple-600 text-white"
+                    className="btn-primary"
                     onClick={() => navigate("/personas")}
                   >
                     <Plus className="h-4 w-4 mr-2" />
@@ -731,9 +708,9 @@ export function SimulationHub() {
                             variant={recruitmentMode === "ai" ? "secondary" : "ghost"}
                             size="sm"
                             onClick={() => setRecruitmentMode("ai")}
-                            className={recruitmentMode === "ai" ? "shadow-sm" : ""}
+                            className={recruitmentMode === "ai" ? "shadow-sm bg-primary/10 text-primary hover:bg-primary/20" : ""}
                           >
-                            <Sparkles className="h-4 w-4 mr-2 text-violet-600" />
+                            <Sparkles className="h-4 w-4 mr-2" />
                             AI Recruitment
                           </Button>
                         </div>
@@ -773,7 +750,7 @@ export function SimulationHub() {
                       ) : (
                         <div className="flex gap-2">
                           <div className="relative flex-1">
-                            <Sparkles className="absolute left-3 top-3 h-4 w-4 text-violet-600" />
+                            <Sparkles className="absolute left-3 top-3 h-4 w-4 text-primary" />
                             <Textarea
                               placeholder="Describe the cohort you want to recruit (e.g., 'Find 5 elderly male patients with diabetes who are concerned about lifestyle changes')..."
                               value={recruitmentPrompt}
@@ -784,7 +761,7 @@ export function SimulationHub() {
                           <Button
                             onClick={handleRecruit}
                             disabled={isRecruiting || !recruitmentPrompt.trim()}
-                            className="h-auto bg-gradient-to-r from-violet-600 to-purple-600 text-white"
+                            className="h-auto btn-primary"
                           >
                             {isRecruiting ? (
                               <>

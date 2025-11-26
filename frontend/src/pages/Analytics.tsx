@@ -18,7 +18,6 @@ import {
   Activity,
   BarChart3,
   Sparkles,
-  Award,
   AlertTriangle,
   CheckCircle,
   Download,
@@ -688,11 +687,11 @@ export function Analytics() {
                         </div>
                       </th>
                     )}
-                    {metrics_analyzed.includes('key_concern_flagged') && (
+                    {(metrics_analyzed.includes('key_concern_flagged') || metrics_analyzed.includes('key_concerns')) && (
                       <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
                         <div className="flex items-center justify-center gap-1">
                           <AlertTriangle className="h-4 w-4" />
-                          Concern
+                          Concerns
                         </div>
                       </th>
                     )}
@@ -703,12 +702,17 @@ export function Analytics() {
                     <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                       <td className="p-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold">
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-lg shadow-md">
                             {response.persona_name.charAt(0)}
                           </div>
-                          <div>
-                            <div className="font-medium text-gray-900 dark:text-gray-100">{response.persona_name}</div>
-                            <div className="text-xs text-gray-500">ID: {response.persona_id}</div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <div className="font-semibold text-gray-900 dark:text-gray-100">{response.persona_name}</div>
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                                {String(response.persona_id).includes('HCP') || String(response.persona_id).startsWith('1') || String(response.persona_id).startsWith('2') ? '🩺 HCP' : '👤 Patient'}
+                              </Badge>
+                            </div>
+                            <div className="text-xs text-gray-500 mt-0.5">ID: {response.persona_id}</div>
                           </div>
                         </div>
                       </td>
@@ -717,75 +721,86 @@ export function Analytics() {
                       </td>
                       {metrics_analyzed.includes('purchase_intent') && (
                         <td className="p-4 text-center">
-                          <div className="flex flex-col items-center gap-1">
-                            <span className={`text-lg font-bold ${computeScoreColor(response.responses.purchase_intent || 0)}`}>
-                              {response.responses.purchase_intent}
-                            </span>
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="flex items-center gap-1">
+                              <span className={`text-2xl font-bold ${computeScoreColor(response.responses.purchase_intent || 0)}`}>
+                                {response.responses.purchase_intent}
+                              </span>
+                              <span className="text-xs text-gray-400">/10</span>
+                            </div>
                             <Progress
                               value={computeScoreProgress(response.responses.purchase_intent || 0)}
-                              className="w-16 h-1.5"
+                              className="w-24 h-2.5"
                             />
+                            <div className="text-[10px] font-medium text-gray-500">
+                              {(response.responses.purchase_intent ?? 0) >= 7 ? '🔥 High' : (response.responses.purchase_intent ?? 0) >= 4 ? '⚡ Med' : '❄️ Low'}
+                            </div>
                           </div>
                         </td>
                       )}
                       {metrics_analyzed.includes('sentiment') && (
                         <td className="p-4 text-center">
-                          {(() => {
-                            const d = getSentimentDescriptor(response.responses.sentiment || 0);
-                            return (
-                              <Badge className={d.badgeClassName}>
-                                {d.level}
-                              </Badge>
-                            );
-                          })()}
-                          <div className="text-xs mt-1 text-gray-500">
-                            {response.responses.sentiment?.toFixed(2)}
+                          <div className="flex flex-col items-center gap-2">
+                            {(() => {
+                              const sentimentValue = response.responses.sentiment || 0;
+                              const d = getSentimentDescriptor(sentimentValue);
+                              const emoji = sentimentValue > 0.2 ? '😊' : sentimentValue < -0.2 ? '😟' : '😐';
+                              return (
+                                <>
+                                  <div className="text-3xl">{emoji}</div>
+                                  <Badge className={`${d.badgeClassName} px-3 py-1`}>
+                                    {d.level}
+                                  </Badge>
+                                  <div className="text-sm font-bold text-gray-600 dark:text-gray-400">
+                                    {sentimentValue.toFixed(2)}
+                                  </div>
+                                </>
+                              );
+                            })()}
                           </div>
                         </td>
                       )}
                       {metrics_analyzed.includes('trust_in_brand') && (
                         <td className="p-4 text-center">
-                          <div className="flex flex-col items-center gap-1">
-                            <span className={`text-lg font-bold ${computeScoreColor(response.responses.trust_in_brand || 0)}`}>
-                              {response.responses.trust_in_brand}
-                            </span>
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="flex items-center gap-1">
+                              <span className={`text-2xl font-bold ${computeScoreColor(response.responses.trust_in_brand || 0)}`}>
+                                {response.responses.trust_in_brand}
+                              </span>
+                              <span className="text-xs text-gray-400">/10</span>
+                            </div>
                             <Progress
                               value={computeScoreProgress(response.responses.trust_in_brand || 0)}
-                              className="w-16 h-1.5"
+                              className="w-24 h-2.5"
                             />
+                            <div className="text-[10px] font-medium text-gray-500">
+                              {(response.responses.trust_in_brand ?? 0) >= 7 ? '✅ Strong' : (response.responses.trust_in_brand ?? 0) >= 4 ? '⚠️ Weak' : '❌ Poor'}
+                            </div>
                           </div>
                         </td>
                       )}
                       {metrics_analyzed.includes('message_clarity') && (
                         <td className="p-4 text-center">
-                          <div className="flex flex-col items-center gap-1">
-                            <span className={`text-lg font-bold ${computeScoreColor(response.responses.message_clarity || 0)}`}>
-                              {response.responses.message_clarity}
-                            </span>
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="flex items-center gap-1">
+                              <span className={`text-2xl font-bold ${computeScoreColor(response.responses.message_clarity || 0)}`}>
+                                {response.responses.message_clarity}
+                              </span>
+                              <span className="text-xs text-gray-400">/10</span>
+                            </div>
                             <Progress
                               value={computeScoreProgress(response.responses.message_clarity || 0)}
-                              className="w-16 h-1.5"
+                              className="w-24 h-2.5"
                             />
+                            <div className="text-[10px] font-medium text-gray-500">
+                              {(response.responses.message_clarity ?? 0) >= 7 ? '💎 Clear' : (response.responses.message_clarity ?? 0) >= 4 ? '💬 OK' : '❓ Unclear'}
+                            </div>
                           </div>
-                        </td>
-                      )}
-                      {metrics_analyzed.includes('key_concern_flagged') && (
-                        <td className="p-4">
-                          <Badge variant="outline" className="text-xs">
-                            {response.responses.key_concern_flagged}
-                          </Badge>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
+                        </CardContent>
         </Card>
 
-        {/* Cumulative Insights & Suggestions */}
-        <div className="grid gap-8 md:grid-cols-2 mt-8">
+        {/* Cumulative Insights & Suggestions */ }
+                    < div className = "grid gap-8 md:grid-cols-2 mt-8" >
           <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
             <CardHeader className="bg-gradient-to-r from-green-500/10 to-teal-500/10 rounded-t-xl">
               <div className="flex items-center justify-between">
@@ -856,26 +871,26 @@ export function Analytics() {
           </Card>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex justify-center gap-4 mt-8 pb-8">
-          <Button
-            size="lg"
-            className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl"
-            onClick={() => navigate('/simulation')}
-          >
-            <PlayCircle className="h-5 w-5 mr-2" />
-            Run New Simulation
-          </Button>
-          <Button
-            size="lg"
-            variant="outline"
-            onClick={() => window.print()}
-          >
-            <Download className="h-5 w-5 mr-2" />
-            Export Report
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
+                {/* Action Buttons */}
+                <div className="flex justify-center gap-4 mt-8 pb-8">
+                  <Button
+                    size="lg"
+                    className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl"
+                    onClick={() => navigate('/simulation')}
+                  >
+                    <PlayCircle className="h-5 w-5 mr-2" />
+                    Run New Simulation
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={() => window.print()}
+                  >
+                    <Download className="h-5 w-5 mr-2" />
+                    Export Report
+                  </Button>
+                </div>
+            </div>
+          </div>
+          );
 }

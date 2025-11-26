@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, FileText, CheckCircle, Circle, Plus, Loader2, Sparkles } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
@@ -171,16 +170,16 @@ const BrandLibrary = () => {
 
   return (
     <div className="container mx-auto p-6 space-y-8">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center border-b border-border pb-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Brand Library</h1>
-          <p className="text-muted-foreground">Manage brand knowledge and ground your personas.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Brand Library</h1>
+          <p className="text-muted-foreground mt-1">Manage brand knowledge and ground your personas.</p>
         </div>
 
         <div className="flex items-center gap-4">
           <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Select Brand" />
+            <SelectTrigger className="w-[240px] shadow-sm">
+              <SelectValue placeholder="Select Brand Context" />
             </SelectTrigger>
             <SelectContent>
               {brands.map(b => (
@@ -194,9 +193,9 @@ const BrandLibrary = () => {
               placeholder="New Brand Name"
               value={newBrandName}
               onChange={(e) => setNewBrandName(e.target.value)}
-              className="w-[200px]"
+              className="w-[200px] shadow-sm"
             />
-            <Button onClick={handleCreateBrand} disabled={isCreatingBrand || !newBrandName}>
+            <Button onClick={handleCreateBrand} disabled={isCreatingBrand || !newBrandName} className="btn-primary">
               {isCreatingBrand ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             </Button>
           </div>
@@ -208,14 +207,14 @@ const BrandLibrary = () => {
           {/* Left Column: Upload & Files */}
           <div className="md:col-span-2 space-y-6">
             {/* Upload Zone */}
-            <Card className="border-dashed border-2">
-              <CardContent className="flex flex-col items-center justify-center h-40 space-y-4 pt-6">
-                <div className="p-4 bg-muted rounded-full">
-                  <Upload className="h-8 w-8 text-muted-foreground" />
+            <Card className="border-2 border-dashed border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors">
+              <CardContent className="flex flex-col items-center justify-center h-48 space-y-4 pt-8">
+                <div className="p-4 bg-background rounded-full shadow-sm">
+                  <Upload className="h-8 w-8 text-primary" />
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-medium">Drag & drop files or click to upload</p>
-                  <p className="text-xs text-muted-foreground">PDF, DOCX, TXT supported</p>
+                  <p className="text-lg font-semibold text-foreground">Upload Knowledge Assets</p>
+                  <p className="text-sm text-muted-foreground mt-1">Drag & drop PDF, DOCX, TXT files here</p>
                 </div>
                 <Input
                   type="file"
@@ -224,18 +223,24 @@ const BrandLibrary = () => {
                   onChange={handleFileUpload}
                   disabled={isUploading}
                 />
-                <div className="flex gap-3">
-                  <Button asChild disabled={isUploading} variant="secondary">
-                    <label htmlFor="file-upload" className="cursor-pointer">
-                      {isUploading ? "Uploading & Classifying..." : "Select File"}
-                    </label>
-                  </Button>
+                <div className="flex gap-3 pt-2">
+                  <div className="relative">
+                    <Button disabled={isUploading} className="btn-primary cursor-pointer pointer-events-none">
+                      {isUploading ? "Uploading..." : "Select File"}
+                    </Button>
+                    <label
+                      htmlFor="file-upload"
+                      className="absolute inset-0 cursor-pointer"
+                      aria-label="Select File"
+                    />
+                  </div>
                   <Button
                     variant="outline"
                     onClick={handleSeedData}
                     disabled={isSeeding || isUploading}
+                    className="bg-background"
                   >
-                    {isSeeding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2 text-purple-500" />}
+                    {isSeeding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2 text-primary" />}
                     Populate Demo Data
                   </Button>
                 </div>
@@ -280,8 +285,11 @@ const BrandLibrary = () => {
           {/* Right Column: Knowledge Checklist */}
           <div className="md:col-span-1">
             <Card className="h-full">
-              <CardHeader>
-                <CardTitle>Knowledge Pillars</CardTitle>
+              <CardHeader className="border-b border-border/50 bg-muted/30">
+                <div className="flex items-center gap-2">
+                  <div className="h-4 w-1 bg-primary rounded-full" />
+                  <CardTitle className="text-base font-semibold">Knowledge Pillars</CardTitle>
+                </div>
                 <CardDescription>Required context for accurate personas.</CardDescription>
               </CardHeader>
               <CardContent>

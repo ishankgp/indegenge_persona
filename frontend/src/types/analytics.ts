@@ -33,6 +33,7 @@ export interface PersonaResponseScores {
   trust_in_brand?: number;
   message_clarity?: number;
   key_concern_flagged?: string | boolean | number;
+  key_concerns?: string | boolean | number;  // Support both naming conventions
 }
 
 export interface IndividualResponseRow {
