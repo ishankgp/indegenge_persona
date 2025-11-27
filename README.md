@@ -1,14 +1,16 @@
 # PharmaPersonaSim 🏥
 
-A sophisticated AI-powered pharmaceutical persona simulation platform that helps healthcare companies understand patient perspectives and optimize their engagement strategies.
+A sophisticated AI-powered pharmaceutical persona simulation platform that helps healthcare companies understand patient and HCP perspectives to optimize their engagement strategies.
 
 ## 🌟 Features
 
-- **AI-Powered Persona Generation**: Create realistic patient personas using advanced LLMs
-- **Cohort Analysis**: Run simulations across multiple personas to understand group responses
-- **Interactive Dashboard**: Real-time metrics and insights visualization
-- **Professional Healthcare UI**: Modern, accessible interface designed for healthcare professionals
-- **Analytics & Insights**: Deep analysis of patient responses and behavioral patterns
+- **AI-Powered Persona Generation**: Create realistic patient and HCP personas using advanced LLMs.
+- **Brand Library**: Upload and analyze brand documents to extract key insights (motivations, beliefs, tensions).
+- **Cohort Analysis**: Run simulations across multiple personas to understand group responses.
+- **Interactive Dashboard**: Real-time metrics and insights visualization.
+- **Professional Healthcare UI**: Modern, accessible interface designed for healthcare professionals.
+- **Analytics & Insights**: Deep analysis of patient responses and behavioral patterns.
+- **Simulation Hub**: customizable scenarios to test messaging and strategies.
 
 ## 🚀 Quick Start
 
@@ -21,13 +23,13 @@ A sophisticated AI-powered pharmaceutical persona simulation platform that helps
 ### Installation
 
 1. **Clone the repository**
-\`\`\`bash
+```bash
 git clone https://github.com/ishankgp/indegenge_persona.git
 cd indegenge_persona
-\`\`\`
+```
 
 2. **Set up the backend**
-\`\`\`bash
+```bash
 cd backend
 python -m venv venv
 # Windows
@@ -36,30 +38,32 @@ venv\Scripts\activate
 source venv/bin/activate
 
 pip install -r requirements.txt
-\`\`\`
+```
 
 3. **Set up the frontend**
-\`\`\`bash
+```bash
 cd ../frontend
 npm install
-\`\`\`
+```
 
 4. **Configure environment variables**
-\`\`\`bash
+```bash
 # In the root directory
 cp .env.example .env
 # Edit .env and add your OpenAI API key
-\`\`\`
+```
 
 5. **Initialize the database**
-\`\`\`bash
-python populate_db.py  # Seeds personas via API (uses canonical backend DB)
-\`\`\`
+```bash
+# Run the migration and population scripts
+python migrate_hcp_schema.py # Ensure schema is up to date
+python populate_hcp_personas.py  # Seeds HCP personas
+```
 
 6. **Run the application**
-\`\`\`bash
+```bash
 python run_app.py
-\`\`\`
+```
 
 The application will be available at:
 - Frontend: http://localhost:5173
@@ -67,33 +71,41 @@ The application will be available at:
 
 ## 🏗️ Project Structure
 
-\`\`\`
+```
 pharmapersonasim/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py          # FastAPI application
-│   │   ├── models.py        # Database models
-│   │   ├── schemas.py       # Pydantic schemas
-│   │   ├── crud.py          # Database operations
+│   │   ├── main.py           # FastAPI application
+│   │   ├── models.py         # Database models
+│   │   ├── schemas.py        # Pydantic schemas
+│   │   ├── crud.py           # Database operations
 │   │   ├── persona_engine.py # AI persona generation
-│   │   └── cohort_engine.py  # Cohort analysis logic
+│   │   ├── cohort_engine.py  # Cohort analysis logic
+│   │   └── document_processor.py # Brand document processing
+│   ├── uploads/              # Uploaded brand documents
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/           # React pages
-│   │   ├── components/      # Reusable components
-│   │   └── lib/             # Utilities
+│   │   ├── pages/            # React pages (Analytics, BrandLibrary, etc.)
+│   │   ├── components/       # Reusable components
+│   │   └── lib/              # Utilities
 │   └── package.json
-├── run_app.py               # Application launcher
-└── populate_db.py           # Database seeder
-\`\`\`
+├── run_app.py                # Application launcher
+├── populate_hcp_personas.py  # HCP Database seeder
+└── migrate_hcp_schema.py     # Schema migration script
+```
 
 ## 📱 Key Features
 
 ### Persona Library
-- View and manage patient personas
+- View and manage patient and HCP personas
 - Generate new personas with AI
-- Detailed persona profiles with medical history, demographics, and preferences
+- Detailed profiles with medical history, practice setup (for HCPs), and preferences
+
+### Brand Library
+- Upload PDF/Text documents (Treatment Landscape, Value Proposition, etc.)
+- AI extraction of Motivations, Beliefs, and Tensions
+- Link brand insights to persona generation
 
 ### Simulation Hub
 - Select cohorts for analysis
@@ -104,6 +116,7 @@ pharmapersonasim/
 - Visualize simulation results
 - Track response rates and patterns
 - Generate actionable insights
+- **New**: GPT-5-style tool preambles for transparent AI reasoning
 
 ## 🛠️ Technology Stack
 
@@ -112,11 +125,12 @@ pharmapersonasim/
 - **SQLAlchemy**: Database ORM
 - **OpenAI API**: LLM integration
 - **Pydantic**: Data validation
+- **PyPDF2/Text Processing**: Document analysis
 
 ### Frontend
 - **React**: UI framework
 - **TypeScript**: Type-safe JavaScript
-- **Tailwind CSS**: Utility-first styling
+- **Tailwind CSS** & **shadcn/ui**: Modern styling and components
 - **Recharts**: Data visualization
 - **Axios**: HTTP client
 
@@ -125,24 +139,21 @@ pharmapersonasim/
 ### Vercel Deployment (Frontend)
 
 1. Install Vercel CLI:
-\`\`\`bash
+```bash
 npm i -g vercel
-\`\`\`
+```
 
 2. Deploy:
-\`\`\`bash
+```bash
 cd frontend
 vercel
-\`\`\`
+```
 
 ### Backend Deployment
 
-The backend can be deployed to any platform that supports Python applications:
-- **Heroku**
-- **Railway**
-- **Render**
-- **AWS EC2**
-- **Google Cloud Run**
+The backend is configured for deployment on platforms like **Railway**, **Render**, or **Heroku**.
+- Includes `railway.toml` and `Procfile` for easy deployment.
+- Ensure `uploads/` directory persistence if needed.
 
 ## 🔧 Configuration
 
@@ -152,13 +163,10 @@ We use a single canonical SQLite database file stored at `backend/pharma_persona
 
 Key variables:
 - `OPENAI_API_KEY`: Your OpenAI API key (required)
-- `DATABASE_URL`: Set to `sqlite:///backend/pharma_personas.db` (already in `.env.example`)
+- `DATABASE_URL`: Set to `sqlite:///backend/pharma_personas.db`
 - `BACKEND_HOST`: Backend server host
 - `BACKEND_PORT`: Backend server port
-- `BACKEND_URL`: (optional) Override used by `populate_db.py` for seeding
-- `VITE_API_URL`: Frontend points here for API calls (e.g. Railway backend URL in production)
-
-If you previously had a duplicate `pharma_personas.db` at the repo root, it has been removed to prevent divergence. Always interact through the API or operate directly on `backend/pharma_personas.db`.
+- `VITE_API_URL`: Frontend points here for API calls
 
 ## 📝 API Documentation
 
