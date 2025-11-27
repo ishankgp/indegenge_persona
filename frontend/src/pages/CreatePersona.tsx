@@ -12,7 +12,8 @@ import { Badge } from "../components/ui/badge"
 import { Separator } from "../components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { VeevaCRMImporter } from "../components/VeevaCRMImporter"
-import BrandInsightSelector, { BrandInsight, SuggestionResponse } from "@/components/BrandInsightSelector"
+import BrandInsightSelector from "@/components/BrandInsightSelector"
+import type { BrandInsight, SuggestionResponse } from "@/components/BrandInsightSelector"
 import {
   User,
   MapPin,
@@ -94,7 +95,7 @@ export function CreatePersona() {
 
   const handleManualInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
-    
+
     // Check if it's a communication preference field
     if (name.includes('.')) {
       const [, commField] = name.split('.')
@@ -190,17 +191,12 @@ export function CreatePersona() {
     }))
   }
 
-  const enrichPersonaWithBrand = async (personaId: number, brandId: number | null, targetSegment?: string) => {
+  const enrichPersonaWithBrand = async (personaId: number, brandId: number | null, targetSegment?: string): Promise<void> => {
     if (!brandId) return
-    try {
-      await PersonasAPI.enrichFromBrand(personaId, {
-        brand_id: brandId,
-        target_segment: targetSegment || undefined
-      })
-    } catch (err) {
-      console.error("Failed to enrich persona", err)
-      alert("Persona created, but brand enrichment failed. Check console for details.")
-    }
+    await PersonasAPI.enrichFromBrand(personaId, {
+      brand_id: brandId,
+      target_segment: targetSegment || undefined
+    })
   }
 
   const handleManualSubmit = async (e: React.FormEvent) => {
@@ -247,11 +243,11 @@ export function CreatePersona() {
 
       const newPersona = await PersonasAPI.createManual(personaData)
       console.log("Created manual persona:", newPersona.id)
-      
+
       if (manualBrandId) {
         await enrichPersonaWithBrand(newPersona.id, manualBrandId, manualTargetSegment)
       }
-      
+
       // Reset form
       setManualFormData({
         name: "",
@@ -264,16 +260,16 @@ export function CreatePersona() {
         lifestyle_and_values: "",
         pain_points: ["", "", "", ""],
         motivations: ["", "", "", ""],
-      beliefs: ["", "", "", ""],
+        beliefs: ["", "", "", ""],
         communication_preferences: {
           preferred_channels: "",
           information_style: "",
           frequency: ""
         }
       })
-      
+
       alert(`Successfully created manual persona. Redirecting to Persona Library...`)
-      
+
       // Redirect to persona library after successful creation
       setTimeout(() => {
         navigate('/personas')
@@ -305,7 +301,7 @@ export function CreatePersona() {
     try {
       const count = parseInt(aiFormData.count) || 1
       setGenerationProgress({ current: 0, total: count })
-      
+
       const basePersonaData = {
         age: age,
         gender: aiFormData.gender,
@@ -315,26 +311,43 @@ export function CreatePersona() {
       }
 
       const createdPersonas = []
+      const enrichmentPromises: Promise<void>[] = []
+      
       for (let i = 0; i < count; i++) {
         setGenerationProgress({ current: i + 1, total: count })
-        
+
         const variations = [
-          '', ' with family history', ' seeking treatment options', 
+          '', ' with family history', ' seeking treatment options',
           ' concerned about side effects', ' looking for lifestyle changes',
           ' with financial concerns', ' preferring natural remedies',
           ' with mobility limitations', ' living in rural area', ' with strong family support'
         ]
         const variation = variations[i % variations.length]
-        
+
         const personaData = {
           ...basePersonaData,
           concerns: aiFormData.concerns + variation
         }
-        
+
         const newPersona = await PersonasAPI.generate(personaData)
         createdPersonas.push(newPersona)
+        
+        // Collect enrichment promises to run in parallel after all personas are created
         if (aiBrandId) {
-          await enrichPersonaWithBrand(newPersona.id, aiBrandId, aiTargetSegment)
+          enrichmentPromises.push(
+            enrichPersonaWithBrand(newPersona.id, aiBrandId, aiTargetSegment).catch(err => {
+              console.error(`Failed to enrich persona ${newPersona.id}:`, err)
+            })
+          )
+        }
+      }
+      
+      // Run all enrichments in parallel after personas are created
+      if (enrichmentPromises.length > 0) {
+        const results = await Promise.allSettled(enrichmentPromises)
+        const failed = results.filter(r => r.status === 'rejected').length
+        if (failed > 0) {
+          alert(`${failed} of ${enrichmentPromises.length} persona enrichment${enrichmentPromises.length > 1 ? 's' : ''} failed. Personas were created successfully.`)
         }
       }
 
@@ -348,7 +361,7 @@ export function CreatePersona() {
       })
       setGenerationProgress({ current: 0, total: 0 })
       alert(`Successfully generated ${count} new persona${count > 1 ? 's' : ''}. Redirecting to Persona Library...`)
-      
+
       // Redirect to persona library after successful creation
       setTimeout(() => {
         navigate('/personas')
@@ -450,7 +463,7 @@ export function CreatePersona() {
                 </Button>
               </div>
               <div className="mt-4">
-                <VeevaCRMImporter 
+                <VeevaCRMImporter
                   onImportComplete={() => {
                     alert("CRM Import Complete! Redirecting to Persona Library...");
                     setTimeout(() => {
@@ -924,8 +937,8 @@ export function CreatePersona() {
 
                   {generationProgress.total > 0 && (
                     <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                         style={{ width: `${(generationProgress.current / generationProgress.total) * 100}%` }}
                       ></div>
                       <p className="text-sm text-gray-600 mt-2">
@@ -934,9 +947,9 @@ export function CreatePersona() {
                     </div>
                   )}
 
-                  <Button 
-                    type="submit" 
-                    className="w-full bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold" 
+                  <Button
+                    type="submit"
+                    className="w-full bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold"
                     disabled={generating}
                   >
                     {generating ? (

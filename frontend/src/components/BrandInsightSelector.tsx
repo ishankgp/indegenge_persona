@@ -9,7 +9,8 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Sparkles, RefreshCcw } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
-import { BrandsAPI, BrandContextResponse, BrandSuggestionResponse, BrandInsight as ApiBrandInsight } from "@/lib/api";
+import { BrandsAPI } from "@/lib/api";
+import type { BrandContextResponse, BrandSuggestionResponse, BrandInsight as ApiBrandInsight } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export type BrandInsight = ApiBrandInsight;
@@ -66,9 +67,13 @@ export const BrandInsightSelector: React.FC<BrandInsightSelectorProps> = ({
       try {
         const data = await BrandsAPI.list();
         setBrands(data);
-        if (data.length && !selectedBrandId) {
-          setSelectedBrandId(String(data[0].id));
-        }
+        // Use functional update to avoid dependency on selectedBrandId
+        setSelectedBrandId((current) => {
+          if (data.length && !current) {
+            return String(data[0].id);
+          }
+          return current;
+        });
       } catch (error) {
         console.error("Failed to fetch brands", error);
         toast({
@@ -79,6 +84,7 @@ export const BrandInsightSelector: React.FC<BrandInsightSelectorProps> = ({
       }
     };
     fetchBrands();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

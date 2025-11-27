@@ -160,6 +160,14 @@ export interface BrandSuggestionResponse {
 
 export const BrandsAPI = {
   list: () => api.get('/api/brands').then(r => r.data),
+  create: (name: string) => api.post('/api/brands', { name }).then(r => r.data),
+  getDocuments: (brandId: number) => api.get(`/api/brands/${brandId}/documents`).then(r => r.data),
+  upload: (brandId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/api/brands/${brandId}/upload`, formData).then(r => r.data);
+  },
+  seed: (brandId: number) => api.post(`/api/brands/${brandId}/seed`).then(r => r.data),
   getContext: (brandId: number, params?: { target_segment?: string; limit_per_category?: number }) =>
     api.get<BrandContextResponse>(`/api/brands/${brandId}/context`, { params }).then(r => r.data),
   getSuggestions: (brandId: number, payload: { target_segment?: string; persona_type?: string; limit_per_category?: number }) =>

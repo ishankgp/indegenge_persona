@@ -127,8 +127,16 @@ export function PersonaLibrary() {
       const data = await PersonasAPI.list()
       console.log("PersonaLibrary: Got personas data:", { count: data.length, data: data.slice(0, 2) })
       setPersonas(data)
-    } catch (error) {
+      setError(null)
+    } catch (error: any) {
       console.error("PersonaLibrary: Error fetching personas:", error)
+      const errorMessage = error?.response?.data?.detail || "Failed to load personas. Please check your connection and try again."
+      setError(errorMessage)
+      toast({
+        title: "Error loading personas",
+        description: errorMessage,
+        variant: "destructive"
+      })
     } finally {
       setLoading(false)
       console.log("PersonaLibrary: Finished loading")
@@ -412,7 +420,13 @@ export function PersonaLibrary() {
   console.log("Available conditions:", uniqueConditions)
 
   const PersonaCard = ({ persona, onDelete }: { persona: Persona, onDelete: (id: number, name: string) => void }) => {
-    const personaData = JSON.parse(persona.full_persona_json)
+    let personaData: any = {};
+    try {
+      personaData = JSON.parse(persona.full_persona_json);
+    } catch (error) {
+      console.error("Failed to parse persona JSON:", error);
+      personaData = {};
+    }
     const conditionClass = conditionColors[persona.condition] || conditionColors.default
 
     return (

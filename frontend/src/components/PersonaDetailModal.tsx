@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import BrandInsightSelector, { BrandInsight, SuggestionResponse } from '@/components/BrandInsightSelector';
+import BrandInsightSelector from '@/components/BrandInsightSelector';
+import type { BrandInsight, SuggestionResponse } from '@/components/BrandInsightSelector';
 import { PersonasAPI } from '@/lib/api';
 import { User, Heart, MapPin, Activity, Brain, MessageSquare, Target, Users, Calendar } from 'lucide-react';
 

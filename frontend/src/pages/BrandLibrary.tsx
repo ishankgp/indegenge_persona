@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, FileText, CheckCircle, Circle, Plus, Loader2, Sparkles, Library } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
+import { BrandsAPI } from "@/lib/api";
 
 interface Brand {
   id: number;
@@ -55,25 +56,21 @@ const BrandLibrary = () => {
 
   const fetchBrands = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/brands');
-      if (res.ok) {
-        const data = await res.json();
-        setBrands(data);
-      }
+      const data = await BrandsAPI.list();
+      setBrands(data);
     } catch (error) {
       console.error("Failed to fetch brands", error);
+      toast({ title: "Error", description: "Failed to load brands.", variant: "destructive" });
     }
   };
 
   const fetchDocuments = async (brandId: number) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/brands/${brandId}/documents`);
-      if (res.ok) {
-        const data = await res.json();
-        setDocuments(data);
-      }
+      const data = await BrandsAPI.getDocuments(brandId);
+      setDocuments(data);
     } catch (error) {
       console.error("Failed to fetch documents", error);
+      toast({ title: "Error", description: "Failed to load documents.", variant: "destructive" });
     }
   };
 
@@ -81,23 +78,15 @@ const BrandLibrary = () => {
     if (!newBrandName.trim()) return;
     setIsCreatingBrand(true);
     try {
-      const res = await fetch('http://localhost:8000/api/brands', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newBrandName })
-      });
-
-      if (res.ok) {
-        const newBrand = await res.json();
-        setBrands([...brands, newBrand]);
-        setSelectedBrandId(newBrand.id.toString());
-        setNewBrandName("");
-        toast({ title: "Brand created", description: `${newBrand.name} has been created.` });
-      } else {
-        toast({ title: "Error", description: "Failed to create brand.", variant: "destructive" });
-      }
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to create brand.", variant: "destructive" });
+      const newBrand = await BrandsAPI.create(newBrandName);
+      setBrands([...brands, newBrand]);
+      setSelectedBrandId(newBrand.id.toString());
+      setNewBrandName("");
+      toast({ title: "Brand created", description: `${newBrand.name} has been created.` });
+    } catch (error: any) {
+      console.error("Failed to create brand", error);
+      const errorMessage = error?.response?.data?.detail || "Failed to create brand.";
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
     } finally {
       setIsCreatingBrand(false);
     }
@@ -107,22 +96,16 @@ const BrandLibrary = () => {
     if (!selectedBrandId) return;
     setIsSeeding(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/brands/${selectedBrandId}/seed`, {
-        method: 'POST'
+      const newDocs = await BrandsAPI.seed(parseInt(selectedBrandId));
+      setDocuments([...documents, ...newDocs]);
+      toast({
+        title: "Demo Data Populated",
+        description: `Added ${newDocs.length} mock documents.`
       });
-
-      if (res.ok) {
-        const newDocs = await res.json();
-        setDocuments([...documents, ...newDocs]);
-        toast({
-          title: "Demo Data Populated",
-          description: `Added ${newDocs.length} mock documents.`
-        });
-      } else {
-        toast({ title: "Error", description: "Failed to seed data.", variant: "destructive" });
-      }
-    } catch (error) {
-      toast({ title: "Error", description: "Network error.", variant: "destructive" });
+    } catch (error: any) {
+      console.error("Failed to seed data", error);
+      const errorMessage = error?.response?.data?.detail || "Failed to seed data.";
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
     } finally {
       setIsSeeding(false);
     }
@@ -132,28 +115,18 @@ const BrandLibrary = () => {
     if (!e.target.files || !e.target.files[0] || !selectedBrandId) return;
 
     const file = e.target.files[0];
-    const formData = new FormData();
-    formData.append('file', file);
-
     setIsUploading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/brands/${selectedBrandId}/upload`, {
-        method: 'POST',
-        body: formData
+      const newDoc = await BrandsAPI.upload(parseInt(selectedBrandId), file);
+      setDocuments([...documents, newDoc]);
+      toast({
+        title: "File uploaded",
+        description: `Classified as: ${newDoc.category}`
       });
-
-      if (res.ok) {
-        const newDoc = await res.json();
-        setDocuments([...documents, newDoc]);
-        toast({
-          title: "File uploaded",
-          description: `Classified as: ${newDoc.category}`
-        });
-      } else {
-        toast({ title: "Upload failed", description: "Could not upload file.", variant: "destructive" });
-      }
-    } catch (error) {
-      toast({ title: "Upload failed", description: "Network error.", variant: "destructive" });
+    } catch (error: any) {
+      console.error("Failed to upload file", error);
+      const errorMessage = error?.response?.data?.detail || "Could not upload file.";
+      toast({ title: "Upload failed", description: errorMessage, variant: "destructive" });
     } finally {
       setIsUploading(false);
     }

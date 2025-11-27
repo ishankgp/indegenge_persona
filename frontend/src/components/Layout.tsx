@@ -7,6 +7,7 @@ import {
   BarChart3,
   Activity,
   UserPlus,
+  Users,
   Library,
   Sparkles,
   ChevronRight
@@ -25,6 +26,12 @@ const navigation = [
     description: 'Generate new personas',
     href: '/create-persona',
     icon: UserPlus,
+  },
+  {
+    name: 'Persona Library',
+    description: 'Browse & manage personas',
+    href: '/personas',
+    icon: Users,
   },
   {
     name: 'Brand Library',
@@ -99,7 +106,10 @@ export function Layout() {
           </div>
           <div className="space-y-1">
             {navigation.map((item) => {
-              const isActive = location.pathname === item.href;
+              // For Dashboard (href="/"), use exact match; for others, use startsWith
+              const isActive = item.href === '/' 
+                ? location.pathname === item.href
+                : location.pathname.startsWith(item.href);
               return (
                 <Link
                   key={item.name}

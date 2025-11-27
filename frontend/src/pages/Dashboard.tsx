@@ -63,7 +63,9 @@ export default function Dashboard() {
   }
 
   const getConditionStats = () => {
-    const conditions = personas.map((p) => p.condition)
+    const conditions = personas
+      .map((p) => p.condition)
+      .filter((condition): condition is string => condition != null && condition.trim() !== '')
     const conditionCounts = conditions.reduce(
       (acc, condition) => {
         acc[condition] = (acc[condition] || 0) + 1
