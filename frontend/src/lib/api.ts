@@ -38,7 +38,7 @@ api.interceptors.request.use(
       dataType: config.data instanceof FormData ? 'FormData' : typeof config.data,
       timestamp: new Date().toISOString()
     });
-    
+
     if (config.data instanceof FormData) {
       console.log('📤 FormData contents:');
       for (const [key, value] of config.data.entries()) {
@@ -51,7 +51,7 @@ api.interceptors.request.use(
     } else if (config.data) {
       console.log('📤 Request body:', config.data);
     }
-    
+
     return config;
   },
   (error) => {
@@ -72,14 +72,14 @@ api.interceptors.response.use(
       dataSize: JSON.stringify(response.data).length,
       timestamp: new Date().toISOString()
     });
-    
+
     if (response.data) {
       console.log('📥 Response data keys:', Object.keys(response.data));
       if (response.data.individual_responses) {
         console.log('📥 Individual responses count:', response.data.individual_responses.length);
       }
     }
-    
+
     return response;
   },
   async (error) => {
@@ -91,7 +91,7 @@ api.interceptors.response.use(
       responseData: error.response?.data,
       timestamp: new Date().toISOString()
     });
-    
+
     // Simple exponential backoff retry for idempotent GET requests only
     const config: any = error.config;
     if (config && config.method === 'get') {
@@ -104,7 +104,7 @@ api.interceptors.response.use(
         return api(config);
       }
     }
-    
+
     return Promise.reject(error);
   }
 );
@@ -125,7 +125,55 @@ export const PersonasAPI = {
   list: () => api.get('/personas/').then(r => r.data),
   generate: (payload: any) => api.post('/personas/generate', payload).then(r => r.data),
   createManual: (payload: any) => api.post('/personas/manual', payload).then(r => r.data),
-  delete: (id: number) => api.delete(`/personas/${id}`)
+  delete: (id: number) => api.delete(`/personas/${id}`),
+  recruit: (prompt: string) => api.post('/personas/recruit', { prompt }).then(r => r.data),
+  update: (id: number, payload: any) => api.put(`/personas/${id}`, payload).then(r => r.data),
+  enrichFromBrand: (id: number, payload: { brand_id: number; target_segment?: string; target_fields?: string[] }) =>
+    api.post(`/personas/${id}/enrich-from-brand`, payload).then(r => r.data),
+};
+
+export interface BrandInsight {
+  type: "Motivation" | "Belief" | "Tension";
+  text: string;
+  segment?: string;
+  source_snippet?: string;
+  source_document?: string;
+}
+
+export interface BrandContextResponse {
+  brand_id: number;
+  brand_name: string;
+  motivations: BrandInsight[];
+  beliefs: BrandInsight[];
+  tensions: BrandInsight[];
+}
+
+export interface BrandSuggestionResponse {
+  brand_id: number;
+  brand_name: string;
+  target_segment?: string;
+  persona_type?: string;
+  motivations: string[];
+  beliefs: string[];
+  tensions: string[];
+}
+
+export const BrandsAPI = {
+  list: () => api.get('/api/brands').then(r => r.data),
+  create: (name: string) => api.post('/api/brands', { name }).then(r => r.data),
+  getDocuments: (brandId: number) => api.get(`/api/brands/${brandId}/documents`).then(r => r.data),
+  upload: (brandId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/api/brands/${brandId}/upload`, formData).then(r => r.data);
+  },
+  seed: (brandId: number) => api.post(`/api/brands/${brandId}/seed`).then(r => r.data),
+  getContext: (brandId: number, params?: { target_segment?: string; limit_per_category?: number }) =>
+    api.get<BrandContextResponse>(`/api/brands/${brandId}/context`, { params }).then(r => r.data),
+  getSuggestions: (brandId: number, payload: { target_segment?: string; persona_type?: string; limit_per_category?: number }) =>
+    api.post<BrandSuggestionResponse>(`/api/brands/${brandId}/persona-suggestions`, payload).then(r => r.data),
+  enrichPersona: (personaId: number, payload: { brand_id: number; target_segment?: string; target_fields?: string[] }) =>
+    api.post(`/personas/${personaId}/enrich-from-brand`, payload).then(r => r.data)
 };
 
 export const CohortAPI = {
@@ -220,10 +268,10 @@ export interface CRMImportResult {
 }
 
 export const VeevaCRMAPI = {
-  getConnectionStatus: (): Promise<CRMConnectionStatus> => 
+  getConnectionStatus: (): Promise<CRMConnectionStatus> =>
     api.get('/crm/connection-status').then(r => r.data),
-  
-  getHCPProfiles: (specialty?: string, tier?: string): Promise<{ 
+
+  getHCPProfiles: (specialty?: string, tier?: string): Promise<{
     profiles: HCPProfile[];
     total_count: number;
     filtered_by: { specialty?: string; tier?: string };
@@ -235,10 +283,10 @@ export const VeevaCRMAPI = {
     const query = params.toString();
     return api.get(`/crm/hcp-profiles${query ? `?${query}` : ''}`).then(r => r.data);
   },
-  
+
   importPersonas: (selectedNPIs: string[], options: any = {}): Promise<CRMImportResult> =>
-    api.post('/crm/import-personas', { 
-      selected_npis: selectedNPIs, 
-      options 
+    api.post('/crm/import-personas', {
+      selected_npis: selectedNPIs,
+      options
     }).then(r => r.data)
 };

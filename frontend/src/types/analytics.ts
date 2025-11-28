@@ -1,11 +1,24 @@
 // Types for Analytics domain
 
+// Frontend metric IDs (used in SimulationHub)
+export type FrontendMetricId =
+  | 'emotional_response'
+  | 'message_clarity'
+  | 'brand_trust'
+  | 'intent_to_action'
+  | 'key_concerns';
+
+// Backend metric keys (used in API responses)
 export type AnalyzedMetricKey =
   | 'purchase_intent'
   | 'sentiment'
   | 'trust_in_brand'
   | 'message_clarity'
-  | 'key_concern_flagged';
+  | 'key_concern_flagged'
+  | 'key_concerns'
+  | 'emotional_response'  // Support both naming conventions
+  | 'brand_trust'
+  | 'intent_to_action';
 
 export interface SummaryStatistics {
   purchase_intent_avg?: number;
@@ -20,6 +33,7 @@ export interface PersonaResponseScores {
   trust_in_brand?: number;
   message_clarity?: number;
   key_concern_flagged?: string | boolean | number;
+  key_concerns?: string | boolean | number;  // Support both naming conventions
 }
 
 export interface IndividualResponseRow {

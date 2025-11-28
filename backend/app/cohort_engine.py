@@ -180,9 +180,9 @@ def create_cohort_analysis_prompt(persona_data: Dict[str, Any], stimulus_text: s
     
     # Convert metrics to readable descriptions
     metric_descriptions = {
-        'intent_to_action': 'Request/Prescribe Intent (1-10 scale): Likelihood to request (patients) or prescribe (HCPs) after seeing this message.',
-        'emotional_response': 'Emotional Response (-1 to 1 scale): What is their emotional reaction to this message?',
-        'brand_trust': 'Brand Trust (1-10 scale): How does this message affect their trust in the brand?',
+        'purchase_intent': 'Purchase/Prescribe Intent (1-10 scale): Likelihood to request (patients) or prescribe (HCPs) after seeing this message.',
+        'sentiment': 'Sentiment (-1 to 1 scale): What is their emotional reaction to this message?',
+        'trust_in_brand': 'Brand Trust (1-10 scale): How does this message affect their trust in the brand?',
         'message_clarity': 'Message Clarity (1-10 scale): How clear and understandable is this message to them?',
         'key_concerns': 'Key Concerns: What barriers or objections does this message raise?'
     }
@@ -208,9 +208,9 @@ def create_cohort_analysis_prompt(persona_data: Dict[str, Any], stimulus_text: s
     Generate a response in pure JSON format. Do not include any text, code block markers, or explanations before or after the JSON object. The JSON object must have the following structure:
     {{
         "responses": {{
-            "intent_to_action": <number 1-10>,
-            "emotional_response": <number -1 to 1>,
-            "brand_trust": <number 1-10>,
+            "purchase_intent": <number 1-10>,
+            "sentiment": <number -1 to 1>,
+            "trust_in_brand": <number 1-10>,
             "message_clarity": <number 1-10>,
             "key_concerns": "<string describing their main concern>"
         }},
@@ -261,11 +261,11 @@ def analyze_persona_response(persona_data: Dict[str, Any], stimulus_text: str, m
         print(f"Error analyzing persona response: {e}")
         fallback = {}
         for metric in metrics:
-            if metric == 'intent_to_action':
+            if metric == 'purchase_intent':
                 fallback[metric] = random.randint(3, 8)
-            elif metric == 'emotional_response':
+            elif metric == 'sentiment':
                 fallback[metric] = round(random.uniform(-0.5, 0.8), 2)
-            elif metric == 'brand_trust':
+            elif metric == 'trust_in_brand':
                 fallback[metric] = random.randint(4, 9)
             elif metric == 'message_clarity':
                 fallback[metric] = random.randint(5, 9)
@@ -405,7 +405,7 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
     insights = []
     
     # Analyze intent patterns
-    intent_scores = [resp['responses'].get('intent_to_action') for resp in individual_responses if resp['responses'].get('intent_to_action')]
+    intent_scores = [resp['responses'].get('purchase_intent') for resp in individual_responses if resp['responses'].get('purchase_intent')]
     if intent_scores:
         avg_intent = sum(intent_scores) / len(intent_scores)
         if avg_intent >= 7:
@@ -416,7 +416,7 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
             insights.append("Moderate request/prescribe intent - message shows potential but may need refinement.")
     
     # Analyze sentiment patterns
-    sentiments = [resp['responses'].get('emotional_response') for resp in individual_responses if resp['responses'].get('emotional_response')]
+    sentiments = [resp['responses'].get('sentiment') for resp in individual_responses if resp['responses'].get('sentiment')]
     if sentiments:
         avg_sentiment = sum(sentiments) / len(sentiments)
         if avg_sentiment >= 0.5:
@@ -427,7 +427,7 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
             insights.append("Neutral sentiment - message is well-received but may need emotional enhancement.")
     
     # Analyze trust patterns
-    trust_scores = [resp['responses'].get('brand_trust') for resp in individual_responses if resp['responses'].get('brand_trust')]
+    trust_scores = [resp['responses'].get('trust_in_brand') for resp in individual_responses if resp['responses'].get('trust_in_brand')]
     if trust_scores:
         avg_trust = sum(trust_scores) / len(trust_scores)
         if avg_trust >= 7:
@@ -516,9 +516,9 @@ def create_multimodal_analysis_prompt(persona_data: Dict[str, Any], stimulus_tex
     
     # Convert metrics to readable descriptions
     metric_descriptions = {
-        'intent_to_action': 'Request/Prescribe Intent (1-10 scale): Likelihood to request (patients) or prescribe (HCPs) after seeing this message.',
-        'emotional_response': 'Emotional Response (-1 to 1 scale): What is their emotional reaction to this message?',
-        'brand_trust': 'Brand Trust (1-10 scale): How does this message affect their trust in the brand?',
+        'purchase_intent': 'Purchase/Prescribe Intent (1-10 scale): Likelihood to request (patients) or prescribe (HCPs) after seeing this message.',
+        'sentiment': 'Sentiment (-1 to 1 scale): What is their emotional reaction to this message?',
+        'trust_in_brand': 'Brand Trust (1-10 scale): How does this message affect their trust in the brand?',
         'message_clarity': 'Message Clarity (1-10 scale): How clear and understandable is this message to them?',
         'key_concerns': 'Key Concerns: What barriers or objections does this message raise?'
     }

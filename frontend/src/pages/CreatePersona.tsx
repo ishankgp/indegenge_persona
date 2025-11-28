@@ -1,8 +1,8 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { PersonasAPI } from "@/lib/api"
+import { PersonasAPI, BrandsAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -12,6 +12,8 @@ import { Badge } from "../components/ui/badge"
 import { Separator } from "../components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { VeevaCRMImporter } from "../components/VeevaCRMImporter"
+import BrandInsightSelector from "@/components/BrandInsightSelector"
+import type { BrandInsight, SuggestionResponse } from "@/components/BrandInsightSelector"
 import {
   User,
   MapPin,
@@ -28,6 +30,11 @@ import {
   ArrowLeft,
   Database,
 } from "lucide-react"
+
+interface BrandOption {
+  id: number
+  name: string
+}
 
 export function CreatePersona() {
   const navigate = useNavigate()
@@ -66,9 +73,29 @@ export function CreatePersona() {
     count: '1'
   })
 
+  const [brands, setBrands] = useState<BrandOption[]>([])
+  const [manualSelectedInsights, setManualSelectedInsights] = useState<BrandInsight[]>([])
+  const [manualSuggestions, setManualSuggestions] = useState<SuggestionResponse | null>(null)
+  const [manualBrandId, setManualBrandId] = useState<number | null>(null)
+  const [manualTargetSegment, setManualTargetSegment] = useState("")
+  const [aiBrandId, setAiBrandId] = useState<number | null>(null)
+  const [aiTargetSegment, setAiTargetSegment] = useState("")
+
+  useEffect(() => {
+    const fetchBrands = async () => {
+      try {
+        const data = await BrandsAPI.list()
+        setBrands(data)
+      } catch (err) {
+        console.error("Failed to load brands", err)
+      }
+    }
+    fetchBrands()
+  }, [])
+
   const handleManualInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
-    
+
     // Check if it's a communication preference field
     if (name.includes('.')) {
       const [, commField] = name.split('.')
@@ -125,6 +152,53 @@ export function CreatePersona() {
     }))
   }
 
+  const mergeValuesWithSlots = (existing: string[], additions: string[]) => {
+    const cleanExisting = existing.filter(value => value.trim() !== "")
+    const cleanAdditions = additions.filter(value => value && value.trim() !== "")
+    const combined = [...cleanAdditions, ...cleanExisting].filter(
+      (value, index, self) => value && self.indexOf(value) === index
+    )
+    return Array.from({ length: existing.length }, (_, idx) => combined[idx] ?? "")
+  }
+
+  const applyInsightsToManualForm = () => {
+    if (!manualSelectedInsights.length) {
+      alert("Select brand insights to apply.")
+      return
+    }
+    const motivations = manualSelectedInsights.filter(i => i.type === "Motivation").map(i => i.text)
+    const beliefs = manualSelectedInsights.filter(i => i.type === "Belief").map(i => i.text)
+    const tensions = manualSelectedInsights.filter(i => i.type === "Tension").map(i => i.text)
+
+    setManualFormData(prev => ({
+      ...prev,
+      motivations: mergeValuesWithSlots(prev.motivations, motivations),
+      beliefs: mergeValuesWithSlots(prev.beliefs, beliefs),
+      pain_points: mergeValuesWithSlots(prev.pain_points, tensions),
+    }))
+  }
+
+  const applySuggestionsToManualForm = () => {
+    if (!manualSuggestions) {
+      alert("Generate brand suggestions first.")
+      return
+    }
+    setManualFormData(prev => ({
+      ...prev,
+      motivations: mergeValuesWithSlots(prev.motivations, manualSuggestions.motivations || []),
+      beliefs: mergeValuesWithSlots(prev.beliefs, manualSuggestions.beliefs || []),
+      pain_points: mergeValuesWithSlots(prev.pain_points, manualSuggestions.tensions || []),
+    }))
+  }
+
+  const enrichPersonaWithBrand = async (personaId: number, brandId: number | null, targetSegment?: string): Promise<void> => {
+    if (!brandId) return
+    await PersonasAPI.enrichFromBrand(personaId, {
+      brand_id: brandId,
+      target_segment: targetSegment || undefined
+    })
+  }
+
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -169,7 +243,11 @@ export function CreatePersona() {
 
       const newPersona = await PersonasAPI.createManual(personaData)
       console.log("Created manual persona:", newPersona.id)
-      
+
+      if (manualBrandId) {
+        await enrichPersonaWithBrand(newPersona.id, manualBrandId, manualTargetSegment)
+      }
+
       // Reset form
       setManualFormData({
         name: "",
@@ -182,16 +260,16 @@ export function CreatePersona() {
         lifestyle_and_values: "",
         pain_points: ["", "", "", ""],
         motivations: ["", "", "", ""],
-      beliefs: ["", "", "", ""],
+        beliefs: ["", "", "", ""],
         communication_preferences: {
           preferred_channels: "",
           information_style: "",
           frequency: ""
         }
       })
-      
+
       alert(`Successfully created manual persona. Redirecting to Persona Library...`)
-      
+
       // Redirect to persona library after successful creation
       setTimeout(() => {
         navigate('/personas')
@@ -223,7 +301,7 @@ export function CreatePersona() {
     try {
       const count = parseInt(aiFormData.count) || 1
       setGenerationProgress({ current: 0, total: count })
-      
+
       const basePersonaData = {
         age: age,
         gender: aiFormData.gender,
@@ -233,24 +311,44 @@ export function CreatePersona() {
       }
 
       const createdPersonas = []
+      const enrichmentPromises: Promise<void>[] = []
+      
       for (let i = 0; i < count; i++) {
         setGenerationProgress({ current: i + 1, total: count })
-        
+
         const variations = [
-          '', ' with family history', ' seeking treatment options', 
+          '', ' with family history', ' seeking treatment options',
           ' concerned about side effects', ' looking for lifestyle changes',
           ' with financial concerns', ' preferring natural remedies',
           ' with mobility limitations', ' living in rural area', ' with strong family support'
         ]
         const variation = variations[i % variations.length]
-        
+
         const personaData = {
           ...basePersonaData,
           concerns: aiFormData.concerns + variation
         }
-        
+
         const newPersona = await PersonasAPI.generate(personaData)
         createdPersonas.push(newPersona)
+        
+        // Collect enrichment promises to run in parallel after all personas are created
+        if (aiBrandId) {
+          enrichmentPromises.push(
+            enrichPersonaWithBrand(newPersona.id, aiBrandId, aiTargetSegment).catch(err => {
+              console.error(`Failed to enrich persona ${newPersona.id}:`, err)
+            })
+          )
+        }
+      }
+      
+      // Run all enrichments in parallel after personas are created
+      if (enrichmentPromises.length > 0) {
+        const results = await Promise.allSettled(enrichmentPromises)
+        const failed = results.filter(r => r.status === 'rejected').length
+        if (failed > 0) {
+          alert(`${failed} of ${enrichmentPromises.length} persona enrichment${enrichmentPromises.length > 1 ? 's' : ''} failed. Personas were created successfully.`)
+        }
       }
 
       setAiFormData({
@@ -263,7 +361,7 @@ export function CreatePersona() {
       })
       setGenerationProgress({ current: 0, total: 0 })
       alert(`Successfully generated ${count} new persona${count > 1 ? 's' : ''}. Redirecting to Persona Library...`)
-      
+
       // Redirect to persona library after successful creation
       setTimeout(() => {
         navigate('/personas')
@@ -281,33 +379,32 @@ export function CreatePersona() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
-      {/* Enhanced Header Section */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-secondary">
+      {/* Indegene Purple Header Section */}
+      <div className="relative overflow-hidden bg-gradient-to-r from-[hsl(262,60%,38%)] via-[hsl(262,60%,42%)] to-[hsl(280,60%,45%)]">
         {/* Animated Background */}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute top-20 left-10 w-72 h-72 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
           <div className="absolute bottom-0 right-20 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse animation-delay-2000"></div>
         </div>
 
-        <div className="relative z-10 px-8 py-12">
+        <div className="relative z-10 px-8 py-8">
           <div className="max-w-7xl mx-auto">
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-6">
+              <div className="flex items-center space-x-5">
                 <div className="relative">
-                  <div className="absolute inset-0 bg-white/20 rounded-2xl blur-xl"></div>
-                  <div className="relative p-4 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20">
+                  <div className="relative p-4 bg-white/20 backdrop-blur-sm rounded-2xl border border-white/20">
                     <UserPlus className="h-10 w-10 text-white" />
                   </div>
                 </div>
                 <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <h1 className="text-5xl font-bold text-white">Create Persona</h1>
+                  <div className="flex items-center gap-3 mb-1">
+                    <h1 className="text-4xl font-bold text-white">Create Persona</h1>
                     <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30 px-3 py-1">
                       <Sparkles className="h-3 w-3 mr-1" />
                       AI-Powered
                     </Badge>
                   </div>
-                  <p className="text-white/90 text-lg">
+                  <p className="text-white/80 text-base">
                     Generate realistic patient and HCP personas with advanced AI
                   </p>
                 </div>
@@ -366,7 +463,7 @@ export function CreatePersona() {
                 </Button>
               </div>
               <div className="mt-4">
-                <VeevaCRMImporter 
+                <VeevaCRMImporter
                   onImportComplete={() => {
                     alert("CRM Import Complete! Redirecting to Persona Library...");
                     setTimeout(() => {
@@ -397,6 +494,33 @@ export function CreatePersona() {
                     <p className="text-sm text-gray-600 mt-1">
                       Create a detailed persona manually by filling in all attributes
                     </p>
+                  </div>
+
+                  <BrandInsightSelector
+                    selectionLimit={8}
+                    disabled={generating}
+                    onSelectionChange={setManualSelectedInsights}
+                    onSuggestions={setManualSuggestions}
+                    onBrandChange={(id) => setManualBrandId(id)}
+                    onTargetSegmentChange={setManualTargetSegment}
+                  />
+
+                  <div className="flex flex-wrap items-center justify-end gap-3">
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onClick={applySuggestionsToManualForm}
+                      disabled={!manualSuggestions}
+                    >
+                      Apply AI Suggestions
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={applyInsightsToManualForm}
+                      disabled={!manualSelectedInsights.length}
+                    >
+                      Insert Selected Insights
+                    </Button>
                   </div>
 
                   {error && (
@@ -736,6 +860,39 @@ export function CreatePersona() {
                     />
                   </div>
 
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-gray-900 dark:text-gray-100">Brand grounding (optional)</p>
+                      <span className="text-xs text-muted-foreground">Auto-enrich after generation</span>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Select
+                        value={aiBrandId ? String(aiBrandId) : ""}
+                        onValueChange={(value) => setAiBrandId(value ? Number(value) : null)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select brand" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">No brand</SelectItem>
+                          {brands.map((brand) => (
+                            <SelectItem key={brand.id} value={String(brand.id)}>
+                              {brand.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        value={aiTargetSegment}
+                        onChange={(e) => setAiTargetSegment(e.target.value)}
+                        placeholder="Target segment (e.g., Early adopters)"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      If a brand is selected, each generated persona is enriched using that brand's MBT insights.
+                    </p>
+                  </div>
+
                   {error && (
                     <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 text-red-700 dark:text-red-300 rounded-lg">
                       <p className="font-bold">Generation Error</p>
@@ -780,8 +937,8 @@ export function CreatePersona() {
 
                   {generationProgress.total > 0 && (
                     <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                         style={{ width: `${(generationProgress.current / generationProgress.total) * 100}%` }}
                       ></div>
                       <p className="text-sm text-gray-600 mt-2">
@@ -790,9 +947,9 @@ export function CreatePersona() {
                     </div>
                   )}
 
-                  <Button 
-                    type="submit" 
-                    className="w-full bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold" 
+                  <Button
+                    type="submit"
+                    className="w-full bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold"
                     disabled={generating}
                   >
                     {generating ? (

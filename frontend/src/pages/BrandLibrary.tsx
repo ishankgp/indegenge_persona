@@ -4,10 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileText, CheckCircle, Circle, Plus, Loader2, Sparkles } from 'lucide-react';
+import { Upload, FileText, CheckCircle, Circle, Plus, Loader2, Sparkles, Library } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
+import { BrandsAPI } from "@/lib/api";
 
 interface Brand {
   id: number;
@@ -56,25 +56,21 @@ const BrandLibrary = () => {
 
   const fetchBrands = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/brands');
-      if (res.ok) {
-        const data = await res.json();
-        setBrands(data);
-      }
+      const data = await BrandsAPI.list();
+      setBrands(data);
     } catch (error) {
       console.error("Failed to fetch brands", error);
+      toast({ title: "Error", description: "Failed to load brands.", variant: "destructive" });
     }
   };
 
   const fetchDocuments = async (brandId: number) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/brands/${brandId}/documents`);
-      if (res.ok) {
-        const data = await res.json();
-        setDocuments(data);
-      }
+      const data = await BrandsAPI.getDocuments(brandId);
+      setDocuments(data);
     } catch (error) {
       console.error("Failed to fetch documents", error);
+      toast({ title: "Error", description: "Failed to load documents.", variant: "destructive" });
     }
   };
 
@@ -82,23 +78,15 @@ const BrandLibrary = () => {
     if (!newBrandName.trim()) return;
     setIsCreatingBrand(true);
     try {
-      const res = await fetch('http://localhost:8000/api/brands', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newBrandName })
-      });
-
-      if (res.ok) {
-        const newBrand = await res.json();
-        setBrands([...brands, newBrand]);
-        setSelectedBrandId(newBrand.id.toString());
-        setNewBrandName("");
-        toast({ title: "Brand created", description: `${newBrand.name} has been created.` });
-      } else {
-        toast({ title: "Error", description: "Failed to create brand.", variant: "destructive" });
-      }
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to create brand.", variant: "destructive" });
+      const newBrand = await BrandsAPI.create(newBrandName);
+      setBrands([...brands, newBrand]);
+      setSelectedBrandId(newBrand.id.toString());
+      setNewBrandName("");
+      toast({ title: "Brand created", description: `${newBrand.name} has been created.` });
+    } catch (error: any) {
+      console.error("Failed to create brand", error);
+      const errorMessage = error?.response?.data?.detail || "Failed to create brand.";
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
     } finally {
       setIsCreatingBrand(false);
     }
@@ -108,22 +96,16 @@ const BrandLibrary = () => {
     if (!selectedBrandId) return;
     setIsSeeding(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/brands/${selectedBrandId}/seed`, {
-        method: 'POST'
+      const newDocs = await BrandsAPI.seed(parseInt(selectedBrandId));
+      setDocuments([...documents, ...newDocs]);
+      toast({
+        title: "Demo Data Populated",
+        description: `Added ${newDocs.length} mock documents.`
       });
-
-      if (res.ok) {
-        const newDocs = await res.json();
-        setDocuments([...documents, ...newDocs]);
-        toast({
-          title: "Demo Data Populated",
-          description: `Added ${newDocs.length} mock documents.`
-        });
-      } else {
-        toast({ title: "Error", description: "Failed to seed data.", variant: "destructive" });
-      }
-    } catch (error) {
-      toast({ title: "Error", description: "Network error.", variant: "destructive" });
+    } catch (error: any) {
+      console.error("Failed to seed data", error);
+      const errorMessage = error?.response?.data?.detail || "Failed to seed data.";
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
     } finally {
       setIsSeeding(false);
     }
@@ -133,28 +115,18 @@ const BrandLibrary = () => {
     if (!e.target.files || !e.target.files[0] || !selectedBrandId) return;
 
     const file = e.target.files[0];
-    const formData = new FormData();
-    formData.append('file', file);
-
     setIsUploading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/brands/${selectedBrandId}/upload`, {
-        method: 'POST',
-        body: formData
+      const newDoc = await BrandsAPI.upload(parseInt(selectedBrandId), file);
+      setDocuments([...documents, newDoc]);
+      toast({
+        title: "File uploaded",
+        description: `Classified as: ${newDoc.category}`
       });
-
-      if (res.ok) {
-        const newDoc = await res.json();
-        setDocuments([...documents, newDoc]);
-        toast({
-          title: "File uploaded",
-          description: `Classified as: ${newDoc.category}`
-        });
-      } else {
-        toast({ title: "Upload failed", description: "Could not upload file.", variant: "destructive" });
-      }
-    } catch (error) {
-      toast({ title: "Upload failed", description: "Network error.", variant: "destructive" });
+    } catch (error: any) {
+      console.error("Failed to upload file", error);
+      const errorMessage = error?.response?.data?.detail || "Could not upload file.";
+      toast({ title: "Upload failed", description: errorMessage, variant: "destructive" });
     } finally {
       setIsUploading(false);
     }
@@ -170,52 +142,70 @@ const BrandLibrary = () => {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Brand Library</h1>
-          <p className="text-muted-foreground">Manage brand knowledge and ground your personas.</p>
-        </div>
+    <div className="min-h-screen bg-background">
+      {/* Indegene Purple Page Header */}
+      <div className="bg-gradient-to-r from-[hsl(262,60%,38%)] via-[hsl(262,60%,42%)] to-[hsl(280,60%,45%)]">
+        <div className="max-w-7xl mx-auto px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                <Library className="h-8 w-8 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-3xl font-bold text-white tracking-tight">Brand Library</h1>
+                  <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30 font-normal">
+                    <FileText className="h-3 w-3 mr-1" />
+                    Knowledge Assets
+                  </Badge>
+                </div>
+                <p className="text-white/80 mt-1">Manage brand knowledge and ground your personas</p>
+              </div>
+            </div>
 
-        <div className="flex items-center gap-4">
-          <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Select Brand" />
-            </SelectTrigger>
-            <SelectContent>
-              {brands.map(b => (
-                <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <div className="flex items-center gap-4">
+              <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
+                <SelectTrigger className="w-[240px] bg-white/10 backdrop-blur-sm border-white/20 text-white">
+                  <SelectValue placeholder="Select Brand Context" />
+                </SelectTrigger>
+                <SelectContent>
+                  {brands.map(b => (
+                    <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="New Brand Name"
-              value={newBrandName}
-              onChange={(e) => setNewBrandName(e.target.value)}
-              className="w-[200px]"
-            />
-            <Button onClick={handleCreateBrand} disabled={isCreatingBrand || !newBrandName}>
-              {isCreatingBrand ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            </Button>
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="New Brand Name"
+                  value={newBrandName}
+                  onChange={(e) => setNewBrandName(e.target.value)}
+                  className="w-[200px] bg-white/10 backdrop-blur-sm border-white/20 text-white placeholder:text-white/50"
+                />
+                <Button onClick={handleCreateBrand} disabled={isCreatingBrand || !newBrandName} className="bg-white text-primary hover:bg-white/90">
+                  {isCreatingBrand ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      <div className="max-w-7xl mx-auto px-8 py-8">
 
       {selectedBrandId ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Left Column: Upload & Files */}
           <div className="md:col-span-2 space-y-6">
             {/* Upload Zone */}
-            <Card className="border-dashed border-2">
-              <CardContent className="flex flex-col items-center justify-center h-40 space-y-4 pt-6">
-                <div className="p-4 bg-muted rounded-full">
-                  <Upload className="h-8 w-8 text-muted-foreground" />
+            <Card className="border-2 border-dashed border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors">
+              <CardContent className="flex flex-col items-center justify-center h-48 space-y-4 pt-8">
+                <div className="p-4 bg-background rounded-full shadow-sm">
+                  <Upload className="h-8 w-8 text-primary" />
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-medium">Drag & drop files or click to upload</p>
-                  <p className="text-xs text-muted-foreground">PDF, DOCX, TXT supported</p>
+                  <p className="text-lg font-semibold text-foreground">Upload Knowledge Assets</p>
+                  <p className="text-sm text-muted-foreground mt-1">Drag & drop PDF, DOCX, TXT files here</p>
                 </div>
                 <Input
                   type="file"
@@ -224,18 +214,24 @@ const BrandLibrary = () => {
                   onChange={handleFileUpload}
                   disabled={isUploading}
                 />
-                <div className="flex gap-3">
-                  <Button asChild disabled={isUploading} variant="secondary">
-                    <label htmlFor="file-upload" className="cursor-pointer">
-                      {isUploading ? "Uploading & Classifying..." : "Select File"}
-                    </label>
-                  </Button>
+                <div className="flex gap-3 pt-2">
+                  <div className="relative">
+                    <Button disabled={isUploading} className="btn-primary cursor-pointer pointer-events-none">
+                      {isUploading ? "Uploading..." : "Select File"}
+                    </Button>
+                    <label
+                      htmlFor="file-upload"
+                      className="absolute inset-0 cursor-pointer"
+                      aria-label="Select File"
+                    />
+                  </div>
                   <Button
                     variant="outline"
                     onClick={handleSeedData}
                     disabled={isSeeding || isUploading}
+                    className="bg-background"
                   >
-                    {isSeeding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2 text-purple-500" />}
+                    {isSeeding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2 text-primary" />}
                     Populate Demo Data
                   </Button>
                 </div>
@@ -280,8 +276,11 @@ const BrandLibrary = () => {
           {/* Right Column: Knowledge Checklist */}
           <div className="md:col-span-1">
             <Card className="h-full">
-              <CardHeader>
-                <CardTitle>Knowledge Pillars</CardTitle>
+              <CardHeader className="border-b border-border/50 bg-muted/30">
+                <div className="flex items-center gap-2">
+                  <div className="h-4 w-1 bg-primary rounded-full" />
+                  <CardTitle className="text-base font-semibold">Knowledge Pillars</CardTitle>
+                </div>
                 <CardDescription>Required context for accurate personas.</CardDescription>
               </CardHeader>
               <CardContent>
@@ -308,6 +307,7 @@ const BrandLibrary = () => {
           </p>
         </div>
       )}
+      </div>
     </div>
   );
 };

@@ -1,7 +1,15 @@
+"use client";
+
+import React, { useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import BrandInsightSelector from '@/components/BrandInsightSelector';
+import type { BrandInsight, SuggestionResponse } from '@/components/BrandInsightSelector';
+import { PersonasAPI } from '@/lib/api';
 import { User, Heart, MapPin, Activity, Brain, MessageSquare, Target, Users, Calendar } from 'lucide-react';
 
 interface PersonaDetailModalProps {
@@ -11,10 +19,36 @@ interface PersonaDetailModalProps {
 }
 
 export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailModalProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editablePersona, setEditablePersona] = useState<any>({});
+  const [selectedInsights, setSelectedInsights] = useState<BrandInsight[]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestionResponse | null>(null);
+  const [selectedBrandId, setSelectedBrandId] = useState<number | null>(null);
+  const [targetSegment, setTargetSegment] = useState("");
+
+  const resetPersonaState = () => {
+    if (!persona) return;
+    try {
+      setEditablePersona(JSON.parse(persona.full_persona_json));
+    } catch {
+      setEditablePersona({});
+    }
+    setIsEditing(false);
+  }
+
+  useEffect(() => {
+    if (!persona) return;
+    resetPersonaState();
+    setIsEditing(false);
+    setSelectedInsights([]);
+    setSuggestions(null);
+  }, [persona]);
+
   if (!persona) return null;
 
-  const personaData = JSON.parse(persona.full_persona_json)
-  const createdDate = new Date(persona.created_at).toLocaleDateString()
+  const personaData = editablePersona;
+  const createdDate = new Date(persona.created_at).toLocaleDateString();
 
   const getMBTData = () => {
     if (personaData?.mbt) {
@@ -34,6 +68,85 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
 
   const mbtData = getMBTData()
 
+  const updateMbtField = (field: "motivations" | "beliefs" | "pain_points", value: string) => {
+    const entries = value.split("\n").map(item => item.trim()).filter(Boolean)
+    setEditablePersona((prev: any) => ({
+      ...prev,
+      [field]: entries
+    }))
+  }
+
+  const mergeUnique = (base?: string[], additions?: string[]) => {
+    return Array.from(new Set([...(additions || []), ...(base || [])])).filter(Boolean)
+  }
+
+  const appendInsights = () => {
+    if (!selectedInsights.length) {
+      alert("Select insights to append.")
+      return
+    }
+    const motivations = selectedInsights.filter(i => i.type === "Motivation").map(i => i.text)
+    const beliefs = selectedInsights.filter(i => i.type === "Belief").map(i => i.text)
+    const tensions = selectedInsights.filter(i => i.type === "Tension").map(i => i.text)
+
+    setEditablePersona((prev: any) => ({
+      ...prev,
+      motivations: mergeUnique(prev?.motivations, motivations),
+      beliefs: mergeUnique(prev?.beliefs, beliefs),
+      pain_points: mergeUnique(prev?.pain_points, tensions)
+    }))
+  }
+
+  const applySuggestionSet = () => {
+    if (!suggestions) {
+      alert("Generate suggestions first.")
+      return
+    }
+    setEditablePersona((prev: any) => ({
+      ...prev,
+      motivations: suggestions.motivations?.length ? suggestions.motivations : prev.motivations,
+      beliefs: suggestions.beliefs?.length ? suggestions.beliefs : prev.beliefs,
+      pain_points: suggestions.tensions?.length ? suggestions.tensions : prev.pain_points
+    }))
+  }
+
+  const handleSaveChanges = async () => {
+    setSaving(true)
+    try {
+      await PersonasAPI.update(persona.id, {
+        full_persona_json: editablePersona
+      })
+      alert("Persona updated successfully.")
+      setIsEditing(false)
+    } catch (err) {
+      console.error("Failed to save persona", err)
+      alert("Failed to save persona changes.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleBrandEnrich = async () => {
+    if (!selectedBrandId) {
+      alert("Select a brand to enrich.")
+      return
+    }
+    setSaving(true)
+    try {
+      const response = await PersonasAPI.enrichFromBrand(persona.id, {
+        brand_id: selectedBrandId,
+        target_segment: targetSegment || undefined
+      })
+      setEditablePersona(JSON.parse(response.full_persona_json))
+      alert("Persona enriched with brand insights.")
+    } catch (err) {
+      console.error("Brand enrichment failed", err)
+      alert("Unable to enrich persona with brand data.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
@@ -48,6 +161,45 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
             Complete persona profile • Created on {createdDate}
           </DialogDescription>
         </DialogHeader>
+        <div className="flex justify-end gap-2 mb-4">
+          {isEditing ? (
+            <>
+              <Button variant="ghost" onClick={resetPersonaState}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveChanges} disabled={saving}>
+                {saving ? "Saving..." : "Save Changes"}
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" onClick={() => setIsEditing(true)}>
+              Edit Persona
+            </Button>
+          )}
+        </div>
+
+        {isEditing && (
+          <div className="border rounded-lg p-4 mb-4 space-y-4">
+            <BrandInsightSelector
+              selectionLimit={6}
+              onSelectionChange={setSelectedInsights}
+              onSuggestions={setSuggestions}
+              onBrandChange={(id) => setSelectedBrandId(id)}
+              onTargetSegmentChange={setTargetSegment}
+            />
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="outline" onClick={applySuggestionSet} disabled={!suggestions}>
+                Apply Suggestions
+              </Button>
+              <Button variant="outline" onClick={appendInsights} disabled={!selectedInsights.length}>
+                Append Selected
+              </Button>
+              <Button onClick={handleBrandEnrich} disabled={!selectedBrandId || saving}>
+                {saving ? "Enriching..." : "LLM Enrich"}
+              </Button>
+            </div>
+          </div>
+        )}
 
         <ScrollArea className="h-[calc(90vh-120px)] pr-4">
           <div className="space-y-6">
@@ -217,24 +369,33 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    {Array.isArray(mbtData.motivations)
-                      ? mbtData.motivations.map((motivation: string, idx: number) => (
-                          <div key={idx} className="flex items-start gap-2">
-                            <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
-                            <p className="text-base">{motivation}</p>
-                          </div>
-                        ))
-                      : Object.entries(mbtData.motivations).map(([key, value]) => (
-                          <div key={key}>
-                            <label className="text-sm font-medium text-gray-600 capitalize">
-                              {key.replace(/_/g, ' ')}
-                            </label>
-                            <p className="text-base">{value as string}</p>
-                          </div>
-                        ))
-                    }
-                  </div>
+                  {isEditing ? (
+                    <Textarea
+                      rows={5}
+                      value={Array.isArray(personaData.motivations) ? personaData.motivations.join("\n") : ""}
+                      onChange={(e) => updateMbtField("motivations", e.target.value)}
+                      placeholder="One motivation per line"
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      {Array.isArray(mbtData.motivations)
+                        ? mbtData.motivations.map((motivation: string, idx: number) => (
+                            <div key={idx} className="flex items-start gap-2">
+                              <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+                              <p className="text-base">{motivation}</p>
+                            </div>
+                          ))
+                        : Object.entries(mbtData.motivations).map(([key, value]) => (
+                            <div key={key}>
+                              <label className="text-sm font-medium text-gray-600 capitalize">
+                                {key.replace(/_/g, ' ')}
+                              </label>
+                              <p className="text-base">{value as string}</p>
+                            </div>
+                          ))
+                      }
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -249,24 +410,33 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    {Array.isArray(mbtData.beliefs)
-                      ? mbtData.beliefs.map((belief: string, idx: number) => (
-                          <div key={idx} className="flex items-start gap-2">
-                            <div className="w-2 h-2 bg-purple-500 rounded-full mt-2"></div>
-                            <p className="text-base">{belief}</p>
-                          </div>
-                        ))
-                      : Object.entries(mbtData.beliefs).map(([key, value]) => (
-                          <div key={key}>
-                            <label className="text-sm font-medium text-gray-600 capitalize">
-                              {key.replace(/_/g, ' ')}
-                            </label>
-                            <p className="text-base">{value as string}</p>
-                          </div>
-                        ))
-                    }
-                  </div>
+                  {isEditing ? (
+                    <Textarea
+                      rows={5}
+                      value={Array.isArray(personaData.beliefs) ? personaData.beliefs.join("\n") : ""}
+                      onChange={(e) => updateMbtField("beliefs", e.target.value)}
+                      placeholder="One belief per line"
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      {Array.isArray(mbtData.beliefs)
+                        ? mbtData.beliefs.map((belief: string, idx: number) => (
+                            <div key={idx} className="flex items-start gap-2">
+                              <div className="w-2 h-2 bg-purple-500 rounded-full mt-2"></div>
+                              <p className="text-base">{belief}</p>
+                            </div>
+                          ))
+                        : Object.entries(mbtData.beliefs).map(([key, value]) => (
+                            <div key={key}>
+                              <label className="text-sm font-medium text-gray-600 capitalize">
+                                {key.replace(/_/g, ' ')}
+                              </label>
+                              <p className="text-base">{value as string}</p>
+                            </div>
+                          ))
+                      }
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -281,24 +451,33 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    {Array.isArray(mbtData.pain_points) 
-                      ? mbtData.pain_points.map((point: string, idx: number) => (
-                          <div key={idx} className="flex items-start gap-2">
-                            <div className="w-2 h-2 bg-red-500 rounded-full mt-2"></div>
-                            <p className="text-base">{point}</p>
-                          </div>
-                        ))
-                      : Object.entries(mbtData.pain_points).map(([key, value]) => (
-                          <div key={key}>
-                            <label className="text-sm font-medium text-gray-600 capitalize">
-                              {key.replace(/_/g, ' ')}
-                            </label>
-                            <p className="text-base">{value as string}</p>
-                          </div>
-                        ))
-                    }
-                  </div>
+                  {isEditing ? (
+                    <Textarea
+                      rows={5}
+                      value={Array.isArray(personaData.pain_points) ? personaData.pain_points.join("\n") : ""}
+                      onChange={(e) => updateMbtField("pain_points", e.target.value)}
+                      placeholder="One pain point per line"
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      {Array.isArray(mbtData.pain_points) 
+                        ? mbtData.pain_points.map((point: string, idx: number) => (
+                            <div key={idx} className="flex items-start gap-2">
+                              <div className="w-2 h-2 bg-red-500 rounded-full mt-2"></div>
+                              <p className="text-base">{point}</p>
+                            </div>
+                          ))
+                        : Object.entries(mbtData.pain_points).map(([key, value]) => (
+                            <div key={key}>
+                              <label className="text-sm font-medium text-gray-600 capitalize">
+                                {key.replace(/_/g, ' ')}
+                              </label>
+                              <p className="text-base">{value as string}</p>
+                            </div>
+                          ))
+                      }
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}

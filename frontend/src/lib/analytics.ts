@@ -1,4 +1,50 @@
-import type { TrendDirection } from '@/types/analytics';
+import type { TrendDirection, AnalyzedMetricKey, FrontendMetricId } from '@/types/analytics';
+
+// Metric mapping between frontend IDs and backend keys
+const METRIC_MAPPING: Record<FrontendMetricId, AnalyzedMetricKey> = {
+  'emotional_response': 'sentiment',
+  'message_clarity': 'message_clarity',
+  'brand_trust': 'trust_in_brand',
+  'intent_to_action': 'purchase_intent',
+  'key_concerns': 'key_concerns'
+};
+
+const REVERSE_METRIC_MAPPING: Record<string, FrontendMetricId> = {
+  'sentiment': 'emotional_response',
+  'message_clarity': 'message_clarity',
+  'trust_in_brand': 'brand_trust',
+  'purchase_intent': 'intent_to_action',
+  'key_concerns': 'key_concerns',
+  'key_concern_flagged': 'key_concerns'
+};
+
+/**
+ * Maps a frontend metric ID to the corresponding backend metric key
+ */
+export function mapFrontendMetricToBackend(frontendId: FrontendMetricId): AnalyzedMetricKey {
+  return METRIC_MAPPING[frontendId] || frontendId as AnalyzedMetricKey;
+}
+
+/**
+ * Maps a backend metric key to the corresponding frontend metric ID
+ */
+export function mapBackendMetricToFrontend(backendKey: string): FrontendMetricId | string {
+  return REVERSE_METRIC_MAPPING[backendKey] || backendKey;
+}
+
+/**
+ * Normalizes metric key to handle both naming conventions
+ */
+export function normalizeMetricKey(metric: string): string {
+  // Map common variations to canonical form
+  const normalized: Record<string, string> = {
+    'emotional_response': 'sentiment',
+    'brand_trust': 'trust_in_brand',
+    'intent_to_action': 'purchase_intent',
+    'key_concern_flagged': 'key_concerns'
+  };
+  return normalized[metric] || metric;
+}
 
 export function computeScoreColor(score: number, max: number = 10): string {
   const percentage = (score / max) * 100;
@@ -23,7 +69,7 @@ export function getSentimentDescriptor(sentiment: number): {
   badgeClassName: string;
   iconTone: 'up' | 'down' | 'neutral';
 } {
-  if (sentiment > 0.3) {
+  if (sentiment > 0.2) {
     return {
       level: 'Positive',
       color: 'text-emerald-600',
@@ -31,7 +77,7 @@ export function getSentimentDescriptor(sentiment: number): {
       iconTone: 'up',
     };
   }
-  if (sentiment < -0.3) {
+  if (sentiment < -0.2) {
     return {
       level: 'Negative',
       color: 'text-red-600',

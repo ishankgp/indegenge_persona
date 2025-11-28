@@ -3,7 +3,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict
 import uvicorn
 import traceback
 import json
@@ -219,6 +219,79 @@ async def get_all_personas(skip: int = 0, limit: int = 100, db: Session = Depend
     personas = crud.get_personas(db, skip=skip, limit=limit)
     return personas
 
+@app.put("/personas/{persona_id}", response_model=schemas.Persona)
+async def update_persona_endpoint(
+    persona_id: int,
+    persona_update: schemas.PersonaUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update persona attributes or enriched JSON."""
+    updated = crud.update_persona(db, persona_id, persona_update)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    return updated
+
+@app.post("/personas/{persona_id}/enrich-from-brand", response_model=schemas.Persona)
+async def enrich_persona_from_brand(
+    persona_id: int,
+    request: schemas.PersonaBrandEnrichmentRequest,
+    db: Session = Depends(get_db)
+):
+    persona = crud.get_persona(db, persona_id)
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+
+    brand = db.query(models.Brand).filter(models.Brand.id == request.brand_id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    documents = crud.get_brand_documents(db, request.brand_id)
+    aggregated = _aggregate_brand_insights(documents, request.target_segment, limit_per_category=8)
+    flattened = _flatten_insights(aggregated)
+
+    try:
+        persona_json = json.loads(persona.full_persona_json or "{}")
+    except json.JSONDecodeError:
+        persona_json = {}
+
+    enriched = persona_engine.enrich_persona_from_brand_context(
+        persona_json,
+        flattened,
+        target_fields=request.target_fields
+    )
+
+    updated = crud.update_persona(
+        db,
+        persona_id,
+        schemas.PersonaUpdate(full_persona_json=enriched)
+    )
+
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to persist enriched persona")
+
+    return updated
+
+@app.post("/personas/recruit", response_model=List[schemas.Persona])
+async def recruit_personas(request: schemas.PersonaSearchRequest, db: Session = Depends(get_db)):
+    """
+    Recruit personas based on a natural language prompt.
+    """
+    # 1. Parse the prompt into structured filters
+    filters_dict = persona_engine.parse_recruitment_prompt(request.prompt)
+    
+    # 2. Convert to Pydantic model
+    try:
+        filters = schemas.PersonaSearchFilters(**filters_dict)
+    except Exception as e:
+        # If parsing fails or returns empty, default to basic search or empty
+        logger.warning(f"Failed to parse filters from prompt: {e}")
+        filters = schemas.PersonaSearchFilters()
+
+    # 3. Search the database
+    personas = crud.search_personas(db, filters)
+    
+    return personas
+
 @app.head("/personas/")
 async def head_personas(db: Session = Depends(get_db)):
     """Lightweight HEAD endpoint to allow health probes without transferring payload."""
@@ -242,6 +315,14 @@ async def save_simulation(simulation_data: schemas.SavedSimulationCreate, db: Se
     existing_simulation = db.query(models.SavedSimulation).filter(models.SavedSimulation.name == simulation_data.name).first()
     if existing_simulation:
         raise HTTPException(status_code=400, detail="A simulation with this name already exists.")
+    
+    # Validate that critical fields are present in the data
+    data = simulation_data.simulation_data
+    required_fields = ['stimulus_text', 'metrics_analyzed', 'individual_responses', 'summary_statistics']
+    missing_fields = [field for field in required_fields if field not in data]
+    
+    if missing_fields:
+        logger.warning(f"Saving simulation with missing fields: {missing_fields}")
     
     return crud.create_saved_simulation(db=db, simulation_data=simulation_data)
 
@@ -483,6 +564,135 @@ async def health_db(db: Session = Depends(get_db)):
 
 
 
+def _normalize_insight_type(raw_type: Optional[str]) -> str:
+    if not raw_type:
+        return "Motivation"
+    normalized = raw_type.strip().lower()
+    if "tension" in normalized or "pain" in normalized or "barrier" in normalized:
+        return "Tension"
+    if "belief" in normalized or "perception" in normalized or "attitude" in normalized:
+        return "Belief"
+    return "Motivation"
+
+
+def _insight_matches_segment(insight_segment: Optional[str], target_segment: Optional[str]) -> bool:
+    if not target_segment:
+        return True
+    if not insight_segment or insight_segment.lower() == "general":
+        return True
+    return target_segment.lower() in insight_segment.lower()
+
+
+def _dedupe_and_limit(insights: List[Dict[str, str]], limit: int = 5) -> List[Dict[str, str]]:
+    seen = set()
+    unique = []
+    for insight in insights:
+        text = insight.get("text", "").strip()
+        if not text:
+            continue
+        key = (insight.get("type", ""), text.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(insight)
+    if len(unique) > limit * 2:
+        llm_result = _llm_merge_insights(unique, limit)
+        if llm_result:
+            return llm_result
+    if limit:
+        return unique[:limit]
+    return unique
+
+
+def _aggregate_brand_insights(
+    documents: List[models.BrandDocument],
+    target_segment: Optional[str],
+    limit_per_category: int
+) -> Dict[str, List[Dict[str, str]]]:
+    motivations: List[Dict[str, str]] = []
+    beliefs: List[Dict[str, str]] = []
+    tensions: List[Dict[str, str]] = []
+
+    for doc in documents:
+        for raw_insight in (doc.extracted_insights or []):
+            insight_type = _normalize_insight_type(raw_insight.get("type"))
+            segment = raw_insight.get("segment") or "General"
+
+            if not _insight_matches_segment(segment, target_segment):
+                continue
+
+            normalized = {
+                "type": insight_type,
+                "text": (raw_insight.get("text") or "").strip(),
+                "segment": segment,
+                "source_snippet": (raw_insight.get("source_snippet") or "").strip(),
+                "source_document": raw_insight.get("source_document") or doc.filename,
+            }
+
+            if insight_type == "Motivation":
+                motivations.append(normalized)
+            elif insight_type == "Belief":
+                beliefs.append(normalized)
+            else:
+                tensions.append(normalized)
+
+    return {
+        "motivations": _dedupe_and_limit(motivations, limit_per_category),
+        "beliefs": _dedupe_and_limit(beliefs, limit_per_category),
+        "tensions": _dedupe_and_limit(tensions, limit_per_category),
+    }
+
+
+def _flatten_insights(aggregated: Dict[str, List[Dict[str, str]]]) -> List[Dict[str, str]]:
+    ordered_types = [("motivations", "Motivation"), ("beliefs", "Belief"), ("tensions", "Tension")]
+    flattened: List[Dict[str, str]] = []
+    for key, label in ordered_types:
+        for insight in aggregated.get(key, []):
+            flattened.append({**insight, "type": label})
+    return flattened
+
+
+def _llm_merge_insights(insights: List[Dict[str, str]], limit: int) -> List[Dict[str, str]]:
+    client = persona_engine.get_openai_client()
+    if client is None:
+        return insights[:limit]
+
+    system_prompt = (
+        "You are consolidating brand insights for the MBT framework. "
+        "Merge overlapping items, retain citations, and output at most "
+        f"{limit} concise insights as JSON array."
+    )
+    user_payload = json.dumps(insights)[:6000]
+
+    try:
+        response = client.chat.completions.create(
+            model=persona_engine.MODEL_NAME,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_payload},
+            ],
+            response_format={"type": "json_array"},
+            max_tokens=600,
+        )
+        content = response.choices[0].message.content or "[]"
+        merged = json.loads(content)
+        normalized = []
+        for entry in merged:
+            normalized.append(
+                {
+                    "type": _normalize_insight_type(entry.get("type")),
+                    "text": (entry.get("text") or "").strip(),
+                    "segment": entry.get("segment", "General"),
+                    "source_snippet": (entry.get("source_snippet") or "").strip(),
+                    "source_document": entry.get("source_document"),
+                }
+            )
+        return [item for item in normalized if item["text"]][:limit]
+    except Exception as exc:
+        logger.warning(f"Insight consolidation failed: {exc}")
+        return insights[:limit]
+
+
 # --- Brand Library Endpoints ---
 
 @app.post("/api/brands", response_model=schemas.Brand)
@@ -525,6 +735,14 @@ async def upload_brand_document(
     
     # Classify
     category = document_processor.classify_document(text)
+
+    extracted_insights = [
+        {
+            **insight,
+            "source_document": file.filename
+        }
+        for insight in persona_engine.extract_mbt_from_text(text)
+    ]
     
     # Create document record
     doc_create = schemas.BrandDocumentCreate(
@@ -532,7 +750,8 @@ async def upload_brand_document(
         filename=file.filename,
         filepath=file_location,
         category=category,
-        summary=text[:200] + "..." if text else "No text extracted"
+        summary=text[:200] + "..." if text else "No text extracted",
+        extracted_insights=extracted_insights
     )
     
     return crud.create_brand_document(db, doc_create)
@@ -541,6 +760,59 @@ async def upload_brand_document(
 async def get_brand_documents(brand_id: int, db: Session = Depends(get_db)):
     """List documents for a specific brand."""
     return crud.get_brand_documents(db, brand_id)
+
+@app.get("/api/brands/{brand_id}/context", response_model=schemas.BrandContextResponse)
+async def get_brand_context(
+    brand_id: int,
+    target_segment: Optional[str] = None,
+    limit_per_category: int = 5,
+    db: Session = Depends(get_db)
+):
+    """Aggregate MBT insights for a brand with optional segment filtering."""
+    brand = db.query(models.Brand).filter(models.Brand.id == brand_id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    limit_per_category = max(1, min(limit_per_category, 15))
+    documents = crud.get_brand_documents(db, brand_id)
+    aggregated = _aggregate_brand_insights(documents, target_segment, limit_per_category)
+
+    return schemas.BrandContextResponse(
+        brand_id=brand.id,
+        brand_name=brand.name,
+        **aggregated
+    )
+
+@app.post("/api/brands/{brand_id}/persona-suggestions", response_model=schemas.BrandSuggestionResponse)
+async def get_brand_persona_suggestions(
+    brand_id: int,
+    request: schemas.BrandSuggestionRequest,
+    db: Session = Depends(get_db)
+):
+    """Generate MBT suggestion lists for manual persona creation."""
+    brand = db.query(models.Brand).filter(models.Brand.id == brand_id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    limit = max(1, min(request.limit_per_category, 10))
+    documents = crud.get_brand_documents(db, brand_id)
+    aggregated = _aggregate_brand_insights(documents, request.target_segment, limit)
+    flattened = _flatten_insights(aggregated)
+
+    suggestions = persona_engine.suggest_persona_attributes(
+        flattened,
+        persona_type=request.persona_type or "Patient"
+    )
+
+    return schemas.BrandSuggestionResponse(
+        brand_id=brand.id,
+        brand_name=brand.name,
+        target_segment=request.target_segment,
+        persona_type=request.persona_type,
+        motivations=suggestions.get("motivations", []),
+        beliefs=suggestions.get("beliefs", []),
+        tensions=suggestions.get("tensions", []),
+    )
 
 @app.post("/api/brands/{brand_id}/seed", response_model=List[schemas.BrandDocument])
 async def seed_brand_documents(brand_id: int, db: Session = Depends(get_db)):
@@ -583,7 +855,14 @@ async def seed_brand_documents(brand_id: int, db: Session = Depends(get_db)):
             filename=filename,
             filepath=filepath,
             category=category,
-            summary=text
+            summary=text,
+            extracted_insights=[
+                {
+                    **insight,
+                    "source_document": filename
+                }
+                for insight in persona_engine.extract_mbt_from_text(text)
+            ]
         )
         
         new_doc = crud.create_brand_document(db, doc_create)

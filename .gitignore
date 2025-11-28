@@ -73,10 +73,10 @@ backend_uvicorn.pid
 /components/
 /public/
 /styles/
-next.config.mjs
-tsconfig.json
-package.json
-pnpm-lock.yaml
-components.json
-vercel.json
-postcss.config.mjs
+# next.config.mjs
+# tsconfig.json
+# package.json
+# pnpm-lock.yaml
+# components.json
+# vercel.json
+# postcss.config.mjs
