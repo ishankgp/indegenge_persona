@@ -6,14 +6,14 @@ import { Progress } from '@/components/ui/progress';
 import MetricCard from '@/components/analytics/MetricCard';
 import { computeScoreColor, computeScoreProgress, getSentimentDescriptor } from '@/lib/analytics';
 import type { AnalysisResults, AnalyzedMetricKey, IndividualResponseRow } from '@/types/analytics';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Minus, 
-  Users, 
-  Target, 
-  Brain, 
-  MessageSquare, 
+import {
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Users,
+  Target,
+  Brain,
+  MessageSquare,
   Activity,
   BarChart3,
   Sparkles,
@@ -83,7 +83,7 @@ export function Analytics() {
               <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
                 Run a simulation from the Simulation Hub to see detailed analytics and insights
               </p>
-              <Button 
+              <Button
                 size="lg"
                 className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200"
                 onClick={() => navigate('/simulation')}
@@ -142,7 +142,7 @@ export function Analytics() {
               </Button>
             </div>
           </div>
-          
+
           {/* Quick Stats Bar */}
           <div className="grid grid-cols-4 gap-4 mt-6">
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
@@ -302,7 +302,6 @@ export function Analytics() {
           )}
         </div>
 
-        {/* AI Insights - Enhanced */}
         {insights && insights.length > 0 && (
           <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
             <CardHeader className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 rounded-t-xl">
@@ -335,6 +334,143 @@ export function Analytics() {
             </CardContent>
           </Card>
         )}
+
+        {/* Message Refinement Suggestions - NEW */}
+        {individual_responses && individual_responses.length > 0 && (() => {
+          // Identify low-scoring personas
+          const lowScorePersonas = individual_responses.filter((r: any) => {
+            const trustScore = r.trust_in_brand ?? r.purchase_intent ?? 5;
+            return trustScore < 5;
+          });
+
+          // Group concerns from low-scoring personas
+          const allConcerns = lowScorePersonas
+            .flatMap((r: any) => r.concerns_raised || [])
+            .filter(Boolean);
+          const uniqueConcerns = [...new Set(allConcerns)].slice(0, 5);
+
+          // Generate suggestions based on concerns
+          const suggestions: Array<{ issue: string, suggestion: string, segment: string }> = [];
+
+          if (lowScorePersonas.some((r: any) =>
+            (r.concerns_raised || []).some((c: string) =>
+              c.toLowerCase().includes('cost') || c.toLowerCase().includes('price') || c.toLowerCase().includes('afford')
+            )
+          )) {
+            suggestions.push({
+              issue: "Cost sensitivity detected",
+              suggestion: "Add language about patient assistance programs, copay cards, or insurance coverage options",
+              segment: "Price-Conscious"
+            });
+          }
+
+          if (lowScorePersonas.some((r: any) =>
+            (r.concerns_raised || []).some((c: string) =>
+              c.toLowerCase().includes('side effect') || c.toLowerCase().includes('safety') || c.toLowerCase().includes('risk')
+            )
+          )) {
+            suggestions.push({
+              issue: "Safety concerns identified",
+              suggestion: "Lead with safety profile data and tolerability messaging before efficacy claims",
+              segment: "Safety-First"
+            });
+          }
+
+          if (lowScorePersonas.some((r: any) =>
+            (r.concerns_raised || []).some((c: string) =>
+              c.toLowerCase().includes('complex') || c.toLowerCase().includes('confus') || c.toLowerCase().includes('understand')
+            )
+          )) {
+            suggestions.push({
+              issue: "Message complexity issues",
+              suggestion: "Simplify clinical language; use patient-friendly terms and visual explanations",
+              segment: "Clarity-Seekers"
+            });
+          }
+
+          if (lowScorePersonas.some((r: any) => r.persona_condition?.toLowerCase().includes('diabet'))) {
+            suggestions.push({
+              issue: "Diabetes patient concerns",
+              suggestion: "Emphasize blood sugar control benefits and A1C improvement data",
+              segment: "Diabetes Patients"
+            });
+          }
+
+          // Add a general suggestion if we have low scores but no specific pattern
+          if (suggestions.length === 0 && lowScorePersonas.length > 0) {
+            suggestions.push({
+              issue: "General engagement gap",
+              suggestion: "Consider A/B testing with more emotional appeals or patient testimonials",
+              segment: "General"
+            });
+          }
+
+          if (suggestions.length === 0) return null;
+
+          return (
+            <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90 border-l-4 border-l-emerald-500">
+              <CardHeader className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 rounded-t-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl">
+                      <Target className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-xl">Message Refinement Suggestions</CardTitle>
+                      <CardDescription>
+                        Based on {lowScorePersonas.length} persona{lowScorePersonas.length !== 1 ? 's' : ''} with low engagement scores
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    Asset Refinement
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-4">
+                {suggestions.map((s, idx) => (
+                  <div key={idx} className="p-4 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-750 rounded-xl border border-gray-200 dark:border-gray-700">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <AlertTriangle className="h-4 w-4 text-amber-500" />
+                          <span className="font-medium text-gray-900 dark:text-gray-100">{s.issue}</span>
+                          <Badge variant="outline" className="text-xs">{s.segment}</Badge>
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 flex items-start gap-2">
+                          <CheckCircle className="h-4 w-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                          {s.suggestion}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <Button
+                    onClick={() => {
+                      // Navigate to simulation with refined message suggestion
+                      const refinedMessage = `[REFINED VERSION]\n\n${stimulus_text}\n\n---\nSuggested improvements:\n${suggestions.map(s => `• ${s.suggestion}`).join('\n')}`;
+                      navigate('/simulation', {
+                        state: {
+                          prefillMessage: refinedMessage,
+                          isVariant: true,
+                          originalMessage: stimulus_text
+                        }
+                      });
+                    }}
+                    className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:shadow-xl transition-all"
+                  >
+                    <PlayCircle className="h-4 w-4 mr-2" />
+                    Create Message Variant
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
+
 
         {/* Individual Responses - Enhanced Table */}
         <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
@@ -427,8 +563,8 @@ export function Analytics() {
                             <span className={`text-lg font-bold ${computeScoreColor(response.responses.purchase_intent || 0)}`}>
                               {response.responses.purchase_intent}
                             </span>
-                            <Progress 
-                              value={computeScoreProgress(response.responses.purchase_intent || 0)} 
+                            <Progress
+                              value={computeScoreProgress(response.responses.purchase_intent || 0)}
                               className="w-16 h-1.5"
                             />
                           </div>
@@ -455,8 +591,8 @@ export function Analytics() {
                             <span className={`text-lg font-bold ${computeScoreColor(response.responses.trust_in_brand || 0)}`}>
                               {response.responses.trust_in_brand}
                             </span>
-                            <Progress 
-                              value={computeScoreProgress(response.responses.trust_in_brand || 0)} 
+                            <Progress
+                              value={computeScoreProgress(response.responses.trust_in_brand || 0)}
                               className="w-16 h-1.5"
                             />
                           </div>
@@ -468,8 +604,8 @@ export function Analytics() {
                             <span className={`text-lg font-bold ${computeScoreColor(response.responses.message_clarity || 0)}`}>
                               {response.responses.message_clarity}
                             </span>
-                            <Progress 
-                              value={computeScoreProgress(response.responses.message_clarity || 0)} 
+                            <Progress
+                              value={computeScoreProgress(response.responses.message_clarity || 0)}
                               className="w-16 h-1.5"
                             />
                           </div>
@@ -492,7 +628,7 @@ export function Analytics() {
 
         {/* Action Buttons */}
         <div className="flex justify-center gap-4 mt-8 pb-8">
-          <Button 
+          <Button
             size="lg"
             className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl"
             onClick={() => navigate('/simulation')}
@@ -500,7 +636,7 @@ export function Analytics() {
             <PlayCircle className="h-5 w-5 mr-2" />
             Run New Simulation
           </Button>
-          <Button 
+          <Button
             size="lg"
             variant="outline"
             onClick={() => window.print()}

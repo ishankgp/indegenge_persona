@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Upload, FileText, CheckCircle, Circle, Plus, Loader2, Sparkles, Library, Users, ArrowRight, UserPlus } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 import { BrandsAPI } from "@/lib/api";
+import { BrandMBTDashboard } from "@/components/BrandMBTDashboard";
 
 interface Brand {
   id: number;
@@ -368,8 +369,14 @@ const BrandLibrary = () => {
               </Card>
             </div>
 
-            {/* Right Column: Knowledge Checklist + Personas */}
+            {/* Right Column: MBT Dashboard + Personas + Knowledge Pillars */}
             <div className="md:col-span-1 space-y-6">
+              {/* Aggregated MBT Dashboard - NEW */}
+              <BrandMBTDashboard
+                brandId={parseInt(selectedBrandId)}
+                brandName={brands.find(b => b.id.toString() === selectedBrandId)?.name || ''}
+              />
+
               {/* Brand Personas Card */}
               <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
                 <CardHeader className="pb-3">
@@ -385,8 +392,8 @@ const BrandLibrary = () => {
                   <CardDescription>Personas grounded in this brand's knowledge</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Button 
-                    className="w-full justify-between" 
+                  <Button
+                    className="w-full justify-between"
                     variant="outline"
                     onClick={() => navigate(`/personas?brand_id=${selectedBrandId}`)}
                   >
@@ -396,7 +403,7 @@ const BrandLibrary = () => {
                     </span>
                     <ArrowRight className="h-4 w-4" />
                   </Button>
-                  <Button 
+                  <Button
                     className="w-full justify-between"
                     onClick={() => navigate(`/create?brand_id=${selectedBrandId}`)}
                   >

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { PersonasAPI, CohortAPI } from "@/lib/api"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -140,6 +140,21 @@ export function SimulationHub() {
   const [recruitmentMode, setRecruitmentMode] = useState<"manual" | "ai">("manual")
   const [recruitmentPrompt, setRecruitmentPrompt] = useState("")
   const [isRecruiting, setIsRecruiting] = useState(false)
+  const [isVariant, setIsVariant] = useState(false)
+  const [originalMessage, setOriginalMessage] = useState("")
+
+  // Handle pre-filled message from Analytics page (for message variants)
+  const location = useLocation()
+  useEffect(() => {
+    const state = location.state as { prefillMessage?: string; isVariant?: boolean; originalMessage?: string } | null
+    if (state?.prefillMessage) {
+      setStimulusText(state.prefillMessage)
+      setIsVariant(state.isVariant ?? false)
+      setOriginalMessage(state.originalMessage ?? "")
+      // Clear the state to prevent re-filling on refresh
+      window.history.replaceState({}, document.title)
+    }
+  }, [location.state])
 
   const handleRecruit = async () => {
     if (!recruitmentPrompt.trim()) return
@@ -625,6 +640,38 @@ export function SimulationHub() {
       </div>
 
       <div className="max-w-7xl mx-auto px-8 py-8">
+        {/* Message Variant Indicator */}
+        {isVariant && (
+          <Card className="mb-6 border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-500/20 rounded-lg">
+                    <Target className="h-4 w-4 text-emerald-600" />
+                  </div>
+                  <div>
+                    <span className="font-medium text-emerald-800 dark:text-emerald-200">Testing Message Variant</span>
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                      Refined version based on previous simulation insights
+                    </p>
+                  </div>
+                </div>
+                <Badge className="bg-emerald-500/20 text-emerald-700 border-emerald-300">
+                  A/B Test
+                </Badge>
+              </div>
+              {originalMessage && (
+                <div className="mt-3 pt-3 border-t border-emerald-200 dark:border-emerald-800">
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400">Original message:</p>
+                  <p className="text-sm text-emerald-800 dark:text-emerald-200 italic mt-1 line-clamp-2">
+                    "{originalMessage.substring(0, 100)}..."
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Progress Bar */}
         {analyzing && (
           <Card className="mb-6 border border-primary/20 bg-primary/5 shadow-sm">
