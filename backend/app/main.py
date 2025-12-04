@@ -27,6 +27,32 @@ logger = logging.getLogger(__name__)
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
+# Run startup migration to add brand_id column if missing
+def run_startup_migration():
+    """Add brand_id column to personas table if it doesn't exist."""
+    try:
+        from sqlalchemy import inspect, text
+        inspector = inspect(engine)
+        columns = [c['name'] for c in inspector.get_columns('personas')]
+        
+        if 'brand_id' not in columns:
+            logger.info("🔄 Running migration: Adding brand_id column to personas table...")
+            with engine.connect() as conn:
+                # Delete existing personas per user preference for clean start
+                conn.execute(text("DELETE FROM personas"))
+                # Add brand_id column
+                conn.execute(text(
+                    "ALTER TABLE personas ADD COLUMN brand_id INTEGER REFERENCES brands(id)"
+                ))
+                conn.commit()
+            logger.info("✅ Migration complete: brand_id column added")
+        else:
+            logger.info("✅ brand_id column already exists in personas table")
+    except Exception as e:
+        logger.error(f"Migration warning: {e}")
+
+run_startup_migration()
+
 app = FastAPI(
     title="PharmaPersonaSim API",
     description="Transform qualitative personas into quantitative insights using LLMs",
@@ -149,14 +175,29 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
     """
     Receives user input, calls the persona_engine, saves the result to the database,
     and returns the new persona.
+    
+    If brand_id is provided, the persona will be automatically grounded in that brand's MBT insights.
     """
+    # Fetch brand MBT insights if brand_id is provided
+    brand_insights = None
+    if persona_data.brand_id:
+        brand = db.query(models.Brand).filter(models.Brand.id == persona_data.brand_id).first()
+        if not brand:
+            raise HTTPException(status_code=404, detail="Brand not found")
+        
+        documents = crud.get_brand_documents(db, persona_data.brand_id)
+        aggregated = _aggregate_brand_insights(documents, target_segment=None, limit_per_category=5)
+        brand_insights = _flatten_insights(aggregated)
+    
     # 1. Call the persona engine to generate the full persona JSON
+    # If brand insights exist, include them in generation
     full_persona_json = persona_engine.generate_persona_from_attributes(
         age=persona_data.age,
         gender=persona_data.gender,
         condition=persona_data.condition,
         location=persona_data.location,
-        concerns=persona_data.concerns
+        concerns=persona_data.concerns,
+        brand_insights=brand_insights
     )
     
     if not full_persona_json or full_persona_json == "{}":
@@ -175,8 +216,19 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
 async def create_manual_persona(manual_data: dict, db: Session = Depends(get_db)):
     """
     Create a persona manually with detailed attributes provided by the user.
+    
+    If brand_id is provided, the persona will be associated with that brand.
     """
     try:
+        # Extract brand_id if provided
+        brand_id = manual_data.get("brand_id")
+        
+        # Validate brand exists if provided
+        if brand_id:
+            brand = db.query(models.Brand).filter(models.Brand.id == brand_id).first()
+            if not brand:
+                raise HTTPException(status_code=404, detail="Brand not found")
+        
         # Build the persona JSON from the provided data
         persona_json = {
             "name": manual_data.get("name", ""),
@@ -195,7 +247,8 @@ async def create_manual_persona(manual_data: dict, db: Session = Depends(get_db)
             gender=manual_data.get("gender", ""),
             condition=manual_data.get("condition", ""),
             location=manual_data.get("region", ""),  # Map region to location for database compatibility
-            concerns=""  # Manual personas don't have concerns field
+            concerns="",  # Manual personas don't have concerns field
+            brand_id=brand_id
         )
         
         # Save to database
@@ -212,11 +265,21 @@ async def create_manual_persona(manual_data: dict, db: Session = Depends(get_db)
         raise HTTPException(status_code=500, detail=f"Failed to create manual persona: {str(e)}")
 
 @app.get("/personas/", response_model=List[schemas.Persona])
-async def get_all_personas(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+async def get_all_personas(
+    skip: int = 0, 
+    limit: int = 100, 
+    brand_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
     """
-    Returns a list of all personas from the database.
+    Returns a list of personas from the database.
+    
+    If brand_id is provided, returns only personas belonging to that brand.
     """
-    personas = crud.get_personas(db, skip=skip, limit=limit)
+    if brand_id is not None:
+        personas = crud.get_personas_by_brand(db, brand_id=brand_id, skip=skip, limit=limit)
+    else:
+        personas = crud.get_personas(db, skip=skip, limit=limit)
     return personas
 
 @app.put("/personas/{persona_id}", response_model=schemas.Persona)
@@ -760,6 +823,32 @@ async def upload_brand_document(
 async def get_brand_documents(brand_id: int, db: Session = Depends(get_db)):
     """List documents for a specific brand."""
     return crud.get_brand_documents(db, brand_id)
+
+@app.get("/api/brands/{brand_id}/personas", response_model=List[schemas.Persona])
+async def get_brand_personas(
+    brand_id: int, 
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(get_db)
+):
+    """List personas belonging to a specific brand."""
+    # Verify brand exists
+    brand = db.query(models.Brand).filter(models.Brand.id == brand_id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    
+    return crud.get_personas_by_brand(db, brand_id, skip=skip, limit=limit)
+
+@app.get("/api/brands/{brand_id}/personas/count")
+async def get_brand_personas_count(brand_id: int, db: Session = Depends(get_db)):
+    """Get the count of personas for a specific brand."""
+    # Verify brand exists
+    brand = db.query(models.Brand).filter(models.Brand.id == brand_id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    
+    count = crud.get_personas_count_by_brand(db, brand_id)
+    return {"brand_id": brand_id, "brand_name": brand.name, "persona_count": count}
 
 @app.get("/api/brands/{brand_id}/context", response_model=schemas.BrandContextResponse)
 async def get_brand_context(

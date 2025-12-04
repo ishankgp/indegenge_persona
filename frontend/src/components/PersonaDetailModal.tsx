@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import BrandInsightSelector from '@/components/BrandInsightSelector';
@@ -149,59 +148,60 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-3 text-2xl">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <User className="h-6 w-6 text-primary" />
-            </div>
-            {persona.name}
-          </DialogTitle>
-          <DialogDescription>
-            Complete persona profile • Created on {createdDate}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex justify-end gap-2 mb-4">
-          {isEditing ? (
-            <>
-              <Button variant="ghost" onClick={resetPersonaState}>
-                Cancel
+      <DialogContent className="max-w-4xl h-[90vh] p-0" style={{ display: 'flex', flexDirection: 'column' }}>
+        <div className="flex-shrink-0 p-6 pb-2">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3 text-2xl">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <User className="h-6 w-6 text-primary" />
+              </div>
+              {persona.name}
+            </DialogTitle>
+            <DialogDescription>
+              Complete persona profile • Created on {createdDate}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-4">
+            {isEditing ? (
+              <>
+                <Button variant="ghost" onClick={resetPersonaState}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveChanges} disabled={saving}>
+                  {saving ? "Saving..." : "Save Changes"}
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" onClick={() => setIsEditing(true)}>
+                Edit Persona
               </Button>
-              <Button onClick={handleSaveChanges} disabled={saving}>
-                {saving ? "Saving..." : "Save Changes"}
-              </Button>
-            </>
-          ) : (
-            <Button variant="outline" onClick={() => setIsEditing(true)}>
-              Edit Persona
-            </Button>
-          )}
+            )}
+          </div>
         </div>
 
-        {isEditing && (
-          <div className="border rounded-lg p-4 mb-4 space-y-4">
-            <BrandInsightSelector
-              selectionLimit={6}
-              onSelectionChange={setSelectedInsights}
-              onSuggestions={setSuggestions}
-              onBrandChange={(id) => setSelectedBrandId(id)}
-              onTargetSegmentChange={setTargetSegment}
-            />
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button variant="outline" onClick={applySuggestionSet} disabled={!suggestions}>
-                Apply Suggestions
-              </Button>
-              <Button variant="outline" onClick={appendInsights} disabled={!selectedInsights.length}>
-                Append Selected
-              </Button>
-              <Button onClick={handleBrandEnrich} disabled={!selectedBrandId || saving}>
-                {saving ? "Enriching..." : "LLM Enrich"}
-              </Button>
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 pb-6">
+          {isEditing && (
+            <div className="border rounded-lg p-4 mb-4 space-y-4">
+              <BrandInsightSelector
+                selectionLimit={6}
+                onSelectionChange={setSelectedInsights}
+                onSuggestions={setSuggestions}
+                onBrandChange={(id) => setSelectedBrandId(id)}
+                onTargetSegmentChange={setTargetSegment}
+              />
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button variant="outline" onClick={applySuggestionSet} disabled={!suggestions}>
+                  Apply Suggestions
+                </Button>
+                <Button variant="outline" onClick={appendInsights} disabled={!selectedInsights.length}>
+                  Append Selected
+                </Button>
+                <Button onClick={handleBrandEnrich} disabled={!selectedBrandId || saving}>
+                  {saving ? "Enriching..." : "LLM Enrich"}
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
-
-        <ScrollArea className="h-[calc(90vh-120px)] pr-4">
+          )}
           <div className="space-y-6">
             {/* Basic Information */}
             <Card>
@@ -589,7 +589,7 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
               </CardContent>
             </Card>
           </div>
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   );

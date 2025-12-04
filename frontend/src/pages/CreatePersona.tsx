@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { PersonasAPI, BrandsAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -38,6 +38,9 @@ interface BrandOption {
 
 export function CreatePersona() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const urlBrandId = searchParams.get('brand_id')
+  
   const [generating, setGenerating] = useState(false)
   const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 })
   const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual")
@@ -76,9 +79,9 @@ export function CreatePersona() {
   const [brands, setBrands] = useState<BrandOption[]>([])
   const [manualSelectedInsights, setManualSelectedInsights] = useState<BrandInsight[]>([])
   const [manualSuggestions, setManualSuggestions] = useState<SuggestionResponse | null>(null)
-  const [manualBrandId, setManualBrandId] = useState<number | null>(null)
+  const [manualBrandId, setManualBrandId] = useState<number | null>(urlBrandId ? parseInt(urlBrandId) : null)
   const [manualTargetSegment, setManualTargetSegment] = useState("")
-  const [aiBrandId, setAiBrandId] = useState<number | null>(null)
+  const [aiBrandId, setAiBrandId] = useState<number | null>(urlBrandId ? parseInt(urlBrandId) : null)
   const [aiTargetSegment, setAiTargetSegment] = useState("")
 
   useEffect(() => {
@@ -221,12 +224,14 @@ export function CreatePersona() {
     setGenerating(true)
     try {
       // Create manual persona by calling a new API endpoint
+      // Include brand_id directly - the backend now handles automatic grounding
       const personaData = {
         name: manualFormData.name,
         age: age,
         gender: manualFormData.gender,
         condition: manualFormData.condition,
         region: manualFormData.region,
+        brand_id: manualBrandId || undefined,
         demographics: {
           age: age,
           gender: manualFormData.gender,
@@ -242,11 +247,7 @@ export function CreatePersona() {
       }
 
       const newPersona = await PersonasAPI.createManual(personaData)
-      console.log("Created manual persona:", newPersona.id)
-
-      if (manualBrandId) {
-        await enrichPersonaWithBrand(newPersona.id, manualBrandId, manualTargetSegment)
-      }
+      console.log("Created manual persona:", newPersona.id, "with brand_id:", manualBrandId)
 
       // Reset form
       setManualFormData({
@@ -302,17 +303,18 @@ export function CreatePersona() {
       const count = parseInt(aiFormData.count) || 1
       setGenerationProgress({ current: 0, total: count })
 
+      // Include brand_id in base data - backend now handles automatic MBT grounding
       const basePersonaData = {
         age: age,
         gender: aiFormData.gender,
         condition: aiFormData.condition,
         location: aiFormData.region,
-        concerns: aiFormData.concerns
+        concerns: aiFormData.concerns,
+        brand_id: aiBrandId || undefined
       }
 
       const createdPersonas = []
-      const enrichmentPromises: Promise<void>[] = []
-      
+
       for (let i = 0; i < count; i++) {
         setGenerationProgress({ current: i + 1, total: count })
 
@@ -331,24 +333,7 @@ export function CreatePersona() {
 
         const newPersona = await PersonasAPI.generate(personaData)
         createdPersonas.push(newPersona)
-        
-        // Collect enrichment promises to run in parallel after all personas are created
-        if (aiBrandId) {
-          enrichmentPromises.push(
-            enrichPersonaWithBrand(newPersona.id, aiBrandId, aiTargetSegment).catch(err => {
-              console.error(`Failed to enrich persona ${newPersona.id}:`, err)
-            })
-          )
-        }
-      }
-      
-      // Run all enrichments in parallel after personas are created
-      if (enrichmentPromises.length > 0) {
-        const results = await Promise.allSettled(enrichmentPromises)
-        const failed = results.filter(r => r.status === 'rejected').length
-        if (failed > 0) {
-          alert(`${failed} of ${enrichmentPromises.length} persona enrichment${enrichmentPromises.length > 1 ? 's' : ''} failed. Personas were created successfully.`)
-        }
+        console.log(`Created persona ${i + 1}/${count}:`, newPersona.id, "with brand_id:", aiBrandId)
       }
 
       setAiFormData({
@@ -360,7 +345,7 @@ export function CreatePersona() {
         count: '1'
       })
       setGenerationProgress({ current: 0, total: 0 })
-      alert(`Successfully generated ${count} new persona${count > 1 ? 's' : ''}. Redirecting to Persona Library...`)
+      alert(`Successfully generated ${count} new persona${count > 1 ? 's' : ''}${aiBrandId ? ' grounded in brand context' : ''}. Redirecting to Persona Library...`)
 
       // Redirect to persona library after successful creation
       setTimeout(() => {
@@ -867,19 +852,25 @@ export function CreatePersona() {
                     </div>
                     <div className="grid gap-4 md:grid-cols-2">
                       <Select
-                        value={aiBrandId ? String(aiBrandId) : ""}
-                        onValueChange={(value) => setAiBrandId(value ? Number(value) : null)}
+                        value={aiBrandId ? String(aiBrandId) : "none"}
+                        onValueChange={(value) => setAiBrandId(value && value !== "none" ? Number(value) : null)}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Select brand" />
+                          <SelectValue placeholder="Select brand (optional)" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">No brand</SelectItem>
-                          {brands.map((brand) => (
-                            <SelectItem key={brand.id} value={String(brand.id)}>
-                              {brand.name}
+                          <SelectItem value="none">No brand</SelectItem>
+                          {brands && brands.length > 0 ? (
+                            brands.map((brand) => (
+                              <SelectItem key={brand.id} value={String(brand.id)}>
+                                {brand.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="no-brands-available" disabled>
+                              No brands available
                             </SelectItem>
-                          ))}
+                          )}
                         </SelectContent>
                       </Select>
                       <Input

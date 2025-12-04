@@ -69,6 +69,42 @@ def _validate_openai_setup():
     return True
 
 
+PHARMA_METRIC_DESCRIPTIONS = {
+    "intent_to_action": "Action Intent (1-10): Likelihood to request this therapy (if Patient) or prescribe it (if HCP) after reviewing the stimulus.",
+    "emotional_response": "Emotional Response (-1 to 1): Overall sentiment score, where -1 is very negative and +1 is very positive.",
+    "brand_trust": "Brand Trust (1-10): Degree to which the message builds scientific credibility and confidence in the brand.",
+    "message_clarity": "Message Clarity (1-10): How clearly the persona understands the primary clinical benefit being communicated.",
+    "key_concerns": "Key Concerns (text): Most important clinical, safety, access, or cost objections raised by this persona."
+}
+
+LEGACY_METRIC_ALIASES = {
+    "purchase_intent": "intent_to_action",
+    "sentiment": "emotional_response",
+    "trust_in_brand": "brand_trust"
+}
+
+
+def normalize_metric(metric: str) -> str:
+    """Map legacy metric names to the current pharma metric vocabulary."""
+    return LEGACY_METRIC_ALIASES.get(metric, metric)
+
+
+def format_metric_guidance(metrics: List[str]) -> str:
+    """Return human-readable instructions for each requested metric."""
+    if not metrics:
+        return "- No metrics provided."
+    
+    lines = []
+    for metric in metrics:
+        canonical = normalize_metric(metric)
+        description = PHARMA_METRIC_DESCRIPTIONS.get(
+            canonical,
+            f"Provide an evidence-based assessment for '{canonical}'."
+        )
+        lines.append(f'- "{canonical}": {description}')
+    return "\n".join(lines)
+
+
 def _extract_json(text: str) -> str:
     """Attempt to extract the first JSON object from arbitrary model text."""
     if not text:
@@ -175,54 +211,45 @@ def _chat_json(messages: List[Dict[str, Any]], max_completion_tokens: Optional[i
             logger.error("💡 Rate limit exceeded - wait and retry")
         return {"error": f"OpenAI API error: {api_error}"}
 
-def create_cohort_analysis_prompt(persona_data: Dict[str, Any], stimulus_text: str, metrics: List[str]) -> str:
-    """Creates a prompt for analyzing how a persona responds to a stimulus."""
+def create_cohort_analysis_prompt(
+    persona_data: Dict[str, Any],
+    persona_type: str,
+    stimulus_text: str,
+    metrics: List[str]
+) -> str:
+    """Create a text-only analysis prompt that is persona and metric aware."""
     
-    # Convert metrics to readable descriptions
-    metric_descriptions = {
-        'purchase_intent': 'Purchase/Prescribe Intent (1-10 scale): Likelihood to request (patients) or prescribe (HCPs) after seeing this message.',
-        'sentiment': 'Sentiment (-1 to 1 scale): What is their emotional reaction to this message?',
-        'trust_in_brand': 'Brand Trust (1-10 scale): How does this message affect their trust in the brand?',
-        'message_clarity': 'Message Clarity (1-10 scale): How clear and understandable is this message to them?',
-        'key_concerns': 'Key Concerns: What barriers or objections does this message raise?'
-    }
-    
-    selected_metrics = [metric_descriptions.get(metric, metric) for metric in metrics]
+    persona_label = "healthcare professional" if (persona_type or "").strip().lower() == "hcp" else "patient"
+    metric_guidance = format_metric_guidance(metrics)
+    persona_snapshot = json.dumps(persona_data, indent=2)
     
     prompt = f"""
-    **Role:** You are an AI expert in pharmaceutical marketing and patient behavior analysis. You need to simulate how a specific patient persona would respond to a marketing message or stimulus.
+**Role:** You are an AI expert in pharmaceutical marketing analytics. Simulate how a {persona_label} persona responds to the provided marketing stimulus.
 
-    **Persona Information:**
-    {json.dumps(persona_data, indent=2)}
+**Persona Profile (verbatim data from research/LLM generation):**
+{persona_snapshot}
 
-    **Stimulus Text:**
-    "{stimulus_text}"
+**Stimulus Text:**
+"{stimulus_text}"
 
-    **Analysis Request:**
-    Please analyze how this specific persona would respond to the stimulus above. Consider their medical condition, lifestyle, concerns, and demographics.
+**Analysis Instructions:**
+- Ground your assessment in the persona's medical condition, motivations, and behavioral context.
+- For each requested metric, provide an evidence-based score that reflects how THIS persona would respond.
+- Use the metric JSON keys exactly as listed below.
 
-    **Required Metrics to Analyze:**
-    {chr(10).join(f"- {metric}" for metric in selected_metrics)}
+**Metrics to Evaluate:**
+{metric_guidance}
 
-    **Output Format:**
-    Generate a response in pure JSON format. Do not include any text, code block markers, or explanations before or after the JSON object. The JSON object must have the following structure:
-    {{
-        "responses": {{
-            "purchase_intent": <number 1-10>,
-            "sentiment": <number -1 to 1>,
-            "trust_in_brand": <number 1-10>,
-            "message_clarity": <number 1-10>,
-            "key_concerns": "<string describing their main concern>"
-        }},
-        "reasoning": "<2-3 sentences explaining their response based on their persona characteristics>"
-    }}
+**Output Requirements (JSON only):**
+{{
+    "responses": {{
+        "<metric_name>": <value per metric instructions above>
+    }},
+    "reasoning": "2-3 sentences explaining why the persona responded this way, referencing persona traits."
+}}
 
-    **Important Notes:**
-    - Only include the metrics that were requested in the analysis
-    - Be realistic and consider the persona's specific medical condition and concerns
-    - The reasoning should explain why they responded this way based on their persona profile
-    - Consider their pain points, motivations, and communication preferences
-    """
+Ensure numeric scores respect the ranges provided above. For textual metrics (e.g., key_concerns), return the most salient objection in plain text. Do not include metrics that were not requested.
+"""
     
     return prompt
 
@@ -240,17 +267,32 @@ def generate_tool_preamble(persona_count: int, metrics: List[str], stimulus_text
         f"Analyze {persona_count} persona(s) for stimulus alignment across metrics: {', '.join(metrics) if metrics else 'none'}.\n\n" + bullets
     )
 
-def analyze_persona_response(persona_data: Dict[str, Any], stimulus_text: str, metrics: List[str]) -> Dict[str, Any]:
+def analyze_persona_response(
+    persona_data: Dict[str, Any],
+    persona_type: str,
+    stimulus_text: str,
+    metrics: List[str]
+) -> Dict[str, Any]:
     """Analyzes how a single persona responds to a stimulus using chat completions."""
-    prompt = create_cohort_analysis_prompt(persona_data, stimulus_text, metrics)
+    normalized_metrics = [normalize_metric(metric) for metric in metrics]
+    prompt = create_cohort_analysis_prompt(persona_data, persona_type, stimulus_text, normalized_metrics)
+    persona_role = "healthcare professional" if (persona_type or "").strip().lower() == "hcp" else "patient"
     messages = [
-        {"role": "system", "content": [{"type": "text", "text": "You are a pharmaceutical marketing analyst specializing in patient behavior simulation."}]},
+        {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"You are a pharmaceutical marketing analyst specializing in {persona_role} behavior simulation."
+                }
+            ]
+        },
         {"role": "user", "content": [{"type": "text", "text": prompt}]},
     ]
     try:
         data = _chat_json(messages)
         filtered = {}
-        for metric in metrics:
+        for metric in normalized_metrics:
             if metric in data.get('responses', {}):
                 filtered[metric] = data['responses'][metric]
         return {
@@ -260,12 +302,12 @@ def analyze_persona_response(persona_data: Dict[str, Any], stimulus_text: str, m
     except Exception as e:
         print(f"Error analyzing persona response: {e}")
         fallback = {}
-        for metric in metrics:
-            if metric == 'purchase_intent':
+        for metric in normalized_metrics:
+            if metric == 'intent_to_action':
                 fallback[metric] = random.randint(3, 8)
-            elif metric == 'sentiment':
+            elif metric == 'emotional_response':
                 fallback[metric] = round(random.uniform(-0.5, 0.8), 2)
-            elif metric == 'trust_in_brand':
+            elif metric == 'brand_trust':
                 fallback[metric] = random.randint(4, 9)
             elif metric == 'message_clarity':
                 fallback[metric] = random.randint(5, 9)
@@ -462,6 +504,13 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
 def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: List[str], db) -> Dict[str, Any]:
     """Runs a complete cohort analysis for the given personas and stimulus."""
     
+    normalized_metrics: List[str] = []
+    for metric in metrics:
+        canonical = normalize_metric(metric)
+        if canonical not in normalized_metrics:
+            normalized_metrics.append(canonical)
+    metrics = normalized_metrics
+    
     # Get persona data from database
     personas = []
     for persona_id in persona_ids:
@@ -480,7 +529,8 @@ def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: Lis
     for persona in personas:
         # Parse the JSON string to get the persona data
         persona_data = json.loads(persona.full_persona_json)
-        analysis_result = analyze_persona_response(persona_data, stimulus_text, metrics)
+        persona_type = getattr(persona, "persona_type", None) or persona_data.get("persona_type") or "Patient"
+        analysis_result = analyze_persona_response(persona_data, persona_type, stimulus_text, metrics)
         
         individual_responses.append({
             'persona_id': persona.id,
@@ -514,16 +564,7 @@ def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: Lis
 def create_multimodal_analysis_prompt(persona_data: Dict[str, Any], stimulus_text: str, stimulus_images: List[Dict], content_type: str, metrics: List[str]) -> str:
     """Creates a prompt for analyzing how a persona responds to multimodal stimulus (text + images)."""
     
-    # Convert metrics to readable descriptions
-    metric_descriptions = {
-        'purchase_intent': 'Purchase/Prescribe Intent (1-10 scale): Likelihood to request (patients) or prescribe (HCPs) after seeing this message.',
-        'sentiment': 'Sentiment (-1 to 1 scale): What is their emotional reaction to this message?',
-        'trust_in_brand': 'Brand Trust (1-10 scale): How does this message affect their trust in the brand?',
-        'message_clarity': 'Message Clarity (1-10 scale): How clear and understandable is this message to them?',
-        'key_concerns': 'Key Concerns: What barriers or objections does this message raise?'
-    }
-    
-    selected_metrics = [metric_descriptions.get(metric, metric) for metric in metrics]
+    metric_guidance = format_metric_guidance(metrics)
     
     # Build content description
     content_description = ""
@@ -553,9 +594,9 @@ MARKETING CONTENT TO ANALYZE:
 ANALYSIS TASK:
 Analyze how this specific persona would respond to the provided content. Consider their unique characteristics, health condition, concerns, and behavioral patterns.
 
-For each of the following metrics, provide your analysis:
+For each of the following metrics, provide your analysis (use the JSON keys exactly as listed):
 
-{chr(10).join([f"- {metric}" for metric in selected_metrics])}
+{metric_guidance}
 
 RESPONSE FORMAT:
 Provide a JSON response with the following structure:

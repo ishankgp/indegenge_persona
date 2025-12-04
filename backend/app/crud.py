@@ -23,6 +23,8 @@ def search_personas(db: Session, filters: schemas.PersonaSearchFilters):
         query = query.filter(models.Persona.location.ilike(f"%{filters.location}%"))
     if filters.persona_type:
         query = query.filter(models.Persona.persona_type.ilike(filters.persona_type))
+    if filters.brand_id is not None:
+        query = query.filter(models.Persona.brand_id == filters.brand_id)
         
     return query.limit(filters.limit).all()
 
@@ -44,6 +46,7 @@ def create_persona(db: Session, persona_data: schemas.PersonaCreate, persona_jso
         gender=persona_data.gender,
         condition=persona_data.condition,
         location=persona_data.location,
+        brand_id=persona_data.brand_id,
         full_persona_json=persona_json
     )
     db.add(db_persona)
@@ -53,6 +56,18 @@ def create_persona(db: Session, persona_data: schemas.PersonaCreate, persona_jso
 
 def get_persona(db: Session, persona_id: int):
     return db.query(models.Persona).filter(models.Persona.id == persona_id).first()
+
+def get_personas_by_brand(db: Session, brand_id: int, skip: int = 0, limit: int = 100):
+    """Get all personas belonging to a specific brand."""
+    return db.query(models.Persona).filter(
+        models.Persona.brand_id == brand_id
+    ).offset(skip).limit(limit).all()
+
+def get_personas_count_by_brand(db: Session, brand_id: int) -> int:
+    """Get the count of personas for a specific brand."""
+    return db.query(models.Persona).filter(
+        models.Persona.brand_id == brand_id
+    ).count()
 
 def update_persona(db: Session, persona_id: int, persona: schemas.PersonaUpdate):
     db_persona = db.query(models.Persona).filter(models.Persona.id == persona_id).first()

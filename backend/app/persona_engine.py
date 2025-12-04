@@ -31,8 +31,10 @@ def get_openai_client() -> Optional[OpenAI]:
 
     return _openai_client
 
-def create_patient_persona_prompt(age, gender, condition, location, concerns):
+def create_patient_persona_prompt(age, gender, condition, location, concerns, brand_insights: Optional[List[Dict[str, str]]] = None):
     """Creates the exact, detailed prompt for generating a patient persona."""
+    
+    # Base prompt
     prompt = f"""
     **Role:** You are an AI expert in creating realistic, empathetic user personas for the pharmaceutical industry. Your personas must be nuanced and avoid stereotypes.
 
@@ -44,7 +46,24 @@ def create_patient_persona_prompt(age, gender, condition, location, concerns):
     - Primary Medical Condition: "{condition}"
     - Location: {location}
     - Key Concerns: "{concerns}"
-
+"""
+    
+    # Add brand insights context if provided
+    if brand_insights:
+        motivations = [i.get("text") for i in brand_insights if i.get("type") == "Motivation" and i.get("text")]
+        beliefs = [i.get("text") for i in brand_insights if i.get("type") == "Belief" and i.get("text")]
+        tensions = [i.get("text") for i in brand_insights if i.get("type") == "Tension" and i.get("text")]
+        
+        prompt += f"""
+    **Brand Context (MBT Framework):**
+    The persona should be grounded in the following brand-specific insights. Incorporate these naturally into the persona's motivations, beliefs, and pain points:
+    
+    - Motivations from brand research: {motivations[:5] if motivations else ['None provided']}
+    - Beliefs from brand research: {beliefs[:5] if beliefs else ['None provided']}
+    - Tensions/Pain points from brand research: {tensions[:5] if tensions else ['None provided']}
+"""
+    
+    prompt += """
     **Output Format:**
     Generate a response in a pure JSON format. Do not include any text, code block markers, or explanations before or after the JSON object. The JSON object must have the following keys:
     - "name": A realistic first and last name.
@@ -58,18 +77,27 @@ def create_patient_persona_prompt(age, gender, condition, location, concerns):
     """
     return prompt
 
-def generate_persona_from_attributes(age: int, gender: str, condition: str, location: str, concerns: str) -> str:
+def generate_persona_from_attributes(
+    age: int, 
+    gender: str, 
+    condition: str, 
+    location: str, 
+    concerns: str,
+    brand_insights: Optional[List[Dict[str, str]]] = None
+) -> str:
     """
     Takes user input, builds the prompt, calls the OpenAI API,
     and returns the generated JSON as a string.
+    
+    If brand_insights is provided, the persona will be grounded in those MBT insights.
     """
-    prompt = create_patient_persona_prompt(age, gender, condition, location, concerns)
+    prompt = create_patient_persona_prompt(age, gender, condition, location, concerns, brand_insights)
     
     # First check if OpenAI API key is available in environment
     client = get_openai_client()
     if client is None:
         print("OpenAI API key not found in environment, generating mock persona")
-        return generate_mock_persona(age, gender, condition, location, concerns)
+        return generate_mock_persona(age, gender, condition, location, concerns, brand_insights)
 
     try:
         response = client.chat.completions.create(
@@ -90,15 +118,23 @@ def generate_persona_from_attributes(age: int, gender: str, condition: str, loca
             return content
         except (json.JSONDecodeError, ValueError) as e:
             print(f"Invalid JSON from OpenAI API, using mock: {e}")
-            return generate_mock_persona(age, gender, condition, location, concerns)
+            return generate_mock_persona(age, gender, condition, location, concerns, brand_insights)
         
     except Exception as e:
         print(f"OpenAI API error, falling back to mock persona: {e}")
-        return generate_mock_persona(age, gender, condition, location, concerns)
+        return generate_mock_persona(age, gender, condition, location, concerns, brand_insights)
 
-def generate_mock_persona(age: int, gender: str, condition: str, location: str, concerns: str) -> str:
+def generate_mock_persona(
+    age: int, 
+    gender: str, 
+    condition: str, 
+    location: str, 
+    concerns: str,
+    brand_insights: Optional[List[Dict[str, str]]] = None
+) -> str:
     """
     Generate a comprehensive mock persona for demo purposes when OpenAI API is not available.
+    If brand_insights is provided, incorporate them into the persona.
     """
     import random
     
@@ -191,6 +227,25 @@ def generate_mock_persona(age: int, gender: str, condition: str, location: str, 
     else:
         data = condition_data["default"]
     
+    # Extract MBT insights if brand_insights provided
+    motivations = list(data["motivations"])
+    beliefs = list(data["beliefs"])
+    pain_points = list(data["pain_points"])
+    
+    if brand_insights:
+        # Incorporate brand insights into persona
+        brand_motivations = [i.get("text") for i in brand_insights if i.get("type") == "Motivation" and i.get("text")]
+        brand_beliefs = [i.get("text") for i in brand_insights if i.get("type") == "Belief" and i.get("text")]
+        brand_tensions = [i.get("text") for i in brand_insights if i.get("type") == "Tension" and i.get("text")]
+        
+        # Prepend brand insights so they take priority
+        if brand_motivations:
+            motivations = brand_motivations[:3] + motivations[:2]
+        if brand_beliefs:
+            beliefs = brand_beliefs[:3] + beliefs[:2]
+        if brand_tensions:
+            pain_points = brand_tensions[:3] + pain_points[:2]
+    
     persona = {
         "name": name,
         "demographics": {
@@ -201,9 +256,9 @@ def generate_mock_persona(age: int, gender: str, condition: str, location: str, 
         },
         "medical_background": data["medical_bg"],
         "lifestyle_and_values": f"Lives in {location} and works as a {occupation}. Values family time and maintaining good health. Enjoys staying active and informed about health topics. Prioritizes open communication with healthcare providers and appreciates evidence-based treatment approaches.",
-        "motivations": data["motivations"],
-        "beliefs": data["beliefs"],
-        "pain_points": data["pain_points"],
+        "motivations": motivations,
+        "beliefs": beliefs,
+        "pain_points": pain_points,
         "communication_preferences": {
             "preferred_channels": "Healthcare provider discussions, reputable medical websites, patient education materials",
             "information_style": "Clear, factual explanations with practical applications",
@@ -504,8 +559,10 @@ def enrich_persona_from_brand_context(
 
     system_prompt = (
         "You are updating a healthcare persona using verified brand insights. "
-        "Only modify the requested fields and keep all other persona content intact. "
-        "Return the full persona JSON."
+        "For the target fields (motivations, beliefs, pain_points), MERGE the existing values "
+        "with relevant insights from the brand data. Keep existing items that are still relevant, "
+        "add new items from brand insights, and remove duplicates or semantically similar entries. "
+        "Keep all other persona content unchanged. Return the full persona JSON."
     )
 
     user_payload = json.dumps(
@@ -590,15 +647,30 @@ def _fallback_persona_enrichment(
     summary_texts = [insight.get("text") for insight in brand_insights if insight.get("text")]
     summary = summary_texts[:3]
 
+    def merge_unique(existing: List[str], new: List[str]) -> List[str]:
+        """Merge lists and remove exact duplicates."""
+        combined = list(existing or []) + list(new or [])
+        seen = set()
+        result = []
+        for item in combined:
+            normalized = item.strip().lower()
+            if normalized not in seen:
+                seen.add(normalized)
+                result.append(item)
+        return result
+
     if "motivations" in target_fields and summary:
-        persona_copy.setdefault("motivations", [])
-        persona_copy["motivations"].extend(summary)
+        persona_copy["motivations"] = merge_unique(
+            persona_copy.get("motivations", []), summary
+        )
     if "beliefs" in target_fields and summary:
-        persona_copy.setdefault("beliefs", [])
-        persona_copy["beliefs"].extend(summary)
+        persona_copy["beliefs"] = merge_unique(
+            persona_copy.get("beliefs", []), summary
+        )
     if "pain_points" in target_fields and summary:
-        persona_copy.setdefault("pain_points", [])
-        persona_copy["pain_points"].extend(summary)
+        persona_copy["pain_points"] = merge_unique(
+            persona_copy.get("pain_points", []), summary
+        )
 
     return persona_copy
 
