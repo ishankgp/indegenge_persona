@@ -35,3 +35,4 @@ datetime('now')),
 '{"name": "Sarah Mitchell", "demographics": {"age": 62, "gender": "Female", "location": "Denver, Colorado", "occupation": "Retired Teacher"}, "medical_background": "Type 2 Diabetes for 15 years. Started Mounjaro after failing other GLP-1. Now at 7.0% A1C.", "motivations": ["Stay active and independent", "Simplify medication regimen"], "beliefs": ["Newer medications can work when others fail", "Once-weekly is manageable"], "pain_points": ["Navigating Medicare Part D", "Managing refrigeration while traveling"]}',
 datetime('now'));
 
+
