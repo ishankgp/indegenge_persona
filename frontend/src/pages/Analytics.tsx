@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -5,15 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import MetricCard from '@/components/analytics/MetricCard';
 import { computeScoreColor, computeScoreProgress, getSentimentDescriptor } from '@/lib/analytics';
-import type { AnalysisResults, AnalyzedMetricKey, IndividualResponseRow } from '@/types/analytics';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Minus, 
-  Users, 
-  Target, 
-  Brain, 
-  MessageSquare, 
+import type { AnalysisResults, AnalyzedMetricKey, IndividualResponseRow, PersonaResponseScores } from '@/types/analytics';
+import {
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Users,
+  Target,
+  Brain,
+  MessageSquare,
   Activity,
   BarChart3,
   Sparkles,
@@ -21,19 +22,126 @@ import {
   AlertTriangle,
   CheckCircle,
   Download,
-  Share2,
+
   Filter,
   Clock,
   Gauge,
   Lightbulb,
   PlayCircle,
-  Shield
+  Shield,
+  Save,
+  History
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SavedSimulationsAPI, type SavedSimulation } from '@/lib/api';
+import { toast } from '@/components/ui/use-toast';
 
 export function Analytics() {
   const location = useLocation();
   const navigate = useNavigate();
-  const analysisResults = location.state?.analysisResults as AnalysisResults | undefined;
+  // State for analysis results (either from location state or loaded from history)
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResults | undefined>(
+    location.state?.analysisResults as AnalysisResults | undefined
+  );
+
+  // History / Saved Simulations State
+  const [savedSimulations, setSavedSimulations] = useState<SavedSimulation[]>([]);
+  const [selectedSimulationId, setSelectedSimulationId] = useState<string>("current");
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Load saved simulations on mount
+  useEffect(() => {
+    loadSavedSimulations();
+  }, []);
+
+  const loadSavedSimulations = async () => {
+    try {
+      const response = await SavedSimulationsAPI.list();
+      setSavedSimulations(response.data);
+    } catch (error) {
+      console.error("Failed to load saved simulations:", error);
+      toast({
+        title: "Error loading history",
+        description: "Could not fetch saved simulations.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleSaveSimulation = async () => {
+    if (!analysisResults || !saveName.trim()) return;
+
+    setIsSaving(true);
+    try {
+      await SavedSimulationsAPI.save({
+        name: saveName,
+        simulation_data: analysisResults
+      });
+
+      toast({
+        title: "Simulation Saved",
+        description: "Your analysis results have been saved to history.",
+      });
+
+      setIsSaveDialogOpen(false);
+      setSaveName("");
+      loadSavedSimulations(); // Refresh list
+    } catch (error) {
+      console.error("Failed to save simulation:", error);
+      toast({
+        title: "Save Failed",
+        description: "Could not save the simulation. Name might be duplicate.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleLoadSimulation = async (simulationId: string) => {
+    setSelectedSimulationId(simulationId);
+
+    if (simulationId === "current") {
+      // Revert to initial state from navigation if available
+      if (location.state?.analysisResults) {
+        setAnalysisResults(location.state.analysisResults);
+      }
+      return;
+    }
+
+    try {
+      const numericId = parseInt(simulationId);
+      const response = await SavedSimulationsAPI.get(numericId);
+      setAnalysisResults(response.data.simulation_data);
+      console.log("Loaded simulation:", response.data.name);
+    } catch (error) {
+      console.error("Failed to load simulation:", error);
+      toast({
+        title: "Load Failed",
+        description: "Could not load the selected simulation.",
+        variant: "destructive"
+      });
+    }
+  };
 
   console.log('📊 Analytics page loaded:', {
     hasLocationState: !!location.state,
@@ -83,7 +191,7 @@ export function Analytics() {
               <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
                 Run a simulation from the Simulation Hub to see detailed analytics and insights
               </p>
-              <Button 
+              <Button
                 size="lg"
                 className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200"
                 onClick={() => navigate('/simulation')}
@@ -110,6 +218,65 @@ export function Analytics() {
     created_at
   } = analysisResults;
 
+  const metricPresent = (...keys: string[]) =>
+    keys.some((key) => metrics_analyzed.includes(key as AnalyzedMetricKey));
+
+  const getResponseValue = (
+    row: IndividualResponseRow,
+    key: keyof PersonaResponseScores,
+    legacyKey?: keyof PersonaResponseScores
+  ) => {
+    const responses = row?.responses || {};
+    const value = responses[key];
+    if (value !== undefined && value !== null) {
+      return value;
+    }
+    if (legacyKey) {
+      const legacyValue = responses[legacyKey];
+      if (legacyValue !== undefined && legacyValue !== null) {
+        return legacyValue;
+      }
+    }
+    return undefined;
+  };
+
+  const getNumericScore = (
+    row: IndividualResponseRow,
+    key: keyof PersonaResponseScores,
+    legacyKey?: keyof PersonaResponseScores
+  ): number | undefined => {
+    const value = getResponseValue(row, key, legacyKey);
+    if (typeof value === 'number') {
+      return value;
+    }
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+    return undefined;
+  };
+
+  const getConcernsList = (row: IndividualResponseRow): string[] => {
+    const value = getResponseValue(row, 'key_concerns', 'key_concern_flagged');
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value.filter(Boolean).map((item) => String(item));
+    }
+    if (typeof value === 'string') {
+      return [value];
+    }
+    if (typeof value === 'number') {
+      return [value.toString()];
+    }
+    return [];
+  };
+
+  const summaryIntent = summary_statistics.intent_to_action_avg ?? summary_statistics.purchase_intent_avg;
+  const summaryEmotion = summary_statistics.emotional_response_avg ?? summary_statistics.sentiment_avg;
+  const summaryTrust = summary_statistics.brand_trust_avg ?? summary_statistics.trust_in_brand_avg;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
       {/* Indegene Purple Header Section */}
@@ -132,17 +299,71 @@ export function Analytics() {
               </div>
             </div>
             <div className="flex gap-3">
+              {/* History Dropdown */}
+              <div className="w-[200px]">
+                <Select
+                  value={selectedSimulationId}
+                  onValueChange={handleLoadSimulation}
+                >
+                  <SelectTrigger className="bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20 h-10">
+                    <History className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Load History" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="current">Current Analysis</SelectItem>
+                    {savedSimulations.map((sim) => (
+                      <SelectItem key={sim.id} value={sim.id.toString()}>
+                        {sim.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Save Analysis Dialog */}
+              <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20">
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Analysis
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Save Analysis Results</DialogTitle>
+                    <DialogDescription>
+                      Give this simulation a memorable name to save it for later reference.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-4 items-center gap-4">
+                      <Label htmlFor="name" className="text-right">
+                        Name
+                      </Label>
+                      <Input
+                        id="name"
+                        value={saveName}
+                        onChange={(e) => setSaveName(e.target.value)}
+                        placeholder="e.g. Campaign V1 Test"
+                        className="col-span-3"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button onClick={handleSaveSimulation} disabled={isSaving || !saveName.trim()}>
+                      {isSaving ? "Saving..." : "Save"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
               <Button variant="outline" className="bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20">
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </Button>
-              <Button variant="outline" className="bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20">
-                <Share2 className="h-4 w-4 mr-2" />
-                Share
-              </Button>
             </div>
           </div>
-          
+
           {/* Quick Stats Bar */}
           <div className="grid grid-cols-4 gap-4 mt-6">
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
@@ -244,31 +465,31 @@ export function Analytics() {
 
         {/* Key Metrics Grid - Enhanced */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          {summary_statistics.purchase_intent_avg !== undefined && (
+          {summaryIntent !== undefined && (
             <MetricCard
               title="Average Purchase Intent"
-              value={summary_statistics.purchase_intent_avg.toFixed(1)}
+              value={summaryIntent.toFixed(1)}
               subtitle="Scale of 1-10"
               icon={Target}
-              trend={summary_statistics.purchase_intent_avg > 5 ? 'up' : 'down'}
+              trend={summaryIntent > 5 ? 'up' : 'down'}
               color="primary"
             />
           )}
-          {summary_statistics.sentiment_avg !== undefined && (
+          {summaryEmotion !== undefined && (
             <MetricCard
               title="Average Sentiment"
               value={
                 <div className="flex items-center gap-2">
                   {(() => {
-                    const d = getSentimentDescriptor(summary_statistics.sentiment_avg);
+                    const d = getSentimentDescriptor(summaryEmotion);
                     return (
                       <span className={d.color}>
-                        {summary_statistics.sentiment_avg.toFixed(2)}
+                        {summaryEmotion.toFixed(2)}
                       </span>
                     );
                   })()}
                   {(() => {
-                    const d = getSentimentDescriptor(summary_statistics.sentiment_avg);
+                    const d = getSentimentDescriptor(summaryEmotion);
                     if (d.iconTone === 'up') return <TrendingUp className="h-4 w-4 text-emerald-500" />;
                     if (d.iconTone === 'down') return <TrendingDown className="h-4 w-4 text-red-500" />;
                     return <Minus className="h-4 w-4 text-gray-500" />;
@@ -280,13 +501,13 @@ export function Analytics() {
               color="secondary"
             />
           )}
-          {summary_statistics.trust_in_brand_avg !== undefined && (
+          {summaryTrust !== undefined && (
             <MetricCard
               title="Average Brand Trust"
-              value={summary_statistics.trust_in_brand_avg.toFixed(1)}
+              value={summaryTrust.toFixed(1)}
               subtitle="Scale of 1-10"
               icon={Shield}
-              trend={summary_statistics.trust_in_brand_avg > 5 ? 'up' : 'down'}
+              trend={summaryTrust > 5 ? 'up' : 'down'}
               color="success"
             />
           )}
@@ -302,7 +523,6 @@ export function Analytics() {
           )}
         </div>
 
-        {/* AI Insights - Enhanced */}
         {insights && insights.length > 0 && (
           <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
             <CardHeader className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 rounded-t-xl">
@@ -336,6 +556,124 @@ export function Analytics() {
           </Card>
         )}
 
+        {/* Message Refinement Suggestions - NEW */}
+        {individual_responses && individual_responses.length > 0 && (() => {
+          const lowScorePersonas = individual_responses.filter((row) => {
+            const trustScore = getNumericScore(row, 'brand_trust', 'trust_in_brand');
+            const intentScore = getNumericScore(row, 'intent_to_action', 'purchase_intent');
+            const score = trustScore ?? intentScore;
+            return typeof score === 'number' && score < 5;
+          });
+
+          const hasConcern = (keywords: string[]) =>
+            lowScorePersonas.some((row) =>
+              getConcernsList(row).some((concern) => {
+                const lower = concern.toLowerCase();
+                return keywords.some((keyword) => lower.includes(keyword));
+              })
+            );
+
+          const suggestions: Array<{ issue: string; suggestion: string; segment: string }> = [];
+
+          if (hasConcern(['cost', 'price', 'afford'])) {
+            suggestions.push({
+              issue: "Cost sensitivity detected",
+              suggestion: "Add language about patient assistance programs, copay cards, or insurance coverage options",
+              segment: "Price-Conscious"
+            });
+          }
+
+          if (hasConcern(['side effect', 'safety', 'risk'])) {
+            suggestions.push({
+              issue: "Safety concerns identified",
+              suggestion: "Lead with safety profile data and tolerability messaging before efficacy claims",
+              segment: "Safety-First"
+            });
+          }
+
+          if (hasConcern(['complex', 'confus', 'understand'])) {
+            suggestions.push({
+              issue: "Message complexity issues",
+              suggestion: "Simplify clinical language; use patient-friendly terms and visual explanations",
+              segment: "Clarity-Seekers"
+            });
+          }
+
+          if (suggestions.length === 0 && lowScorePersonas.length > 0) {
+            suggestions.push({
+              issue: "General engagement gap",
+              suggestion: "Consider A/B testing with more emotional appeals or patient testimonials",
+              segment: "General"
+            });
+          }
+
+          if (suggestions.length === 0) return null;
+
+          return (
+            <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90 border-l-4 border-l-emerald-500">
+              <CardHeader className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 rounded-t-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl">
+                      <Target className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-xl">Message Refinement Suggestions</CardTitle>
+                      <CardDescription>
+                        Based on {lowScorePersonas.length} persona{lowScorePersonas.length !== 1 ? 's' : ''} with low engagement scores
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    Asset Refinement
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-4">
+                {suggestions.map((s, idx) => (
+                  <div key={idx} className="p-4 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-750 rounded-xl border border-gray-200 dark:border-gray-700">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <AlertTriangle className="h-4 w-4 text-amber-500" />
+                          <span className="font-medium text-gray-900 dark:text-gray-100">{s.issue}</span>
+                          <Badge variant="outline" className="text-xs">{s.segment}</Badge>
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 flex items-start gap-2">
+                          <CheckCircle className="h-4 w-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                          {s.suggestion}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <Button
+                    onClick={() => {
+                      // Navigate to simulation with refined message suggestion
+                      const refinedMessage = `[REFINED VERSION]\n\n${stimulus_text}\n\n---\nSuggested improvements:\n${suggestions.map(s => `• ${s.suggestion}`).join('\n')}`;
+                      navigate('/simulation', {
+                        state: {
+                          prefillMessage: refinedMessage,
+                          isVariant: true,
+                          originalMessage: stimulus_text
+                        }
+                      });
+                    }}
+                    className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:shadow-xl transition-all"
+                  >
+                    <PlayCircle className="h-4 w-4 mr-2" />
+                    Create Message Variant
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
+
+
         {/* Individual Responses - Enhanced Table */}
         <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
           <CardHeader className="bg-gradient-to-r from-primary/10 to-secondary/10 rounded-t-xl">
@@ -362,7 +700,7 @@ export function Analytics() {
                   <tr>
                     <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Persona</th>
                     <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Reasoning</th>
-                    {metrics_analyzed.includes('purchase_intent') && (
+                    {metricPresent('intent_to_action', 'purchase_intent') && (
                       <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
                         <div className="flex items-center justify-center gap-1">
                           <Target className="h-4 w-4" />
@@ -370,7 +708,7 @@ export function Analytics() {
                         </div>
                       </th>
                     )}
-                    {metrics_analyzed.includes('sentiment') && (
+                    {metricPresent('emotional_response', 'sentiment') && (
                       <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
                         <div className="flex items-center justify-center gap-1">
                           <Brain className="h-4 w-4" />
@@ -378,7 +716,7 @@ export function Analytics() {
                         </div>
                       </th>
                     )}
-                    {metrics_analyzed.includes('trust_in_brand') && (
+                    {metricPresent('brand_trust', 'trust_in_brand') && (
                       <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
                         <div className="flex items-center justify-center gap-1">
                           <Shield className="h-4 w-4" />
@@ -386,7 +724,7 @@ export function Analytics() {
                         </div>
                       </th>
                     )}
-                    {metrics_analyzed.includes('message_clarity') && (
+                    {metricPresent('message_clarity') && (
                       <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
                         <div className="flex items-center justify-center gap-1">
                           <MessageSquare className="h-4 w-4" />
@@ -394,7 +732,7 @@ export function Analytics() {
                         </div>
                       </th>
                     )}
-                    {metrics_analyzed.includes('key_concern_flagged') && (
+                    {metricPresent('key_concerns', 'key_concern_flagged') && (
                       <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
                         <div className="flex items-center justify-center gap-1">
                           <AlertTriangle className="h-4 w-4" />
@@ -409,77 +747,118 @@ export function Analytics() {
                     <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                       <td className="p-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold">
+                          {response.avatar_url ? (
+                            <img
+                              src={response.avatar_url}
+                              alt={response.persona_name}
+                              className="w-10 h-10 rounded-full object-cover border-2 border-primary/20"
+                              onError={(e) => {
+                                // Fallback to initials if image fails
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                target.nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold ${response.avatar_url ? 'hidden' : ''}`}>
                             {response.persona_name.charAt(0)}
                           </div>
                           <div>
                             <div className="font-medium text-gray-900 dark:text-gray-100">{response.persona_name}</div>
-                            <div className="text-xs text-gray-500">ID: {response.persona_id}</div>
+                            <div className="text-xs text-gray-500 flex items-center gap-1">
+                              <span>ID: {response.persona_id}</span>
+                              {response.persona_type && (
+                                <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs">{response.persona_type}</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
                       <td className="p-4 max-w-md">
                         <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{response.reasoning}</p>
                       </td>
-                      {metrics_analyzed.includes('purchase_intent') && (
-                        <td className="p-4 text-center">
-                          <div className="flex flex-col items-center gap-1">
-                            <span className={`text-lg font-bold ${computeScoreColor(response.responses.purchase_intent || 0)}`}>
-                              {response.responses.purchase_intent}
-                            </span>
-                            <Progress 
-                              value={computeScoreProgress(response.responses.purchase_intent || 0)} 
-                              className="w-16 h-1.5"
-                            />
-                          </div>
-                        </td>
-                      )}
-                      {metrics_analyzed.includes('sentiment') && (
+                      {metricPresent('intent_to_action', 'purchase_intent') && (
                         <td className="p-4 text-center">
                           {(() => {
-                            const d = getSentimentDescriptor(response.responses.sentiment || 0);
+                            const intentScore = getNumericScore(response, 'intent_to_action', 'purchase_intent');
                             return (
-                              <Badge className={d.badgeClassName}>
-                                {d.level}
+                              <div className="flex flex-col items-center gap-1">
+                                <span className={`text-lg font-bold ${computeScoreColor(intentScore ?? 0)}`}>
+                                  {intentScore ?? '—'}
+                                </span>
+                                <Progress
+                                  value={computeScoreProgress(intentScore ?? 0)}
+                                  className="w-16 h-1.5"
+                                />
+                              </div>
+                            );
+                          })()}
+                        </td>
+                      )}
+                      {metricPresent('emotional_response', 'sentiment') && (
+                        <td className="p-4 text-center">
+                          {(() => {
+                            const sentimentScore = getNumericScore(response, 'emotional_response', 'sentiment') ?? 0;
+                            const descriptor = getSentimentDescriptor(sentimentScore);
+                            return (
+                              <>
+                                <Badge className={descriptor.badgeClassName}>
+                                  {descriptor.level}
+                                </Badge>
+                                <div className="text-xs mt-1 text-gray-500">
+                                  {sentimentScore.toFixed(2)}
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </td>
+                      )}
+                      {metricPresent('brand_trust', 'trust_in_brand') && (
+                        <td className="p-4 text-center">
+                          {(() => {
+                            const trustScore = getNumericScore(response, 'brand_trust', 'trust_in_brand');
+                            return (
+                              <div className="flex flex-col items-center gap-1">
+                                <span className={`text-lg font-bold ${computeScoreColor(trustScore ?? 0)}`}>
+                                  {trustScore ?? '—'}
+                                </span>
+                                <Progress
+                                  value={computeScoreProgress(trustScore ?? 0)}
+                                  className="w-16 h-1.5"
+                                />
+                              </div>
+                            );
+                          })()}
+                        </td>
+                      )}
+                      {metricPresent('message_clarity') && (
+                        <td className="p-4 text-center">
+                          {(() => {
+                            const clarityScore = getNumericScore(response, 'message_clarity');
+                            return (
+                              <div className="flex flex-col items-center gap-1">
+                                <span className={`text-lg font-bold ${computeScoreColor(clarityScore ?? 0)}`}>
+                                  {clarityScore ?? '—'}
+                                </span>
+                                <Progress
+                                  value={computeScoreProgress(clarityScore ?? 0)}
+                                  className="w-16 h-1.5"
+                                />
+                              </div>
+                            );
+                          })()}
+                        </td>
+                      )}
+                      {metricPresent('key_concerns', 'key_concern_flagged') && (
+                        <td className="p-4">
+                          {(() => {
+                            const concernValue = getResponseValue(response, 'key_concerns', 'key_concern_flagged');
+                            return (
+                              <Badge variant="outline" className="text-xs">
+                                {concernValue ? String(concernValue) : '—'}
                               </Badge>
                             );
                           })()}
-                          <div className="text-xs mt-1 text-gray-500">
-                            {response.responses.sentiment?.toFixed(2)}
-                          </div>
-                        </td>
-                      )}
-                      {metrics_analyzed.includes('trust_in_brand') && (
-                        <td className="p-4 text-center">
-                          <div className="flex flex-col items-center gap-1">
-                            <span className={`text-lg font-bold ${computeScoreColor(response.responses.trust_in_brand || 0)}`}>
-                              {response.responses.trust_in_brand}
-                            </span>
-                            <Progress 
-                              value={computeScoreProgress(response.responses.trust_in_brand || 0)} 
-                              className="w-16 h-1.5"
-                            />
-                          </div>
-                        </td>
-                      )}
-                      {metrics_analyzed.includes('message_clarity') && (
-                        <td className="p-4 text-center">
-                          <div className="flex flex-col items-center gap-1">
-                            <span className={`text-lg font-bold ${computeScoreColor(response.responses.message_clarity || 0)}`}>
-                              {response.responses.message_clarity}
-                            </span>
-                            <Progress 
-                              value={computeScoreProgress(response.responses.message_clarity || 0)} 
-                              className="w-16 h-1.5"
-                            />
-                          </div>
-                        </td>
-                      )}
-                      {metrics_analyzed.includes('key_concern_flagged') && (
-                        <td className="p-4">
-                          <Badge variant="outline" className="text-xs">
-                            {response.responses.key_concern_flagged}
-                          </Badge>
                         </td>
                       )}
                     </tr>
@@ -492,7 +871,7 @@ export function Analytics() {
 
         {/* Action Buttons */}
         <div className="flex justify-center gap-4 mt-8 pb-8">
-          <Button 
+          <Button
             size="lg"
             className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl"
             onClick={() => navigate('/simulation')}
@@ -500,7 +879,7 @@ export function Analytics() {
             <PlayCircle className="h-5 w-5 mr-2" />
             Run New Simulation
           </Button>
-          <Button 
+          <Button
             size="lg"
             variant="outline"
             onClick={() => window.print()}

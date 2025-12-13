@@ -6,6 +6,7 @@ import BrandLibrary from './pages/BrandLibrary';
 import { CreatePersona } from './pages/CreatePersona';
 import { SimulationHub } from './pages/SimulationHub';
 import { Analytics } from './pages/Analytics';
+import { PersonaCoverage } from './pages/PersonaCoverage';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
           <Route path="create-persona" element={<CreatePersona />} />
           <Route path="simulation" element={<SimulationHub />} />
           <Route path="analytics" element={<Analytics />} />
+          <Route path="coverage" element={<PersonaCoverage />} />
         </Route>
       </Routes>
     </Router>

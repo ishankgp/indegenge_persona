@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Float
+from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Float, ForeignKey
 from sqlalchemy.sql import func
 from .database import Base
 import datetime
@@ -7,9 +7,12 @@ class Persona(Base):
     __tablename__ = "personas"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
+    avatar_url = Column(String, nullable=True)  # DALL-E 3 generated avatar image URL
     persona_type = Column(String, default="Patient")
     persona_subtype = Column(String, nullable=True)
     tagline = Column(Text, nullable=True)
+    # Brand ownership - optional, allows personas to belong to a specific brand
+    brand_id = Column(Integer, ForeignKey("brands.id"), nullable=True, index=True)
     # Store input attributes for filtering
     age = Column(Integer)
     gender = Column(String)

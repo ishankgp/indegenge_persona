@@ -1,17 +1,25 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileText, CheckCircle, Circle, Plus, Loader2, Sparkles, Library } from 'lucide-react';
+import { Upload, FileText, CheckCircle, Circle, Plus, Loader2, Sparkles, Library, Users, ArrowRight, UserPlus } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 import { BrandsAPI } from "@/lib/api";
+import { BrandMBTDashboard } from "@/components/BrandMBTDashboard";
 
 interface Brand {
   id: number;
   name: string;
+}
+
+interface BrandInsight {
+  type: "Motivation" | "Belief" | "Tension";
+  text: string;
+  source_document?: string;
 }
 
 interface BrandDocument {
@@ -20,6 +28,7 @@ interface BrandDocument {
   category: string;
   summary: string;
   created_at: string;
+  extracted_insights?: BrandInsight[];
 }
 
 const KNOWLEDGE_PILLARS = [
@@ -33,6 +42,7 @@ const KNOWLEDGE_PILLARS = [
 ];
 
 const BrandLibrary = () => {
+  const navigate = useNavigate();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [selectedBrandId, setSelectedBrandId] = useState<string>("");
   const [newBrandName, setNewBrandName] = useState("");
@@ -40,6 +50,7 @@ const BrandLibrary = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isCreatingBrand, setIsCreatingBrand] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [personaCount, setPersonaCount] = useState<number>(0);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -49,10 +60,22 @@ const BrandLibrary = () => {
   useEffect(() => {
     if (selectedBrandId) {
       fetchDocuments(parseInt(selectedBrandId));
+      fetchPersonaCount(parseInt(selectedBrandId));
     } else {
       setDocuments([]);
+      setPersonaCount(0);
     }
   }, [selectedBrandId]);
+
+  const fetchPersonaCount = async (brandId: number) => {
+    try {
+      const data = await BrandsAPI.getPersonasCount(brandId);
+      setPersonaCount(data.persona_count);
+    } catch (error) {
+      console.error("Failed to fetch persona count", error);
+      setPersonaCount(0);
+    }
+  };
 
   const fetchBrands = async () => {
     try {
@@ -193,120 +216,244 @@ const BrandLibrary = () => {
 
       <div className="max-w-7xl mx-auto px-8 py-8">
 
-      {selectedBrandId ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Left Column: Upload & Files */}
-          <div className="md:col-span-2 space-y-6">
-            {/* Upload Zone */}
-            <Card className="border-2 border-dashed border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors">
-              <CardContent className="flex flex-col items-center justify-center h-48 space-y-4 pt-8">
-                <div className="p-4 bg-background rounded-full shadow-sm">
-                  <Upload className="h-8 w-8 text-primary" />
-                </div>
-                <div className="text-center">
-                  <p className="text-lg font-semibold text-foreground">Upload Knowledge Assets</p>
-                  <p className="text-sm text-muted-foreground mt-1">Drag & drop PDF, DOCX, TXT files here</p>
-                </div>
-                <Input
-                  type="file"
-                  className="hidden"
-                  id="file-upload"
-                  onChange={handleFileUpload}
-                  disabled={isUploading}
-                />
-                <div className="flex gap-3 pt-2">
-                  <div className="relative">
-                    <Button disabled={isUploading} className="btn-primary cursor-pointer pointer-events-none">
-                      {isUploading ? "Uploading..." : "Select File"}
-                    </Button>
-                    <label
-                      htmlFor="file-upload"
-                      className="absolute inset-0 cursor-pointer"
-                      aria-label="Select File"
-                    />
+        {selectedBrandId ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Left Column: Upload & Files */}
+            <div className="md:col-span-2 space-y-6">
+              {/* Upload Zone */}
+              <Card className="border-2 border-dashed border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors">
+                <CardContent className="flex flex-col items-center justify-center h-48 space-y-4 pt-8">
+                  <div className="p-4 bg-background rounded-full shadow-sm">
+                    <Upload className="h-8 w-8 text-primary" />
                   </div>
-                  <Button
-                    variant="outline"
-                    onClick={handleSeedData}
-                    disabled={isSeeding || isUploading}
-                    className="bg-background"
-                  >
-                    {isSeeding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2 text-primary" />}
-                    Populate Demo Data
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* File List */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Uploaded Documents</CardTitle>
-                <CardDescription>Files grounding this brand's personas.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[400px] pr-4">
-                  {documents.length === 0 ? (
-                    <div className="text-center py-10 text-muted-foreground">
-                      No documents uploaded yet.
+                  <div className="text-center">
+                    <p className="text-lg font-semibold text-foreground">Upload Knowledge Assets</p>
+                    <p className="text-sm text-muted-foreground mt-1">Drag & drop PDF, DOCX, TXT files here</p>
+                  </div>
+                  <Input
+                    type="file"
+                    className="hidden"
+                    id="file-upload"
+                    onChange={handleFileUpload}
+                    disabled={isUploading}
+                  />
+                  <div className="flex gap-3 pt-2">
+                    <div className="relative">
+                      <Button disabled={isUploading} className="btn-primary cursor-pointer pointer-events-none">
+                        {isUploading ? "Uploading..." : "Select File"}
+                      </Button>
+                      <label
+                        htmlFor="file-upload"
+                        className="absolute inset-0 cursor-pointer"
+                        aria-label="Select File"
+                      />
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {documents.map((doc) => (
-                        <div key={doc.id} className="flex items-start justify-between p-4 border rounded-lg">
-                          <div className="flex items-start gap-3">
-                            <FileText className="h-5 w-5 mt-1 text-blue-500" />
-                            <div>
-                              <p className="font-medium text-sm">{doc.filename}</p>
-                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{doc.summary}</p>
+                    <Button
+                      variant="outline"
+                      onClick={handleSeedData}
+                      disabled={isSeeding || isUploading}
+                      className="bg-background"
+                    >
+                      {isSeeding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2 text-primary" />}
+                      Populate Demo Data
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+
+              {/* File List with MBT Insights */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Uploaded Documents</CardTitle>
+                  <CardDescription>Files grounding this brand's personas with extracted MBT insights.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[400px] pr-4">
+                    {documents.length === 0 ? (
+                      <div className="text-center py-10 text-muted-foreground">
+                        No documents uploaded yet.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {documents.map((doc) => {
+                          const insights = doc.extracted_insights || [];
+                          const motivations = insights.filter(i => i.type === "Motivation");
+                          const beliefs = insights.filter(i => i.type === "Belief");
+                          const tensions = insights.filter(i => i.type === "Tension");
+                          const totalInsights = insights.length;
+
+                          return (
+                            <div key={doc.id} className="border rounded-lg overflow-hidden">
+                              {/* Document Header */}
+                              <div className="flex items-start justify-between p-4 bg-muted/30">
+                                <div className="flex items-start gap-3 flex-1">
+                                  <FileText className="h-5 w-5 mt-1 text-blue-500 shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-medium text-sm">{doc.filename}</p>
+                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{doc.summary}</p>
+                                  </div>
+                                </div>
+                                <Badge variant="outline" className="ml-2 shrink-0">
+                                  {doc.category}
+                                </Badge>
+                              </div>
+
+                              {/* MBT Insights Section */}
+                              {totalInsights > 0 && (
+                                <div className="p-4 space-y-3 bg-white dark:bg-gray-950">
+                                  <div className="flex items-center gap-2">
+                                    <Sparkles className="h-4 w-4 text-amber-500" />
+                                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                      MBT Insights ({totalInsights})
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-3 gap-2 text-xs">
+                                    {motivations.length > 0 && (
+                                      <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                                        <span className="font-mono">🎯</span>
+                                        <span className="font-medium">{motivations.length} Motivations</span>
+                                      </div>
+                                    )}
+                                    {beliefs.length > 0 && (
+                                      <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400">
+                                        <span className="font-mono">💭</span>
+                                        <span className="font-medium">{beliefs.length} Beliefs</span>
+                                      </div>
+                                    )}
+                                    {tensions.length > 0 && (
+                                      <div className="flex items-center gap-1.5 text-orange-600 dark:text-orange-400">
+                                        <span className="font-mono">⚠️</span>
+                                        <span className="font-medium">{tensions.length} Tensions</span>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Detailed Insights (first 2 of each type) */}
+                                  <div className="space-y-2 mt-3">
+                                    {motivations.slice(0, 2).map((insight, idx) => (
+                                      <div key={`m-${idx}`} className="text-xs p-2 bg-blue-50 dark:bg-blue-950/30 rounded border-l-2 border-blue-500">
+                                        <span className="font-semibold text-blue-700 dark:text-blue-300">M: </span>
+                                        <span className="text-gray-700 dark:text-gray-300">{insight.text}</span>
+                                      </div>
+                                    ))}
+                                    {beliefs.slice(0, 2).map((insight, idx) => (
+                                      <div key={`b-${idx}`} className="text-xs p-2 bg-purple-50 dark:bg-purple-950/30 rounded border-l-2 border-purple-500">
+                                        <span className="font-semibold text-purple-700 dark:text-purple-300">B: </span>
+                                        <span className="text-gray-700 dark:text-gray-300">{insight.text}</span>
+                                      </div>
+                                    ))}
+                                    {tensions.slice(0, 2).map((insight, idx) => (
+                                      <div key={`t-${idx}`} className="text-xs p-2 bg-orange-50 dark:bg-orange-950/30 rounded border-l-2 border-orange-500">
+                                        <span className="font-semibold text-orange-700 dark:text-orange-300">T: </span>
+                                        <span className="text-gray-700 dark:text-gray-300">{insight.text}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  {totalInsights > 6 && (
+                                    <p className="text-xs text-muted-foreground italic mt-2">
+                                      +{totalInsights - 6} more insights available
+                                    </p>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                          </div>
-                          <Badge variant="outline" className="ml-2 shrink-0">
-                            {doc.category}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
 
-          {/* Right Column: Knowledge Checklist */}
-          <div className="md:col-span-1">
-            <Card className="h-full">
-              <CardHeader className="border-b border-border/50 bg-muted/30">
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-1 bg-primary rounded-full" />
-                  <CardTitle className="text-base font-semibold">Knowledge Pillars</CardTitle>
-                </div>
-                <CardDescription>Required context for accurate personas.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {KNOWLEDGE_PILLARS.map((pillar, index) => (
-                    <div key={index} className="flex items-center gap-3">
-                      {getCategoryStatus(pillar)}
-                      <span className="text-sm font-medium leading-none">{pillar}</span>
+            {/* Right Column: MBT Dashboard + Personas + Knowledge Pillars */}
+            <div className="md:col-span-1 space-y-6">
+              {/* Aggregated MBT Dashboard - NEW */}
+              <BrandMBTDashboard
+                brandId={parseInt(selectedBrandId)}
+                brandName={brands.find(b => b.id.toString() === selectedBrandId)?.name || ''}
+              />
+
+              {/* Brand Personas Card */}
+              <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-5 w-5 text-primary" />
+                      <CardTitle className="text-base font-semibold">Brand Personas</CardTitle>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                    <Badge variant="secondary" className="text-lg px-3 py-1">
+                      {personaCount}
+                    </Badge>
+                  </div>
+                  <CardDescription>Personas grounded in this brand's knowledge</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Button
+                    className="w-full justify-between"
+                    variant="outline"
+                    onClick={() => navigate(`/personas?brand_id=${selectedBrandId}`)}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      View Personas
+                    </span>
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    className="w-full justify-between"
+                    onClick={() => navigate(`/create?brand_id=${selectedBrandId}`)}
+                  >
+                    <span className="flex items-center gap-2">
+                      <UserPlus className="h-4 w-4" />
+                      Create Persona
+                    </span>
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                  {personaCount === 0 && (
+                    <p className="text-xs text-muted-foreground text-center pt-2">
+                      No personas yet. Create one to get started!
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Knowledge Pillars Card */}
+              <Card>
+                <CardHeader className="border-b border-border/50 bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-1 bg-primary rounded-full" />
+                    <CardTitle className="text-base font-semibold">Knowledge Pillars</CardTitle>
+                  </div>
+                  <CardDescription>Required context for accurate personas.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    {KNOWLEDGE_PILLARS.map((pillar, index) => (
+                      <div key={index} className="flex items-center gap-3">
+                        {getCategoryStatus(pillar)}
+                        <span className="text-sm font-medium leading-none">{pillar}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-4">
-          <div className="p-6 bg-muted rounded-full">
-            <FileText className="h-12 w-12 text-muted-foreground" />
+        ) : (
+          <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-4">
+            <div className="p-6 bg-muted rounded-full">
+              <FileText className="h-12 w-12 text-muted-foreground" />
+            </div>
+            <h2 className="text-2xl font-semibold">Select or Create a Brand</h2>
+            <p className="text-muted-foreground max-w-md">
+              Get started by selecting an existing brand context or creating a new one to begin uploading knowledge assets.
+            </p>
           </div>
-          <h2 className="text-2xl font-semibold">Select or Create a Brand</h2>
-          <p className="text-muted-foreground max-w-md">
-            Get started by selecting an existing brand context or creating a new one to begin uploading knowledge assets.
-          </p>
-        </div>
-      )}
+        )}
       </div>
     </div>
   );

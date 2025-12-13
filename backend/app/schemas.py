@@ -5,12 +5,14 @@ import json
 
 class PersonaBase(BaseModel):
     name: str
+    avatar_url: Optional[str] = None  # DALL-E 3 generated avatar image URL
     persona_type: str = "Patient"
     age: int
     gender: str
     condition: str
     location: str
     full_persona_json: str
+    brand_id: Optional[int] = None
     persona_subtype: Optional[str] = None
     tagline: Optional[str] = None
     specialty: Optional[str] = None
@@ -29,12 +31,15 @@ class PersonaCreate(BaseModel):
     condition: str
     location: str
     concerns: str
+    brand_id: Optional[int] = None
 
 class PersonaUpdate(BaseModel):
     name: Optional[str] = None
+    avatar_url: Optional[str] = None
     persona_type: Optional[str] = None
     persona_subtype: Optional[str] = None
     tagline: Optional[str] = None
+    brand_id: Optional[int] = None
     age: Optional[int] = None
     gender: Optional[str] = None
     condition: Optional[str] = None
@@ -71,6 +76,7 @@ class PersonaSearchFilters(BaseModel):
     condition: Optional[str] = None
     location: Optional[str] = None
     persona_type: Optional[str] = None
+    brand_id: Optional[int] = None
     limit: int = 10
 
 # Cohort Analysis Schemas

@@ -122,7 +122,10 @@ export async function checkHealth(): Promise<{ ok: boolean; personas?: number }>
 
 // Helper wrappers
 export const PersonasAPI = {
-  list: () => api.get('/personas/').then(r => r.data),
+  list: (brandId?: number) => {
+    const params = brandId !== undefined ? { brand_id: brandId } : {};
+    return api.get('/personas/', { params }).then(r => r.data);
+  },
   generate: (payload: any) => api.post('/personas/generate', payload).then(r => r.data),
   createManual: (payload: any) => api.post('/personas/manual', payload).then(r => r.data),
   delete: (id: number) => api.delete(`/personas/${id}`),
@@ -130,6 +133,7 @@ export const PersonasAPI = {
   update: (id: number, payload: any) => api.put(`/personas/${id}`, payload).then(r => r.data),
   enrichFromBrand: (id: number, payload: { brand_id: number; target_segment?: string; target_fields?: string[] }) =>
     api.post(`/personas/${id}/enrich-from-brand`, payload).then(r => r.data),
+  regenerateAvatar: (id: number) => api.post(`/personas/${id}/regenerate-avatar`).then(r => r.data),
 };
 
 export interface BrandInsight {
@@ -162,6 +166,9 @@ export const BrandsAPI = {
   list: () => api.get('/api/brands').then(r => r.data),
   create: (name: string) => api.post('/api/brands', { name }).then(r => r.data),
   getDocuments: (brandId: number) => api.get(`/api/brands/${brandId}/documents`).then(r => r.data),
+  getPersonas: (brandId: number) => api.get(`/api/brands/${brandId}/personas`).then(r => r.data),
+  getPersonasCount: (brandId: number): Promise<{ brand_id: number; brand_name: string; persona_count: number }> =>
+    api.get(`/api/brands/${brandId}/personas/count`).then(r => r.data),
   upload: (brandId: number, file: File) => {
     const formData = new FormData();
     formData.append('file', file);

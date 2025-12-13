@@ -1,7 +1,8 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { PersonasAPI } from "@/lib/api"
+import { useSearchParams, useNavigate } from "react-router-dom"
+import { PersonasAPI, BrandsAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -11,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Badge } from "../components/ui/badge"
 import { Separator } from "../components/ui/separator"
 import { Skeleton } from "../components/ui/skeleton"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { VeevaCRMImporter } from "../components/VeevaCRMImporter"
 import {
   User,
@@ -41,6 +43,8 @@ import {
   X,
   Database,
   Trash2,
+  Library,
+  Filter,
 } from "lucide-react"
 import { PersonaDetailModal } from "../components/PersonaDetailModal"
 import { useToast } from "@/components/ui/use-toast"
@@ -51,6 +55,7 @@ import { cn } from "@/lib/utils"
 interface Persona {
   id: number
   name: string
+  avatar_url?: string
   persona_type: string
   age: number
   gender: string
@@ -58,6 +63,12 @@ interface Persona {
   location: string
   full_persona_json: string
   created_at: string
+  brand_id?: number
+}
+
+interface Brand {
+  id: number
+  name: string
 }
 
 interface BulkPersonaTemplate {
@@ -80,7 +91,12 @@ const conditionColors: Record<string, string> = {
 
 export function PersonaLibrary() {
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [selectedBrandId, setSelectedBrandId] = useState<string>(searchParams.get('brand_id') || "all");
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [bulkGenerating, setBulkGenerating] = useState(false);
@@ -115,16 +131,41 @@ export function PersonaLibrary() {
   })
 
   useEffect(() => {
-    console.log("PersonaLibrary: Starting to fetch personas...")
-    fetchPersonas()
+    console.log("PersonaLibrary: Starting to fetch personas and brands...")
+    fetchBrands()
   }, [])
 
+  useEffect(() => {
+    fetchPersonas()
+  }, [selectedBrandId])
+
+  // Update URL when brand filter changes
+  const handleBrandFilterChange = (value: string) => {
+    setSelectedBrandId(value)
+    if (value === "all") {
+      searchParams.delete('brand_id')
+    } else {
+      searchParams.set('brand_id', value)
+    }
+    setSearchParams(searchParams)
+  }
+
+  const fetchBrands = async () => {
+    try {
+      const data = await BrandsAPI.list()
+      setBrands(data)
+    } catch (error) {
+      console.error("Failed to fetch brands:", error)
+    }
+  }
+
   const fetchPersonas = async () => {
-    console.log("PersonaLibrary: fetchPersonas called")
+    console.log("PersonaLibrary: fetchPersonas called with brand filter:", selectedBrandId)
     setLoading(true)
     try {
-      console.log("PersonaLibrary: Calling PersonasAPI.list()...")
-      const data = await PersonasAPI.list()
+      const brandId = selectedBrandId !== "all" ? parseInt(selectedBrandId) : undefined
+      console.log("PersonaLibrary: Calling PersonasAPI.list() with brandId:", brandId)
+      const data = await PersonasAPI.list(brandId)
       console.log("PersonaLibrary: Got personas data:", { count: data.length, data: data.slice(0, 2) })
       setPersonas(data)
       setError(null)
@@ -185,7 +226,7 @@ export function PersonaLibrary() {
     try {
       const count = parseInt(formData.count) || 1;
       setGenerationProgress({ current: 0, total: count });
-      
+
       const basePersonaData = {
         age: age,
         gender: formData.gender,
@@ -197,20 +238,20 @@ export function PersonaLibrary() {
       const createdPersonas = [];
       for (let i = 0; i < count; i++) {
         setGenerationProgress({ current: i + 1, total: count });
-        
+
         const variations = [
-          '', ' with family history', ' seeking treatment options', 
+          '', ' with family history', ' seeking treatment options',
           ' concerned about side effects', ' looking for lifestyle changes',
           ' with financial concerns', ' preferring natural remedies',
           ' with mobility limitations', ' living in rural area', ' with strong family support'
         ];
         const variation = variations[i % variations.length];
-        
+
         const personaData = {
           ...basePersonaData,
           concerns: formData.concerns + variation
         };
-        
+
         const newPersona = await PersonasAPI.generate(personaData);
         createdPersonas.push(newPersona);
       }
@@ -317,7 +358,7 @@ export function PersonaLibrary() {
         setBulkTemplates([{ id: "1", age: "", gender: "", condition: "", location: "", concerns: "" }]);
         setCreationMode("single");
       }
-      
+
       alert(`Bulk Generation Complete: Successfully created ${successfulCreations} personas. ${failedCreations > 0 ? `Failed to create ${failedCreations}.` : ''}`);
 
       if (failedCreations > 0) {
@@ -419,6 +460,13 @@ export function PersonaLibrary() {
     .sort((a, b) => a.localeCompare(b))
   console.log("Available conditions:", uniqueConditions)
 
+  // Helper to get brand name by ID
+  const getBrandName = (brandId: number | undefined) => {
+    if (!brandId) return null
+    const brand = brands.find(b => b.id === brandId)
+    return brand?.name || null
+  }
+
   const PersonaCard = ({ persona, onDelete }: { persona: Persona, onDelete: (id: number, name: string) => void }) => {
     let personaData: any = {};
     try {
@@ -428,20 +476,53 @@ export function PersonaLibrary() {
       personaData = {};
     }
     const conditionClass = conditionColors[persona.condition] || conditionColors.default
+    const brandName = getBrandName(persona.brand_id)
 
     return (
       <Card className="group relative overflow-hidden border-0 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
         {/* Gradient Border Effect */}
         <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-secondary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
 
+        {/* Brand Badge */}
+        {brandName && (
+          <div className="absolute top-2 right-2 z-10">
+            <Badge variant="secondary" className="text-xs bg-primary/10 text-primary border-primary/20">
+              <Library className="h-3 w-3 mr-1" />
+              {brandName}
+            </Badge>
+          </div>
+        )}
+
         <CardHeader className="relative pb-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-xl blur-lg opacity-50"></div>
-                <div className="relative p-2.5 bg-gradient-to-br from-primary to-secondary rounded-xl">
-                  <User className="h-5 w-5 text-white" />
-                </div>
+                {persona.avatar_url ? (
+                  <>
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-xl blur-lg opacity-50"></div>
+                    <img
+                      src={persona.avatar_url}
+                      alt={persona.name}
+                      className="relative w-12 h-12 rounded-xl object-cover border-2 border-white shadow-lg"
+                      onError={(e) => {
+                        // Fallback to icon if image fails to load
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        target.nextElementSibling?.classList.remove('hidden');
+                      }}
+                    />
+                    <div className="hidden relative p-2.5 bg-gradient-to-br from-primary to-secondary rounded-xl">
+                      <User className="h-5 w-5 text-white" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-xl blur-lg opacity-50"></div>
+                    <div className="relative p-2.5 bg-gradient-to-br from-primary to-secondary rounded-xl">
+                      <User className="h-5 w-5 text-white" />
+                    </div>
+                  </>
+                )}
               </div>
               <div>
                 <CardTitle className="text-lg font-semibold text-gray-900 dark:text-gray-100 group-hover:text-primary transition-colors">
@@ -624,6 +705,25 @@ export function PersonaLibrary() {
 
             {activeTab === "view" && (
               <div className="flex items-center gap-4">
+                {/* Brand Filter */}
+                <div className="flex items-center gap-2">
+                  <Library className="h-4 w-4 text-gray-400" />
+                  <Select value={selectedBrandId} onValueChange={handleBrandFilterChange}>
+                    <SelectTrigger className="w-[200px] bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm">
+                      <SelectValue placeholder="Filter by Brand" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Brands</SelectItem>
+                      {brands.map((brand) => (
+                        <SelectItem key={brand.id} value={brand.id.toString()}>
+                          {brand.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Search */}
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                   <Input
@@ -777,7 +877,7 @@ export function PersonaLibrary() {
                       <Wand2 className="h-6 w-6" />
                       <span>Prompt-Based</span>
                     </Button>
-                    <VeevaCRMImporter 
+                    <VeevaCRMImporter
                       onImportComplete={() => {
                         fetchPersonas();
                         setActiveTab("view");
@@ -965,9 +1065,9 @@ export function PersonaLibrary() {
                         </div>
                       </div>
 
-                      <Button 
-                        type="submit" 
-                        className="w-full bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold" 
+                      <Button
+                        type="submit"
+                        className="w-full bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold"
                         disabled={generating}
                       >
                         {generating ? (
@@ -1286,11 +1386,11 @@ export function PersonaLibrary() {
                     </div>
 
                     {error && (
-                        <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 text-red-700 dark:text-red-300 rounded-lg">
-                          <p className="font-bold">Generation Error</p>
-                          <p className="text-sm">{error}</p>
-                        </div>
-                      )}
+                      <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 text-red-700 dark:text-red-300 rounded-lg">
+                        <p className="font-bold">Generation Error</p>
+                        <p className="text-sm">{error}</p>
+                      </div>
+                    )}
 
                     <Separator />
 

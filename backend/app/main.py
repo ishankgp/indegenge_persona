@@ -16,7 +16,7 @@ from datetime import datetime
 
 # Note: dotenv loading removed - pass environment variables directly
 
-from . import crud, models, schemas, persona_engine, cohort_engine, document_processor
+from . import crud, models, schemas, persona_engine, cohort_engine, document_processor, avatar_engine
 from .database import engine, get_db
 import shutil
 
@@ -27,6 +27,45 @@ logger = logging.getLogger(__name__)
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
+# Run startup migration to add brand_id and avatar_url columns if missing
+def run_startup_migration():
+    """Add brand_id and avatar_url columns to personas table if they don't exist."""
+    try:
+        from sqlalchemy import inspect, text
+        inspector = inspect(engine)
+        columns = [c['name'] for c in inspector.get_columns('personas')]
+        
+        if 'brand_id' not in columns:
+            logger.info("🔄 Running migration: Adding brand_id column to personas table...")
+            with engine.connect() as conn:
+                # Delete existing personas per user preference for clean start
+                conn.execute(text("DELETE FROM personas"))
+                # Add brand_id column
+                conn.execute(text(
+                    "ALTER TABLE personas ADD COLUMN brand_id INTEGER REFERENCES brands(id)"
+                ))
+                conn.commit()
+            logger.info("✅ Migration complete: brand_id column added")
+        else:
+            logger.info("✅ brand_id column already exists in personas table")
+        
+        # Add avatar_url column if missing
+        if 'avatar_url' not in columns:
+            logger.info("🔄 Running migration: Adding avatar_url column to personas table...")
+            with engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE personas ADD COLUMN avatar_url VARCHAR"
+                ))
+                conn.commit()
+            logger.info("✅ Migration complete: avatar_url column added")
+        else:
+            logger.info("✅ avatar_url column already exists in personas table")
+            
+    except Exception as e:
+        logger.error(f"Migration warning: {e}")
+
+run_startup_migration()
+
 app = FastAPI(
     title="PharmaPersonaSim API",
     description="Transform qualitative personas into quantitative insights using LLMs",
@@ -36,34 +75,42 @@ app = FastAPI(
 
 def transform_to_frontend_format(backend_response: dict) -> dict:
     """Transform backend response to match frontend AnalysisResults interface."""
-    # Transform individual_responses to match frontend expectations
     transformed_responses = []
     for response in backend_response.get('individual_responses', []):
-        # Extract metrics into a flat responses object
-        metrics_data = response.get('metrics', {})
         responses = {}
-        
-        # Convert metrics to frontend format
-        for metric_key, metric_value in metrics_data.items():
-            if isinstance(metric_value, dict) and 'score' in metric_value:
-                responses[metric_key] = metric_value['score']
-            else:
-                responses[metric_key] = metric_value
-        
+        reasoning = response.get('analysis_summary') or response.get('reasoning', '')
+
+        if isinstance(response.get('responses'), dict):
+            responses = response['responses']
+        else:
+            metrics_data = response.get('metrics', {}) or {}
+            for metric_key, metric_value in metrics_data.items():
+                if isinstance(metric_value, dict):
+                    if 'score' in metric_value:
+                        responses[metric_key] = metric_value['score']
+                    elif 'value' in metric_value:
+                        responses[metric_key] = metric_value['value']
+                else:
+                    responses[metric_key] = metric_value
+
         transformed_responses.append({
             'persona_id': response.get('persona_id'),
             'persona_name': response.get('persona_name'),
-            'reasoning': response.get('analysis_summary', ''),
+            'reasoning': reasoning,
             'responses': responses
         })
-    
-    # Transform summary_statistics to match frontend format
-    summary_stats = {}
-    backend_stats = backend_response.get('summary_statistics', {})
-    for metric, stats in backend_stats.items():
-        if isinstance(stats, dict) and 'mean' in stats:
-            summary_stats[f"{metric}_avg"] = stats['mean']
-    
+
+    backend_stats = backend_response.get('summary_statistics', {}) or {}
+    if backend_stats and any(isinstance(v, dict) for v in backend_stats.values()):
+        summary_stats = {}
+        for metric, stats in backend_stats.items():
+            if isinstance(stats, dict) and 'mean' in stats:
+                summary_stats[f"{metric}_avg"] = stats['mean']
+            else:
+                summary_stats[metric] = stats
+    else:
+        summary_stats = backend_stats
+
     return {
         'cohort_size': backend_response.get('cohort_size', 0),
         'stimulus_text': backend_response.get('stimulus_text', ''),
@@ -72,7 +119,7 @@ def transform_to_frontend_format(backend_response: dict) -> dict:
         'summary_statistics': summary_stats,
         'insights': backend_response.get('insights', []),
         'suggestions': backend_response.get('suggestions', []),
-        'preamble': backend_response.get('content_summary', ''),
+        'preamble': backend_response.get('preamble') or backend_response.get('content_summary', ''),
         'created_at': backend_response.get('created_at', '')
     }
 
@@ -149,14 +196,30 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
     """
     Receives user input, calls the persona_engine, saves the result to the database,
     and returns the new persona.
+    
+    If brand_id is provided, the persona will be automatically grounded in that brand's MBT insights.
+    Also generates a DALL-E 3 avatar for the persona.
     """
+    # Fetch brand MBT insights if brand_id is provided
+    brand_insights = None
+    if persona_data.brand_id:
+        brand = db.query(models.Brand).filter(models.Brand.id == persona_data.brand_id).first()
+        if not brand:
+            raise HTTPException(status_code=404, detail="Brand not found")
+        
+        documents = crud.get_brand_documents(db, persona_data.brand_id)
+        aggregated = _aggregate_brand_insights(documents, target_segment=None, limit_per_category=5)
+        brand_insights = _flatten_insights(aggregated)
+    
     # 1. Call the persona engine to generate the full persona JSON
+    # If brand insights exist, include them in generation
     full_persona_json = persona_engine.generate_persona_from_attributes(
         age=persona_data.age,
         gender=persona_data.gender,
         condition=persona_data.condition,
         location=persona_data.location,
-        concerns=persona_data.concerns
+        concerns=persona_data.concerns,
+        brand_insights=brand_insights
     )
     
     if not full_persona_json or full_persona_json == "{}":
@@ -169,14 +232,50 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
         persona_json=full_persona_json
     )
     
+    # 3. Generate avatar using DALL-E 3
+    try:
+        # Parse the persona JSON to extract additional attributes
+        persona_json_parsed = json.loads(full_persona_json)
+        specialty = persona_json_parsed.get("specialty") or persona_json_parsed.get("demographics", {}).get("specialty")
+        persona_type = persona_json_parsed.get("persona_type", "Patient")
+        
+        avatar_url = avatar_engine.generate_avatar(
+            age=persona_data.age,
+            gender=persona_data.gender,
+            persona_type=persona_type,
+            specialty=specialty,
+            name=new_persona.name
+        )
+        
+        if avatar_url:
+            # Update the persona with the avatar URL
+            new_persona.avatar_url = avatar_url
+            db.commit()
+            db.refresh(new_persona)
+            logger.info(f"✅ Avatar generated for persona {new_persona.id}: {avatar_url[:50]}...")
+    except Exception as avatar_error:
+        logger.warning(f"⚠️ Avatar generation failed for persona {new_persona.id}: {avatar_error}")
+        # Don't fail the request if avatar generation fails - persona is still created
+    
     return new_persona
 
 @app.post("/personas/manual", response_model=schemas.Persona)
 async def create_manual_persona(manual_data: dict, db: Session = Depends(get_db)):
     """
     Create a persona manually with detailed attributes provided by the user.
+    
+    If brand_id is provided, the persona will be associated with that brand.
     """
     try:
+        # Extract brand_id if provided
+        brand_id = manual_data.get("brand_id")
+        
+        # Validate brand exists if provided
+        if brand_id:
+            brand = db.query(models.Brand).filter(models.Brand.id == brand_id).first()
+            if not brand:
+                raise HTTPException(status_code=404, detail="Brand not found")
+        
         # Build the persona JSON from the provided data
         persona_json = {
             "name": manual_data.get("name", ""),
@@ -195,7 +294,8 @@ async def create_manual_persona(manual_data: dict, db: Session = Depends(get_db)
             gender=manual_data.get("gender", ""),
             condition=manual_data.get("condition", ""),
             location=manual_data.get("region", ""),  # Map region to location for database compatibility
-            concerns=""  # Manual personas don't have concerns field
+            concerns="",  # Manual personas don't have concerns field
+            brand_id=brand_id
         )
         
         # Save to database
@@ -212,11 +312,21 @@ async def create_manual_persona(manual_data: dict, db: Session = Depends(get_db)
         raise HTTPException(status_code=500, detail=f"Failed to create manual persona: {str(e)}")
 
 @app.get("/personas/", response_model=List[schemas.Persona])
-async def get_all_personas(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+async def get_all_personas(
+    skip: int = 0, 
+    limit: int = 100, 
+    brand_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
     """
-    Returns a list of all personas from the database.
+    Returns a list of personas from the database.
+    
+    If brand_id is provided, returns only personas belonging to that brand.
     """
-    personas = crud.get_personas(db, skip=skip, limit=limit)
+    if brand_id is not None:
+        personas = crud.get_personas_by_brand(db, brand_id=brand_id, skip=skip, limit=limit)
+    else:
+        personas = crud.get_personas(db, skip=skip, limit=limit)
     return personas
 
 @app.put("/personas/{persona_id}", response_model=schemas.Persona)
@@ -305,6 +415,55 @@ async def delete_persona(persona_id: int, db: Session = Depends(get_db)):
     if not success:
         raise HTTPException(status_code=404, detail="Persona not found")
     return Response(status_code=204)
+
+
+@app.post("/personas/{persona_id}/regenerate-avatar", response_model=schemas.Persona)
+async def regenerate_persona_avatar(persona_id: int, db: Session = Depends(get_db)):
+    """
+    Regenerate the avatar for an existing persona using DALL-E 3.
+    
+    This will generate a new, unique avatar based on the persona's demographics
+    and replace the existing avatar URL.
+    """
+    # Get the persona
+    persona = crud.get_persona(db, persona_id)
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    
+    # Parse persona JSON for additional attributes
+    try:
+        persona_json = json.loads(persona.full_persona_json or "{}")
+    except json.JSONDecodeError:
+        persona_json = {}
+    
+    specialty = persona_json.get("specialty") or persona_json.get("demographics", {}).get("specialty")
+    persona_type = persona.persona_type or "Patient"
+    
+    # Generate new avatar
+    try:
+        import random
+        avatar_url = avatar_engine.generate_avatar(
+            age=persona.age,
+            gender=persona.gender,
+            persona_type=persona_type,
+            specialty=specialty,
+            name=f"{persona.name}_regen_{random.randint(1, 10000)}"  # Unique seed for new result
+        )
+        
+        if not avatar_url:
+            raise HTTPException(status_code=500, detail="Failed to generate avatar")
+        
+        # Update the persona with new avatar URL
+        persona.avatar_url = avatar_url
+        db.commit()
+        db.refresh(persona)
+        
+        logger.info(f"✅ Avatar regenerated for persona {persona_id}: {avatar_url[:50]}...")
+        return persona
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to regenerate avatar for persona {persona_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate avatar: {str(e)}")
 
 # --- Saved Simulation Endpoints ---
 
@@ -760,6 +919,32 @@ async def upload_brand_document(
 async def get_brand_documents(brand_id: int, db: Session = Depends(get_db)):
     """List documents for a specific brand."""
     return crud.get_brand_documents(db, brand_id)
+
+@app.get("/api/brands/{brand_id}/personas", response_model=List[schemas.Persona])
+async def get_brand_personas(
+    brand_id: int, 
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(get_db)
+):
+    """List personas belonging to a specific brand."""
+    # Verify brand exists
+    brand = db.query(models.Brand).filter(models.Brand.id == brand_id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    
+    return crud.get_personas_by_brand(db, brand_id, skip=skip, limit=limit)
+
+@app.get("/api/brands/{brand_id}/personas/count")
+async def get_brand_personas_count(brand_id: int, db: Session = Depends(get_db)):
+    """Get the count of personas for a specific brand."""
+    # Verify brand exists
+    brand = db.query(models.Brand).filter(models.Brand.id == brand_id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    
+    count = crud.get_personas_count_by_brand(db, brand_id)
+    return {"brand_id": brand_id, "brand_name": brand.name, "persona_count": count}
 
 @app.get("/api/brands/{brand_id}/context", response_model=schemas.BrandContextResponse)
 async def get_brand_context(

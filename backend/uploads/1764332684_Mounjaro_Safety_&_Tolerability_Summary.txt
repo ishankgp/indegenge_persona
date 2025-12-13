@@ -1,0 +1,28 @@
+Mounjaro Safety Profile: Phase 3 SURPASS Trial Data
+
+Overall Safety Assessment: Mounjaro demonstrated a favorable safety profile across 6,000+ patients in the SURPASS program with median exposure of 2 years. No new safety signals identified compared to GLP-1 RA class.
+
+Gastrointestinal Side Effects (Most Common):
+- Nausea: 20-30% (mostly mild-moderate, transient)
+- Diarrhea: 15-20% 
+- Vomiting: 8-12%
+- Constipation: 6-8%
+
+GI Tolerability Strategies: Side effects peak in first 4-8 weeks then decline substantially. Gradual titration and patient education significantly improve tolerability. Most patients who experience nausea continue therapy successfully.
+
+Hypoglycemia: Very low risk (<2%) when not combined with sulfonylureas or insulin. Dose reduction of concomitant insulin may be needed. This low hypo risk is crucial for patient confidence and safety.
+
+Injection Site Reactions: Minimal (<5%), mostly mild erythema or itching that resolve quickly. Once-weekly dosing reduces overall exposure vs daily injections.
+
+Serious Adverse Events: 
+- Pancreatitis: Rate similar to background T2D population (0.2%)
+- Thyroid C-cell tumors: Boxed warning (class effect), contraindicated in MTC/MEN2 history
+- Acute gallbladder disease: 1.8% (associated with rapid weight loss)
+
+Cardiovascular Safety: SURPASS-CVOT demonstrated non-inferiority for major adverse cardiovascular events vs dulaglutide. Superiority trial ongoing.
+
+Renal Considerations: No dose adjustment needed for mild-moderate impairment. Limited data in severe impairment/ESRD.
+
+Long-term Safety: No unexpected safety findings in 2-year extension studies. Discontinuation due to adverse events: 6.2% (comparable to other GLP-1 RAs).
+
+HCP Confidence: The safety profile allows physicians to prescribe confidently to appropriate patients with clear communication about expected GI effects and mitigation strategies. The low hypoglycemia risk is particularly valued.

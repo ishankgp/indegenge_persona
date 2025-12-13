@@ -31,8 +31,10 @@ def get_openai_client() -> Optional[OpenAI]:
 
     return _openai_client
 
-def create_patient_persona_prompt(age, gender, condition, location, concerns):
+def create_patient_persona_prompt(age, gender, condition, location, concerns, brand_insights: Optional[List[Dict[str, str]]] = None):
     """Creates the exact, detailed prompt for generating a patient persona."""
+    
+    # Base prompt
     prompt = f"""
     **Role:** You are an AI expert in creating realistic, empathetic user personas for the pharmaceutical industry. Your personas must be nuanced and avoid stereotypes.
 
@@ -44,7 +46,24 @@ def create_patient_persona_prompt(age, gender, condition, location, concerns):
     - Primary Medical Condition: "{condition}"
     - Location: {location}
     - Key Concerns: "{concerns}"
-
+"""
+    
+    # Add brand insights context if provided
+    if brand_insights:
+        motivations = [i.get("text") for i in brand_insights if i.get("type") == "Motivation" and i.get("text")]
+        beliefs = [i.get("text") for i in brand_insights if i.get("type") == "Belief" and i.get("text")]
+        tensions = [i.get("text") for i in brand_insights if i.get("type") == "Tension" and i.get("text")]
+        
+        prompt += f"""
+    **Brand Context (MBT Framework):**
+    The persona should be grounded in the following brand-specific insights. Incorporate these naturally into the persona's motivations, beliefs, and pain points:
+    
+    - Motivations from brand research: {motivations[:5] if motivations else ['None provided']}
+    - Beliefs from brand research: {beliefs[:5] if beliefs else ['None provided']}
+    - Tensions/Pain points from brand research: {tensions[:5] if tensions else ['None provided']}
+"""
+    
+    prompt += """
     **Output Format:**
     Generate a response in a pure JSON format. Do not include any text, code block markers, or explanations before or after the JSON object. The JSON object must have the following keys:
     - "name": A realistic first and last name.
@@ -58,18 +77,27 @@ def create_patient_persona_prompt(age, gender, condition, location, concerns):
     """
     return prompt
 
-def generate_persona_from_attributes(age: int, gender: str, condition: str, location: str, concerns: str) -> str:
+def generate_persona_from_attributes(
+    age: int, 
+    gender: str, 
+    condition: str, 
+    location: str, 
+    concerns: str,
+    brand_insights: Optional[List[Dict[str, str]]] = None
+) -> str:
     """
     Takes user input, builds the prompt, calls the OpenAI API,
     and returns the generated JSON as a string.
+    
+    If brand_insights is provided, the persona will be grounded in those MBT insights.
     """
-    prompt = create_patient_persona_prompt(age, gender, condition, location, concerns)
+    prompt = create_patient_persona_prompt(age, gender, condition, location, concerns, brand_insights)
     
     # First check if OpenAI API key is available in environment
     client = get_openai_client()
     if client is None:
         print("OpenAI API key not found in environment, generating mock persona")
-        return generate_mock_persona(age, gender, condition, location, concerns)
+        return generate_mock_persona(age, gender, condition, location, concerns, brand_insights)
 
     try:
         response = client.chat.completions.create(
@@ -90,15 +118,23 @@ def generate_persona_from_attributes(age: int, gender: str, condition: str, loca
             return content
         except (json.JSONDecodeError, ValueError) as e:
             print(f"Invalid JSON from OpenAI API, using mock: {e}")
-            return generate_mock_persona(age, gender, condition, location, concerns)
+            return generate_mock_persona(age, gender, condition, location, concerns, brand_insights)
         
     except Exception as e:
         print(f"OpenAI API error, falling back to mock persona: {e}")
-        return generate_mock_persona(age, gender, condition, location, concerns)
+        return generate_mock_persona(age, gender, condition, location, concerns, brand_insights)
 
-def generate_mock_persona(age: int, gender: str, condition: str, location: str, concerns: str) -> str:
+def generate_mock_persona(
+    age: int, 
+    gender: str, 
+    condition: str, 
+    location: str, 
+    concerns: str,
+    brand_insights: Optional[List[Dict[str, str]]] = None
+) -> str:
     """
     Generate a comprehensive mock persona for demo purposes when OpenAI API is not available.
+    If brand_insights is provided, incorporate them into the persona.
     """
     import random
     
@@ -191,6 +227,25 @@ def generate_mock_persona(age: int, gender: str, condition: str, location: str, 
     else:
         data = condition_data["default"]
     
+    # Extract MBT insights if brand_insights provided
+    motivations = list(data["motivations"])
+    beliefs = list(data["beliefs"])
+    pain_points = list(data["pain_points"])
+    
+    if brand_insights:
+        # Incorporate brand insights into persona
+        brand_motivations = [i.get("text") for i in brand_insights if i.get("type") == "Motivation" and i.get("text")]
+        brand_beliefs = [i.get("text") for i in brand_insights if i.get("type") == "Belief" and i.get("text")]
+        brand_tensions = [i.get("text") for i in brand_insights if i.get("type") == "Tension" and i.get("text")]
+        
+        # Prepend brand insights so they take priority
+        if brand_motivations:
+            motivations = brand_motivations[:3] + motivations[:2]
+        if brand_beliefs:
+            beliefs = brand_beliefs[:3] + beliefs[:2]
+        if brand_tensions:
+            pain_points = brand_tensions[:3] + pain_points[:2]
+    
     persona = {
         "name": name,
         "demographics": {
@@ -201,9 +256,9 @@ def generate_mock_persona(age: int, gender: str, condition: str, location: str, 
         },
         "medical_background": data["medical_bg"],
         "lifestyle_and_values": f"Lives in {location} and works as a {occupation}. Values family time and maintaining good health. Enjoys staying active and informed about health topics. Prioritizes open communication with healthcare providers and appreciates evidence-based treatment approaches.",
-        "motivations": data["motivations"],
-        "beliefs": data["beliefs"],
-        "pain_points": data["pain_points"],
+        "motivations": motivations,
+        "beliefs": beliefs,
+        "pain_points": pain_points,
         "communication_preferences": {
             "preferred_channels": "Healthcare provider discussions, reputable medical websites, patient education materials",
             "information_style": "Clear, factual explanations with practical applications",
@@ -504,8 +559,10 @@ def enrich_persona_from_brand_context(
 
     system_prompt = (
         "You are updating a healthcare persona using verified brand insights. "
-        "Only modify the requested fields and keep all other persona content intact. "
-        "Return the full persona JSON."
+        "For the target fields (motivations, beliefs, pain_points), MERGE the existing values "
+        "with relevant insights from the brand data. Keep existing items that are still relevant, "
+        "add new items from brand insights, and remove duplicates or semantically similar entries. "
+        "Keep all other persona content unchanged. Return the full persona JSON."
     )
 
     user_payload = json.dumps(
@@ -590,15 +647,30 @@ def _fallback_persona_enrichment(
     summary_texts = [insight.get("text") for insight in brand_insights if insight.get("text")]
     summary = summary_texts[:3]
 
+    def merge_unique(existing: List[str], new: List[str]) -> List[str]:
+        """Merge lists and remove exact duplicates."""
+        combined = list(existing or []) + list(new or [])
+        seen = set()
+        result = []
+        for item in combined:
+            normalized = item.strip().lower()
+            if normalized not in seen:
+                seen.add(normalized)
+                result.append(item)
+        return result
+
     if "motivations" in target_fields and summary:
-        persona_copy.setdefault("motivations", [])
-        persona_copy["motivations"].extend(summary)
+        persona_copy["motivations"] = merge_unique(
+            persona_copy.get("motivations", []), summary
+        )
     if "beliefs" in target_fields and summary:
-        persona_copy.setdefault("beliefs", [])
-        persona_copy["beliefs"].extend(summary)
+        persona_copy["beliefs"] = merge_unique(
+            persona_copy.get("beliefs", []), summary
+        )
     if "pain_points" in target_fields and summary:
-        persona_copy.setdefault("pain_points", [])
-        persona_copy["pain_points"].extend(summary)
+        persona_copy["pain_points"] = merge_unique(
+            persona_copy.get("pain_points", []), summary
+        )
 
     return persona_copy
 
@@ -610,3 +682,143 @@ def _fallback_persona_suggestions(brand_insights: List[Dict[str, str]]) -> Dict[
         "beliefs": texts[3:6] or texts[:2],
         "tensions": texts[6:9] or texts[:2],
     }
+
+
+def extract_persona_archetypes(brand_insights: List[Dict[str, str]], limit: int = 3) -> List[Dict[str, Any]]:
+    """
+    Analyze brand insights to identify distinct persona archetypes.
+    Returns a list of archetype definitions (name, description, key traits).
+    """
+    client = get_openai_client()
+    if client is None:
+        # Fallback mock archetypes
+        return [
+            {
+                "name": "The Proactive Researcher",
+                "description": "Highly engaged patient who actively seeks information and treatment options.",
+                "key_traits": ["Information-seeking", "Self-advocate", "Tech-savvy"],
+                "demographics_hint": "Age 30-50, Urban/Suburban"
+            },
+            {
+                "name": "The Overwhelmed Caregiver",
+                "description": "Managing condition for a family member while balancing other responsibilities.",
+                "key_traits": ["Stressed", "Time-poor", "Needs support"],
+                "demographics_hint": "Age 40-60, Female skew"
+            },
+            {
+                "name": "The Skeptical Traditionalist",
+                "description": "Prefers established treatments and relies heavily on doctor's authority.",
+                "key_traits": ["Cautious", "Loyal", "Change-averse"],
+                "demographics_hint": "Age 60+, Rural/Suburban"
+            }
+        ][:limit]
+
+    system_prompt = (
+        "You are a strategic marketing analyst. Analyze the provided brand insights (Motivations, Beliefs, Tensions) "
+        f"to identify {limit} distinct, realistic persona archetypes that represent key segments of the target audience. "
+        "Each archetype should have a unique behavioral profile."
+    )
+
+    user_payload = json.dumps(brand_insights[:50])  # Limit input size
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Brand Insights:\n{user_payload}\n\nGenerate {limit} distinct archetypes."},
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=1000,
+        )
+        content = response.choices[0].message.content or "{}"
+        parsed = json.loads(content)
+        
+        # Handle various potential JSON structures
+        archetypes = parsed.get("archetypes") or parsed.get("personas") or []
+        if not archetypes and isinstance(parsed, list):
+            archetypes = parsed
+            
+        # Normalize output
+        normalized = []
+        for arch in archetypes:
+            normalized.append({
+                "name": arch.get("name", "Unknown Archetype"),
+                "description": arch.get("description", "No description provided."),
+                "key_traits": arch.get("key_traits", []) or arch.get("traits", []),
+                "demographics_hint": arch.get("demographics_hint") or arch.get("demographics", "General")
+            })
+            
+        return normalized[:limit]
+        
+    except Exception as e:
+        print(f"⚠️ Archetype extraction failed: {e}")
+        return []
+
+
+def generate_persona_from_archetype(archetype: Dict[str, Any], brand_insights: Optional[List[Dict[str, str]]] = None) -> str:
+    """
+    Generate a full persona JSON based on an archetype definition and optional brand insights.
+    """
+    client = get_openai_client()
+    
+    # Construct prompt based on archetype
+    prompt = f"""
+    **Role:** You are an AI expert in creating realistic user personas.
+    
+    **Task:** Generate a detailed persona based on the following archetype:
+    
+    **Archetype:** {archetype.get('name')}
+    **Description:** {archetype.get('description')}
+    **Key Traits:** {', '.join(archetype.get('key_traits', []))}
+    **Demographics Hint:** {archetype.get('demographics_hint')}
+    """
+    
+    # Add brand insights context if provided
+    if brand_insights:
+        motivations = [i.get("text") for i in brand_insights if i.get("type") == "Motivation" and i.get("text")]
+        beliefs = [i.get("text") for i in brand_insights if i.get("type") == "Belief" and i.get("text")]
+        tensions = [i.get("text") for i in brand_insights if i.get("type") == "Tension" and i.get("text")]
+        
+        prompt += f"""
+    **Brand Context:**
+    Incorporate these specific insights into the persona's profile where relevant:
+    - Motivations: {motivations[:3]}
+    - Beliefs: {beliefs[:3]}
+    - Tensions: {tensions[:3]}
+    """
+    
+    prompt += """
+    **Output Format:**
+    Generate a pure JSON object with the following structure (same as standard persona generation):
+    {
+        "name": "Full Name",
+        "demographics": { "age": int, "gender": "string", "location": "string", "occupation": "string" },
+        "medical_background": "string",
+        "lifestyle_and_values": "string",
+        "motivations": ["string"],
+        "beliefs": ["string"],
+        "pain_points": ["string"],
+        "communication_preferences": { ... },
+        "persona_type": "Patient" (or HCP if implied by archetype),
+        "specialty": "string" (if HCP)
+    }
+    """
+    
+    if client is None:
+        # Fallback to mock generation using hints
+        return generate_mock_persona(
+            age=45, gender="Female", condition="General", location="USA", concerns="General", brand_insights=brand_insights
+        )
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            max_tokens=1500,
+        )
+        return response.choices[0].message.content or "{}"
+    except Exception as e:
+        print(f"⚠️ Persona generation from archetype failed: {e}")
+        return "{}"
