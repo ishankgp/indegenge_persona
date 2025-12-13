@@ -40,6 +40,8 @@ export function CreatePersona() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const urlBrandId = searchParams.get('brand_id')
+  const urlCondition = searchParams.get('condition')
+  const urlPersonaType = searchParams.get('persona_type')
 
   const [generating, setGenerating] = useState(false)
   const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 })
@@ -51,7 +53,7 @@ export function CreatePersona() {
     name: "",
     age: "",
     gender: "",
-    condition: "",
+    condition: urlCondition || "",
     region: "",
     occupation: "",
     medical_background: "",
@@ -70,7 +72,7 @@ export function CreatePersona() {
   const [aiFormData, setAiFormData] = useState({
     age: '',
     gender: '',
-    condition: '',
+    condition: urlCondition || '',
     region: '',
     concerns: "",
     count: '1'

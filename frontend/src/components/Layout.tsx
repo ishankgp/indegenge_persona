@@ -10,7 +10,8 @@ import {
   Users,
   Library,
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  PieChart
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -32,6 +33,12 @@ const navigation = [
     description: 'Browse & manage personas',
     href: '/personas',
     icon: Users,
+  },
+  {
+    name: 'Persona Coverage',
+    description: 'Quick view for marketers',
+    href: '/coverage',
+    icon: PieChart,
   },
   {
     name: 'Brand Library',
