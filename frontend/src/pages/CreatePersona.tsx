@@ -40,7 +40,7 @@ export function CreatePersona() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const urlBrandId = searchParams.get('brand_id')
-  
+
   const [generating, setGenerating] = useState(false)
   const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 })
   const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual")
@@ -579,7 +579,7 @@ export function CreatePersona() {
                       </div>
 
                       <div>
-                        <Label htmlFor="region">Region *</Label>
+                        <Label htmlFor="region">Country *</Label>
                         <Input
                           id="region"
                           name="region"
@@ -587,7 +587,7 @@ export function CreatePersona() {
                           onChange={handleManualInputChange}
                           required
                           className="mt-1"
-                          placeholder="Enter region"
+                          placeholder="e.g., United States, UK"
                         />
                       </div>
                     </div>
@@ -798,17 +798,18 @@ export function CreatePersona() {
                     <div className="space-y-2">
                       <Label htmlFor="ai-region" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                         <MapPin className="h-4 w-4 text-gray-500" />
-                        Region
+                        Country
                       </Label>
                       <Input
                         id="ai-region"
                         name="region"
-                        placeholder="e.g., Austin, Texas"
+                        placeholder="e.g., USA, Germany, Japan"
                         value={aiFormData.region}
                         onChange={handleAiInputChange}
                         className="border-gray-300 focus:border-primary focus:ring-primary"
                         required
                       />
+
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="ai-count" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
