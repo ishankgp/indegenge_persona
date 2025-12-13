@@ -96,6 +96,8 @@ def transform_to_frontend_format(backend_response: dict) -> dict:
         transformed_responses.append({
             'persona_id': response.get('persona_id'),
             'persona_name': response.get('persona_name'),
+            'avatar_url': response.get('avatar_url'),
+            'persona_type': response.get('persona_type'),
             'reasoning': reasoning,
             'responses': responses
         })

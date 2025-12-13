@@ -226,7 +226,7 @@ def get_fallback_avatar(persona_type: str = "Patient", gender: str = "Male") -> 
     return f"https://ui-avatars.com/api/?name={initial}&background={background}&color={color}&size=256&bold=true"
 
 
-async def regenerate_avatar_for_persona(persona_data: Dict[str, Any]) -> Optional[str]:
+def regenerate_avatar_for_persona(persona_data: Dict[str, Any]) -> Optional[str]:
     """
     Regenerate an avatar for an existing persona.
     
