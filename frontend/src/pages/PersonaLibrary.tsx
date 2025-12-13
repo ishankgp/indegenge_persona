@@ -55,6 +55,7 @@ import { cn } from "@/lib/utils"
 interface Persona {
   id: number
   name: string
+  avatar_url?: string
   persona_type: string
   age: number
   gender: string
@@ -92,7 +93,7 @@ export function PersonaLibrary() {
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  
+
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [selectedBrandId, setSelectedBrandId] = useState<string>(searchParams.get('brand_id') || "all");
@@ -225,7 +226,7 @@ export function PersonaLibrary() {
     try {
       const count = parseInt(formData.count) || 1;
       setGenerationProgress({ current: 0, total: count });
-      
+
       const basePersonaData = {
         age: age,
         gender: formData.gender,
@@ -237,20 +238,20 @@ export function PersonaLibrary() {
       const createdPersonas = [];
       for (let i = 0; i < count; i++) {
         setGenerationProgress({ current: i + 1, total: count });
-        
+
         const variations = [
-          '', ' with family history', ' seeking treatment options', 
+          '', ' with family history', ' seeking treatment options',
           ' concerned about side effects', ' looking for lifestyle changes',
           ' with financial concerns', ' preferring natural remedies',
           ' with mobility limitations', ' living in rural area', ' with strong family support'
         ];
         const variation = variations[i % variations.length];
-        
+
         const personaData = {
           ...basePersonaData,
           concerns: formData.concerns + variation
         };
-        
+
         const newPersona = await PersonasAPI.generate(personaData);
         createdPersonas.push(newPersona);
       }
@@ -357,7 +358,7 @@ export function PersonaLibrary() {
         setBulkTemplates([{ id: "1", age: "", gender: "", condition: "", location: "", concerns: "" }]);
         setCreationMode("single");
       }
-      
+
       alert(`Bulk Generation Complete: Successfully created ${successfulCreations} personas. ${failedCreations > 0 ? `Failed to create ${failedCreations}.` : ''}`);
 
       if (failedCreations > 0) {
@@ -496,10 +497,32 @@ export function PersonaLibrary() {
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-xl blur-lg opacity-50"></div>
-                <div className="relative p-2.5 bg-gradient-to-br from-primary to-secondary rounded-xl">
-                  <User className="h-5 w-5 text-white" />
-                </div>
+                {persona.avatar_url ? (
+                  <>
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-xl blur-lg opacity-50"></div>
+                    <img
+                      src={persona.avatar_url}
+                      alt={persona.name}
+                      className="relative w-12 h-12 rounded-xl object-cover border-2 border-white shadow-lg"
+                      onError={(e) => {
+                        // Fallback to icon if image fails to load
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        target.nextElementSibling?.classList.remove('hidden');
+                      }}
+                    />
+                    <div className="hidden relative p-2.5 bg-gradient-to-br from-primary to-secondary rounded-xl">
+                      <User className="h-5 w-5 text-white" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-xl blur-lg opacity-50"></div>
+                    <div className="relative p-2.5 bg-gradient-to-br from-primary to-secondary rounded-xl">
+                      <User className="h-5 w-5 text-white" />
+                    </div>
+                  </>
+                )}
               </div>
               <div>
                 <CardTitle className="text-lg font-semibold text-gray-900 dark:text-gray-100 group-hover:text-primary transition-colors">
@@ -699,7 +722,7 @@ export function PersonaLibrary() {
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 {/* Search */}
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -854,7 +877,7 @@ export function PersonaLibrary() {
                       <Wand2 className="h-6 w-6" />
                       <span>Prompt-Based</span>
                     </Button>
-                    <VeevaCRMImporter 
+                    <VeevaCRMImporter
                       onImportComplete={() => {
                         fetchPersonas();
                         setActiveTab("view");
@@ -1042,9 +1065,9 @@ export function PersonaLibrary() {
                         </div>
                       </div>
 
-                      <Button 
-                        type="submit" 
-                        className="w-full bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold" 
+                      <Button
+                        type="submit"
+                        className="w-full bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold"
                         disabled={generating}
                       >
                         {generating ? (
@@ -1363,11 +1386,11 @@ export function PersonaLibrary() {
                     </div>
 
                     {error && (
-                        <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 text-red-700 dark:text-red-300 rounded-lg">
-                          <p className="font-bold">Generation Error</p>
-                          <p className="text-sm">{error}</p>
-                        </div>
-                      )}
+                      <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 text-red-700 dark:text-red-300 rounded-lg">
+                        <p className="font-bold">Generation Error</p>
+                        <p className="text-sm">{error}</p>
+                      </div>
+                    )}
 
                     <Separator />
 

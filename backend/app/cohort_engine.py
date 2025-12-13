@@ -291,6 +291,8 @@ def analyze_persona_response(
     ]
     try:
         data = _chat_json(messages)
+        if data.get("error"):
+            raise RuntimeError(data["error"])
         filtered = {}
         for metric in normalized_metrics:
             if metric in data.get('responses', {}):
@@ -535,6 +537,8 @@ def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: Lis
         individual_responses.append({
             'persona_id': persona.id,
             'persona_name': persona.name,
+            'avatar_url': getattr(persona, 'avatar_url', None),
+            'persona_type': persona_type,
             'responses': analysis_result['responses'],
             'reasoning': analysis_result['reasoning']
         })

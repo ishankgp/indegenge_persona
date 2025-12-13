@@ -1,14 +1,27 @@
 import os
 from pypdf import PdfReader
 from openai import OpenAI
+from typing import Optional
 import logging
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+_openai_client: Optional[OpenAI] = None
+
+
+def _get_openai_client() -> Optional[OpenAI]:
+    """Lazily initialize an OpenAI client when an API key is available."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI(api_key=api_key)
+
+    return _openai_client
 
 def extract_text(filepath: str) -> str:
     """
@@ -40,6 +53,11 @@ def classify_document(text: str) -> str:
     """
     if not text:
         return "Unclassified / Image-only"
+
+    client = _get_openai_client()
+    if client is None:
+        logger.warning("OpenAI API key not configured; returning offline classification.")
+        return "Unclassified (Offline)"
 
     # Truncate text to first 1000 chars to save tokens, usually enough for classification
     truncated_text = text[:1000]

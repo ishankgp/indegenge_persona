@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import MetricCard from '@/components/analytics/MetricCard';
 import { computeScoreColor, computeScoreProgress, getSentimentDescriptor } from '@/lib/analytics';
-import type { AnalysisResults, AnalyzedMetricKey, IndividualResponseRow } from '@/types/analytics';
+import type { AnalysisResults, AnalyzedMetricKey, IndividualResponseRow, PersonaResponseScores } from '@/types/analytics';
 import {
   TrendingUp,
   TrendingDown,
@@ -109,6 +109,65 @@ export function Analytics() {
     preamble,
     created_at
   } = analysisResults;
+
+  const metricPresent = (...keys: string[]) =>
+    keys.some((key) => metrics_analyzed.includes(key as AnalyzedMetricKey));
+
+  const getResponseValue = (
+    row: IndividualResponseRow,
+    key: keyof PersonaResponseScores,
+    legacyKey?: keyof PersonaResponseScores
+  ) => {
+    const responses = row?.responses || {};
+    const value = responses[key];
+    if (value !== undefined && value !== null) {
+      return value;
+    }
+    if (legacyKey) {
+      const legacyValue = responses[legacyKey];
+      if (legacyValue !== undefined && legacyValue !== null) {
+        return legacyValue;
+      }
+    }
+    return undefined;
+  };
+
+  const getNumericScore = (
+    row: IndividualResponseRow,
+    key: keyof PersonaResponseScores,
+    legacyKey?: keyof PersonaResponseScores
+  ): number | undefined => {
+    const value = getResponseValue(row, key, legacyKey);
+    if (typeof value === 'number') {
+      return value;
+    }
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+    return undefined;
+  };
+
+  const getConcernsList = (row: IndividualResponseRow): string[] => {
+    const value = getResponseValue(row, 'key_concerns', 'key_concern_flagged');
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value.filter(Boolean).map((item) => String(item));
+    }
+    if (typeof value === 'string') {
+      return [value];
+    }
+    if (typeof value === 'number') {
+      return [value.toString()];
+    }
+    return [];
+  };
+
+  const summaryIntent = summary_statistics.intent_to_action_avg ?? summary_statistics.purchase_intent_avg;
+  const summaryEmotion = summary_statistics.emotional_response_avg ?? summary_statistics.sentiment_avg;
+  const summaryTrust = summary_statistics.brand_trust_avg ?? summary_statistics.trust_in_brand_avg;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
@@ -244,31 +303,31 @@ export function Analytics() {
 
         {/* Key Metrics Grid - Enhanced */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          {summary_statistics.purchase_intent_avg !== undefined && (
+          {summaryIntent !== undefined && (
             <MetricCard
               title="Average Purchase Intent"
-              value={summary_statistics.purchase_intent_avg.toFixed(1)}
+              value={summaryIntent.toFixed(1)}
               subtitle="Scale of 1-10"
               icon={Target}
-              trend={summary_statistics.purchase_intent_avg > 5 ? 'up' : 'down'}
+              trend={summaryIntent > 5 ? 'up' : 'down'}
               color="primary"
             />
           )}
-          {summary_statistics.sentiment_avg !== undefined && (
+          {summaryEmotion !== undefined && (
             <MetricCard
               title="Average Sentiment"
               value={
                 <div className="flex items-center gap-2">
                   {(() => {
-                    const d = getSentimentDescriptor(summary_statistics.sentiment_avg);
+                    const d = getSentimentDescriptor(summaryEmotion);
                     return (
                       <span className={d.color}>
-                        {summary_statistics.sentiment_avg.toFixed(2)}
+                        {summaryEmotion.toFixed(2)}
                       </span>
                     );
                   })()}
                   {(() => {
-                    const d = getSentimentDescriptor(summary_statistics.sentiment_avg);
+                    const d = getSentimentDescriptor(summaryEmotion);
                     if (d.iconTone === 'up') return <TrendingUp className="h-4 w-4 text-emerald-500" />;
                     if (d.iconTone === 'down') return <TrendingDown className="h-4 w-4 text-red-500" />;
                     return <Minus className="h-4 w-4 text-gray-500" />;
@@ -280,13 +339,13 @@ export function Analytics() {
               color="secondary"
             />
           )}
-          {summary_statistics.trust_in_brand_avg !== undefined && (
+          {summaryTrust !== undefined && (
             <MetricCard
               title="Average Brand Trust"
-              value={summary_statistics.trust_in_brand_avg.toFixed(1)}
+              value={summaryTrust.toFixed(1)}
               subtitle="Scale of 1-10"
               icon={Shield}
-              trend={summary_statistics.trust_in_brand_avg > 5 ? 'up' : 'down'}
+              trend={summaryTrust > 5 ? 'up' : 'down'}
               color="success"
             />
           )}
@@ -337,26 +396,24 @@ export function Analytics() {
 
         {/* Message Refinement Suggestions - NEW */}
         {individual_responses && individual_responses.length > 0 && (() => {
-          // Identify low-scoring personas
-          const lowScorePersonas = individual_responses.filter((r: any) => {
-            const trustScore = r.trust_in_brand ?? r.purchase_intent ?? 5;
-            return trustScore < 5;
+          const lowScorePersonas = individual_responses.filter((row) => {
+            const trustScore = getNumericScore(row, 'brand_trust', 'trust_in_brand');
+            const intentScore = getNumericScore(row, 'intent_to_action', 'purchase_intent');
+            const score = trustScore ?? intentScore;
+            return typeof score === 'number' && score < 5;
           });
 
-          // Group concerns from low-scoring personas
-          const allConcerns = lowScorePersonas
-            .flatMap((r: any) => r.concerns_raised || [])
-            .filter(Boolean);
-          const uniqueConcerns = [...new Set(allConcerns)].slice(0, 5);
+          const hasConcern = (keywords: string[]) =>
+            lowScorePersonas.some((row) =>
+              getConcernsList(row).some((concern) => {
+                const lower = concern.toLowerCase();
+                return keywords.some((keyword) => lower.includes(keyword));
+              })
+            );
 
-          // Generate suggestions based on concerns
-          const suggestions: Array<{ issue: string, suggestion: string, segment: string }> = [];
+          const suggestions: Array<{ issue: string; suggestion: string; segment: string }> = [];
 
-          if (lowScorePersonas.some((r: any) =>
-            (r.concerns_raised || []).some((c: string) =>
-              c.toLowerCase().includes('cost') || c.toLowerCase().includes('price') || c.toLowerCase().includes('afford')
-            )
-          )) {
+          if (hasConcern(['cost', 'price', 'afford'])) {
             suggestions.push({
               issue: "Cost sensitivity detected",
               suggestion: "Add language about patient assistance programs, copay cards, or insurance coverage options",
@@ -364,11 +421,7 @@ export function Analytics() {
             });
           }
 
-          if (lowScorePersonas.some((r: any) =>
-            (r.concerns_raised || []).some((c: string) =>
-              c.toLowerCase().includes('side effect') || c.toLowerCase().includes('safety') || c.toLowerCase().includes('risk')
-            )
-          )) {
+          if (hasConcern(['side effect', 'safety', 'risk'])) {
             suggestions.push({
               issue: "Safety concerns identified",
               suggestion: "Lead with safety profile data and tolerability messaging before efficacy claims",
@@ -376,11 +429,7 @@ export function Analytics() {
             });
           }
 
-          if (lowScorePersonas.some((r: any) =>
-            (r.concerns_raised || []).some((c: string) =>
-              c.toLowerCase().includes('complex') || c.toLowerCase().includes('confus') || c.toLowerCase().includes('understand')
-            )
-          )) {
+          if (hasConcern(['complex', 'confus', 'understand'])) {
             suggestions.push({
               issue: "Message complexity issues",
               suggestion: "Simplify clinical language; use patient-friendly terms and visual explanations",
@@ -388,15 +437,6 @@ export function Analytics() {
             });
           }
 
-          if (lowScorePersonas.some((r: any) => r.persona_condition?.toLowerCase().includes('diabet'))) {
-            suggestions.push({
-              issue: "Diabetes patient concerns",
-              suggestion: "Emphasize blood sugar control benefits and A1C improvement data",
-              segment: "Diabetes Patients"
-            });
-          }
-
-          // Add a general suggestion if we have low scores but no specific pattern
           if (suggestions.length === 0 && lowScorePersonas.length > 0) {
             suggestions.push({
               issue: "General engagement gap",
@@ -498,7 +538,7 @@ export function Analytics() {
                   <tr>
                     <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Persona</th>
                     <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Reasoning</th>
-                    {metrics_analyzed.includes('purchase_intent') && (
+                    {metricPresent('intent_to_action', 'purchase_intent') && (
                       <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
                         <div className="flex items-center justify-center gap-1">
                           <Target className="h-4 w-4" />
@@ -506,7 +546,7 @@ export function Analytics() {
                         </div>
                       </th>
                     )}
-                    {metrics_analyzed.includes('sentiment') && (
+                    {metricPresent('emotional_response', 'sentiment') && (
                       <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
                         <div className="flex items-center justify-center gap-1">
                           <Brain className="h-4 w-4" />
@@ -514,7 +554,7 @@ export function Analytics() {
                         </div>
                       </th>
                     )}
-                    {metrics_analyzed.includes('trust_in_brand') && (
+                    {metricPresent('brand_trust', 'trust_in_brand') && (
                       <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
                         <div className="flex items-center justify-center gap-1">
                           <Shield className="h-4 w-4" />
@@ -522,7 +562,7 @@ export function Analytics() {
                         </div>
                       </th>
                     )}
-                    {metrics_analyzed.includes('message_clarity') && (
+                    {metricPresent('message_clarity') && (
                       <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
                         <div className="flex items-center justify-center gap-1">
                           <MessageSquare className="h-4 w-4" />
@@ -530,7 +570,7 @@ export function Analytics() {
                         </div>
                       </th>
                     )}
-                    {metrics_analyzed.includes('key_concern_flagged') && (
+                    {metricPresent('key_concerns', 'key_concern_flagged') && (
                       <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
                         <div className="flex items-center justify-center gap-1">
                           <AlertTriangle className="h-4 w-4" />
@@ -545,77 +585,118 @@ export function Analytics() {
                     <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                       <td className="p-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold">
+                          {response.avatar_url ? (
+                            <img
+                              src={response.avatar_url}
+                              alt={response.persona_name}
+                              className="w-10 h-10 rounded-full object-cover border-2 border-primary/20"
+                              onError={(e) => {
+                                // Fallback to initials if image fails
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                target.nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold ${response.avatar_url ? 'hidden' : ''}`}>
                             {response.persona_name.charAt(0)}
                           </div>
                           <div>
                             <div className="font-medium text-gray-900 dark:text-gray-100">{response.persona_name}</div>
-                            <div className="text-xs text-gray-500">ID: {response.persona_id}</div>
+                            <div className="text-xs text-gray-500 flex items-center gap-1">
+                              <span>ID: {response.persona_id}</span>
+                              {response.persona_type && (
+                                <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs">{response.persona_type}</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
                       <td className="p-4 max-w-md">
                         <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{response.reasoning}</p>
                       </td>
-                      {metrics_analyzed.includes('purchase_intent') && (
-                        <td className="p-4 text-center">
-                          <div className="flex flex-col items-center gap-1">
-                            <span className={`text-lg font-bold ${computeScoreColor(response.responses.purchase_intent || 0)}`}>
-                              {response.responses.purchase_intent}
-                            </span>
-                            <Progress
-                              value={computeScoreProgress(response.responses.purchase_intent || 0)}
-                              className="w-16 h-1.5"
-                            />
-                          </div>
-                        </td>
-                      )}
-                      {metrics_analyzed.includes('sentiment') && (
+                      {metricPresent('intent_to_action', 'purchase_intent') && (
                         <td className="p-4 text-center">
                           {(() => {
-                            const d = getSentimentDescriptor(response.responses.sentiment || 0);
+                            const intentScore = getNumericScore(response, 'intent_to_action', 'purchase_intent');
                             return (
-                              <Badge className={d.badgeClassName}>
-                                {d.level}
+                              <div className="flex flex-col items-center gap-1">
+                                <span className={`text-lg font-bold ${computeScoreColor(intentScore ?? 0)}`}>
+                                  {intentScore ?? '—'}
+                                </span>
+                                <Progress
+                                  value={computeScoreProgress(intentScore ?? 0)}
+                                  className="w-16 h-1.5"
+                                />
+                              </div>
+                            );
+                          })()}
+                        </td>
+                      )}
+                      {metricPresent('emotional_response', 'sentiment') && (
+                        <td className="p-4 text-center">
+                          {(() => {
+                            const sentimentScore = getNumericScore(response, 'emotional_response', 'sentiment') ?? 0;
+                            const descriptor = getSentimentDescriptor(sentimentScore);
+                            return (
+                              <>
+                                <Badge className={descriptor.badgeClassName}>
+                                  {descriptor.level}
+                                </Badge>
+                                <div className="text-xs mt-1 text-gray-500">
+                                  {sentimentScore.toFixed(2)}
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </td>
+                      )}
+                      {metricPresent('brand_trust', 'trust_in_brand') && (
+                        <td className="p-4 text-center">
+                          {(() => {
+                            const trustScore = getNumericScore(response, 'brand_trust', 'trust_in_brand');
+                            return (
+                              <div className="flex flex-col items-center gap-1">
+                                <span className={`text-lg font-bold ${computeScoreColor(trustScore ?? 0)}`}>
+                                  {trustScore ?? '—'}
+                                </span>
+                                <Progress
+                                  value={computeScoreProgress(trustScore ?? 0)}
+                                  className="w-16 h-1.5"
+                                />
+                              </div>
+                            );
+                          })()}
+                        </td>
+                      )}
+                      {metricPresent('message_clarity') && (
+                        <td className="p-4 text-center">
+                          {(() => {
+                            const clarityScore = getNumericScore(response, 'message_clarity');
+                            return (
+                              <div className="flex flex-col items-center gap-1">
+                                <span className={`text-lg font-bold ${computeScoreColor(clarityScore ?? 0)}`}>
+                                  {clarityScore ?? '—'}
+                                </span>
+                                <Progress
+                                  value={computeScoreProgress(clarityScore ?? 0)}
+                                  className="w-16 h-1.5"
+                                />
+                              </div>
+                            );
+                          })()}
+                        </td>
+                      )}
+                      {metricPresent('key_concerns', 'key_concern_flagged') && (
+                        <td className="p-4">
+                          {(() => {
+                            const concernValue = getResponseValue(response, 'key_concerns', 'key_concern_flagged');
+                            return (
+                              <Badge variant="outline" className="text-xs">
+                                {concernValue ? String(concernValue) : '—'}
                               </Badge>
                             );
                           })()}
-                          <div className="text-xs mt-1 text-gray-500">
-                            {response.responses.sentiment?.toFixed(2)}
-                          </div>
-                        </td>
-                      )}
-                      {metrics_analyzed.includes('trust_in_brand') && (
-                        <td className="p-4 text-center">
-                          <div className="flex flex-col items-center gap-1">
-                            <span className={`text-lg font-bold ${computeScoreColor(response.responses.trust_in_brand || 0)}`}>
-                              {response.responses.trust_in_brand}
-                            </span>
-                            <Progress
-                              value={computeScoreProgress(response.responses.trust_in_brand || 0)}
-                              className="w-16 h-1.5"
-                            />
-                          </div>
-                        </td>
-                      )}
-                      {metrics_analyzed.includes('message_clarity') && (
-                        <td className="p-4 text-center">
-                          <div className="flex flex-col items-center gap-1">
-                            <span className={`text-lg font-bold ${computeScoreColor(response.responses.message_clarity || 0)}`}>
-                              {response.responses.message_clarity}
-                            </span>
-                            <Progress
-                              value={computeScoreProgress(response.responses.message_clarity || 0)}
-                              className="w-16 h-1.5"
-                            />
-                          </div>
-                        </td>
-                      )}
-                      {metrics_analyzed.includes('key_concern_flagged') && (
-                        <td className="p-4">
-                          <Badge variant="outline" className="text-xs">
-                            {response.responses.key_concern_flagged}
-                          </Badge>
                         </td>
                       )}
                     </tr>

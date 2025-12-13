@@ -5,6 +5,7 @@ import json
 
 class PersonaBase(BaseModel):
     name: str
+    avatar_url: Optional[str] = None  # DALL-E 3 generated avatar image URL
     persona_type: str = "Patient"
     age: int
     gender: str
@@ -34,6 +35,7 @@ class PersonaCreate(BaseModel):
 
 class PersonaUpdate(BaseModel):
     name: Optional[str] = None
+    avatar_url: Optional[str] = None
     persona_type: Optional[str] = None
     persona_subtype: Optional[str] = None
     tagline: Optional[str] = None

@@ -133,6 +133,7 @@ export const PersonasAPI = {
   update: (id: number, payload: any) => api.put(`/personas/${id}`, payload).then(r => r.data),
   enrichFromBrand: (id: number, payload: { brand_id: number; target_segment?: string; target_fields?: string[] }) =>
     api.post(`/personas/${id}/enrich-from-brand`, payload).then(r => r.data),
+  regenerateAvatar: (id: number) => api.post(`/personas/${id}/regenerate-avatar`).then(r => r.data),
 };
 
 export interface BrandInsight {

@@ -7,6 +7,7 @@ class Persona(Base):
     __tablename__ = "personas"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
+    avatar_url = Column(String, nullable=True)  # DALL-E 3 generated avatar image URL
     persona_type = Column(String, default="Patient")
     persona_subtype = Column(String, nullable=True)
     tagline = Column(Text, nullable=True)

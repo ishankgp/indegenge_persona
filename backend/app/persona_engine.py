@@ -682,3 +682,143 @@ def _fallback_persona_suggestions(brand_insights: List[Dict[str, str]]) -> Dict[
         "beliefs": texts[3:6] or texts[:2],
         "tensions": texts[6:9] or texts[:2],
     }
+
+
+def extract_persona_archetypes(brand_insights: List[Dict[str, str]], limit: int = 3) -> List[Dict[str, Any]]:
+    """
+    Analyze brand insights to identify distinct persona archetypes.
+    Returns a list of archetype definitions (name, description, key traits).
+    """
+    client = get_openai_client()
+    if client is None:
+        # Fallback mock archetypes
+        return [
+            {
+                "name": "The Proactive Researcher",
+                "description": "Highly engaged patient who actively seeks information and treatment options.",
+                "key_traits": ["Information-seeking", "Self-advocate", "Tech-savvy"],
+                "demographics_hint": "Age 30-50, Urban/Suburban"
+            },
+            {
+                "name": "The Overwhelmed Caregiver",
+                "description": "Managing condition for a family member while balancing other responsibilities.",
+                "key_traits": ["Stressed", "Time-poor", "Needs support"],
+                "demographics_hint": "Age 40-60, Female skew"
+            },
+            {
+                "name": "The Skeptical Traditionalist",
+                "description": "Prefers established treatments and relies heavily on doctor's authority.",
+                "key_traits": ["Cautious", "Loyal", "Change-averse"],
+                "demographics_hint": "Age 60+, Rural/Suburban"
+            }
+        ][:limit]
+
+    system_prompt = (
+        "You are a strategic marketing analyst. Analyze the provided brand insights (Motivations, Beliefs, Tensions) "
+        f"to identify {limit} distinct, realistic persona archetypes that represent key segments of the target audience. "
+        "Each archetype should have a unique behavioral profile."
+    )
+
+    user_payload = json.dumps(brand_insights[:50])  # Limit input size
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Brand Insights:\n{user_payload}\n\nGenerate {limit} distinct archetypes."},
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=1000,
+        )
+        content = response.choices[0].message.content or "{}"
+        parsed = json.loads(content)
+        
+        # Handle various potential JSON structures
+        archetypes = parsed.get("archetypes") or parsed.get("personas") or []
+        if not archetypes and isinstance(parsed, list):
+            archetypes = parsed
+            
+        # Normalize output
+        normalized = []
+        for arch in archetypes:
+            normalized.append({
+                "name": arch.get("name", "Unknown Archetype"),
+                "description": arch.get("description", "No description provided."),
+                "key_traits": arch.get("key_traits", []) or arch.get("traits", []),
+                "demographics_hint": arch.get("demographics_hint") or arch.get("demographics", "General")
+            })
+            
+        return normalized[:limit]
+        
+    except Exception as e:
+        print(f"⚠️ Archetype extraction failed: {e}")
+        return []
+
+
+def generate_persona_from_archetype(archetype: Dict[str, Any], brand_insights: Optional[List[Dict[str, str]]] = None) -> str:
+    """
+    Generate a full persona JSON based on an archetype definition and optional brand insights.
+    """
+    client = get_openai_client()
+    
+    # Construct prompt based on archetype
+    prompt = f"""
+    **Role:** You are an AI expert in creating realistic user personas.
+    
+    **Task:** Generate a detailed persona based on the following archetype:
+    
+    **Archetype:** {archetype.get('name')}
+    **Description:** {archetype.get('description')}
+    **Key Traits:** {', '.join(archetype.get('key_traits', []))}
+    **Demographics Hint:** {archetype.get('demographics_hint')}
+    """
+    
+    # Add brand insights context if provided
+    if brand_insights:
+        motivations = [i.get("text") for i in brand_insights if i.get("type") == "Motivation" and i.get("text")]
+        beliefs = [i.get("text") for i in brand_insights if i.get("type") == "Belief" and i.get("text")]
+        tensions = [i.get("text") for i in brand_insights if i.get("type") == "Tension" and i.get("text")]
+        
+        prompt += f"""
+    **Brand Context:**
+    Incorporate these specific insights into the persona's profile where relevant:
+    - Motivations: {motivations[:3]}
+    - Beliefs: {beliefs[:3]}
+    - Tensions: {tensions[:3]}
+    """
+    
+    prompt += """
+    **Output Format:**
+    Generate a pure JSON object with the following structure (same as standard persona generation):
+    {
+        "name": "Full Name",
+        "demographics": { "age": int, "gender": "string", "location": "string", "occupation": "string" },
+        "medical_background": "string",
+        "lifestyle_and_values": "string",
+        "motivations": ["string"],
+        "beliefs": ["string"],
+        "pain_points": ["string"],
+        "communication_preferences": { ... },
+        "persona_type": "Patient" (or HCP if implied by archetype),
+        "specialty": "string" (if HCP)
+    }
+    """
+    
+    if client is None:
+        # Fallback to mock generation using hints
+        return generate_mock_persona(
+            age=45, gender="Female", condition="General", location="USA", concerns="General", brand_insights=brand_insights
+        )
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            max_tokens=1500,
+        )
+        return response.choices[0].message.content or "{}"
+    except Exception as e:
+        print(f"⚠️ Persona generation from archetype failed: {e}")
+        return "{}"

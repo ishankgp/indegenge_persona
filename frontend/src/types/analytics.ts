@@ -21,16 +21,22 @@ export type AnalyzedMetricKey =
   | 'intent_to_action';
 
 export interface SummaryStatistics {
-  purchase_intent_avg?: number;
-  sentiment_avg?: number;
-  trust_in_brand_avg?: number;
+  intent_to_action_avg?: number;
+  purchase_intent_avg?: number;  // legacy alias
+  emotional_response_avg?: number;
+  sentiment_avg?: number;        // legacy alias
+  brand_trust_avg?: number;
+  trust_in_brand_avg?: number;   // legacy alias
   message_clarity_avg?: number;
 }
 
 export interface PersonaResponseScores {
-  purchase_intent?: number;
-  sentiment?: number;
-  trust_in_brand?: number;
+  intent_to_action?: number;
+  purchase_intent?: number;  // legacy alias
+  emotional_response?: number;
+  sentiment?: number;        // legacy alias
+  brand_trust?: number;
+  trust_in_brand?: number;   // legacy alias
   message_clarity?: number;
   key_concern_flagged?: string | boolean | number;
   key_concerns?: string | boolean | number;  // Support both naming conventions
@@ -39,6 +45,8 @@ export interface PersonaResponseScores {
 export interface IndividualResponseRow {
   persona_id: number | string;
   persona_name: string;
+  avatar_url?: string;
+  persona_type?: string;
   reasoning: string;
   responses: PersonaResponseScores;
 }
