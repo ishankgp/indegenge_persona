@@ -79,9 +79,21 @@ export function PersonaCoverage() {
       setPersonas(personasData)
       setBrands(brandsData)
       setError(null)
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching data:", error)
-      setError("Failed to fetch persona coverage data")
+      // Provide more detailed error message
+      let errorMessage = "Failed to fetch persona coverage data"
+      if (error?.response) {
+        // API responded with error status
+        errorMessage = `API Error (${error.response.status}): ${error.response.data?.detail || error.response.statusText || 'Unknown error'}`
+      } else if (error?.request) {
+        // Request was made but no response received
+        errorMessage = "No response from server. Please check if the backend server is running on port 8000."
+      } else if (error?.message) {
+        // Error setting up the request
+        errorMessage = `Network Error: ${error.message}`
+      }
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
