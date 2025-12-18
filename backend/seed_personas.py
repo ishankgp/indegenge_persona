@@ -13,11 +13,11 @@ def seed_personas():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # First, get the Mounjaro brand ID
-    cursor.execute("SELECT id FROM brands WHERE name = 'Mounjaro'")
+    # First, get the Monjuro brand ID
+    cursor.execute("SELECT id FROM brands WHERE name = 'Monjuro'")
     result = cursor.fetchone()
     mounjaro_id = result[0] if result else None
-    print(f"Mounjaro brand ID: {mounjaro_id}")
+    print(f"Monjuro brand ID: {mounjaro_id}")
     
     # Clear existing personas (optional - remove if you want to keep them)
     # cursor.execute("DELETE FROM personas")
