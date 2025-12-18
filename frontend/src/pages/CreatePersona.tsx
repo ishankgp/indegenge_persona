@@ -194,14 +194,6 @@ export function CreatePersona() {
     }))
   }
 
-  const enrichPersonaWithBrand = async (personaId: number, brandId: number | null, targetSegment?: string): Promise<void> => {
-    if (!brandId) return
-    await PersonasAPI.enrichFromBrand(personaId, {
-      brand_id: brandId,
-      target_segment: targetSegment || undefined
-    })
-  }
-
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -487,7 +479,6 @@ export function CreatePersona() {
                     onSelectionChange={setManualSelectedInsights}
                     onSuggestions={setManualSuggestions}
                     onBrandChange={(id) => setManualBrandId(id)}
-                    onTargetSegmentChange={setManualTargetSegment}
                   />
 
                   <div className="flex flex-wrap items-center justify-end gap-3">

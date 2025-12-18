@@ -44,7 +44,6 @@ import {
   Database,
   Trash2,
   Library,
-  Filter,
 } from "lucide-react"
 import { PersonaDetailModal } from "../components/PersonaDetailModal"
 import { useToast } from "@/components/ui/use-toast"
@@ -92,7 +91,6 @@ const conditionColors: Record<string, string> = {
 export function PersonaLibrary() {
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
 
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
