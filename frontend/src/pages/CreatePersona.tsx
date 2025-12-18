@@ -41,7 +41,6 @@ export function CreatePersona() {
   const [searchParams] = useSearchParams()
   const urlBrandId = searchParams.get('brand_id')
   const urlCondition = searchParams.get('condition')
-  const urlPersonaType = searchParams.get('persona_type')
 
   const [generating, setGenerating] = useState(false)
   const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 })
@@ -82,7 +81,6 @@ export function CreatePersona() {
   const [manualSelectedInsights, setManualSelectedInsights] = useState<BrandInsight[]>([])
   const [manualSuggestions, setManualSuggestions] = useState<SuggestionResponse | null>(null)
   const [manualBrandId, setManualBrandId] = useState<number | null>(urlBrandId ? parseInt(urlBrandId) : null)
-  const [manualTargetSegment, setManualTargetSegment] = useState("")
   const [aiBrandId, setAiBrandId] = useState<number | null>(urlBrandId ? parseInt(urlBrandId) : null)
   const [aiTargetSegment, setAiTargetSegment] = useState("")
 
