@@ -41,7 +41,6 @@ export function CreatePersona() {
   const [searchParams] = useSearchParams()
   const urlBrandId = searchParams.get('brand_id')
   const urlCondition = searchParams.get('condition')
-  const urlPersonaType = searchParams.get('persona_type')
 
   const [generating, setGenerating] = useState(false)
   const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 })
@@ -82,7 +81,6 @@ export function CreatePersona() {
   const [manualSelectedInsights, setManualSelectedInsights] = useState<BrandInsight[]>([])
   const [manualSuggestions, setManualSuggestions] = useState<SuggestionResponse | null>(null)
   const [manualBrandId, setManualBrandId] = useState<number | null>(urlBrandId ? parseInt(urlBrandId) : null)
-  const [manualTargetSegment, setManualTargetSegment] = useState("")
   const [aiBrandId, setAiBrandId] = useState<number | null>(urlBrandId ? parseInt(urlBrandId) : null)
   const [aiTargetSegment, setAiTargetSegment] = useState("")
 
@@ -194,14 +192,6 @@ export function CreatePersona() {
       beliefs: mergeValuesWithSlots(prev.beliefs, manualSuggestions.beliefs || []),
       pain_points: mergeValuesWithSlots(prev.pain_points, manualSuggestions.tensions || []),
     }))
-  }
-
-  const enrichPersonaWithBrand = async (personaId: number, brandId: number | null, targetSegment?: string): Promise<void> => {
-    if (!brandId) return
-    await PersonasAPI.enrichFromBrand(personaId, {
-      brand_id: brandId,
-      target_segment: targetSegment || undefined
-    })
   }
 
   const handleManualSubmit = async (e: React.FormEvent) => {
@@ -489,7 +479,6 @@ export function CreatePersona() {
                     onSelectionChange={setManualSelectedInsights}
                     onSuggestions={setManualSuggestions}
                     onBrandChange={(id) => setManualBrandId(id)}
-                    onTargetSegmentChange={setManualTargetSegment}
                   />
 
                   <div className="flex flex-wrap items-center justify-end gap-3">

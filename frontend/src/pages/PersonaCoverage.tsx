@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
-import { PersonasAPI, BrandsAPI } from "@/lib/api"
+import { PersonasAPI, BrandsAPI, getApiBaseUrl } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -79,9 +79,26 @@ export function PersonaCoverage() {
       setPersonas(personasData)
       setBrands(brandsData)
       setError(null)
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching data:", error)
-      setError("Failed to fetch persona coverage data")
+      const apiBaseUrl = getApiBaseUrl() || window.location.origin
+      // Provide more detailed error message
+      let errorMessage = "Failed to fetch persona coverage data"
+      if (error?.response) {
+        // API responded with error status
+        errorMessage = `API Error (${error.response.status}): ${error.response.data?.detail || error.response.statusText || 'Unknown error'}`
+      } else if (error?.request) {
+        // Request was made but no response received
+        errorMessage = `No response from backend API at ${apiBaseUrl}. Please ensure the backend server is deployed and accessible.`
+      } else if (error?.message) {
+        // Error setting up the request
+        errorMessage = `Network Error: ${error.message}`
+      }
+      // Add helpful context for production
+      if (!(import.meta as any).env?.DEV && apiBaseUrl === window.location.origin) {
+        errorMessage += " (Hint: Set VITE_API_URL environment variable in Vercel to point to your backend API)"
+      }
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }

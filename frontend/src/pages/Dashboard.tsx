@@ -15,9 +15,12 @@ import {
   Plus,
   Zap,
   ArrowRight,
-  LayoutDashboard
+  LayoutDashboard,
+  AlertCircle,
+  RefreshCw
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useToast } from "@/components/ui/use-toast"
 
 interface Persona {
   id: number
@@ -33,6 +36,7 @@ interface Persona {
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const { toast } = useToast()
   const [personas, setPersonas] = useState<Persona[]>([])
   const [stats, setStats] = useState<any>({
     total_simulations: 0,
@@ -50,13 +54,25 @@ export default function Dashboard() {
   const fetchData = async () => {
     try {
       setLoading(true)
-      const [personasData, statsData] = await Promise.all([PersonasAPI.list(), StatsAPI.stats()])
-      setPersonas(personasData)
-      setStats(statsData)
       setError(null)
-    } catch (error) {
+      const [personasData, statsData] = await Promise.all([PersonasAPI.list(), StatsAPI.stats()])
+      console.log("Dashboard: Fetched personas:", { count: personasData?.length || 0, data: personasData })
+      setPersonas(Array.isArray(personasData) ? personasData : [])
+      setStats(statsData || {
+        total_simulations: 0,
+        monthly_simulations: 0,
+        avg_response_rate: 0,
+        total_insights: 0,
+      })
+    } catch (error: any) {
       console.error("Error fetching data:", error)
-      setError("Failed to fetch data")
+      const errorMessage = error?.response?.data?.detail || error?.message || "Failed to fetch data. Please check your connection and try again."
+      setError(errorMessage)
+      toast({
+        title: "Error loading dashboard",
+        description: errorMessage,
+        variant: "destructive"
+      })
     } finally {
       setLoading(false)
     }
@@ -121,6 +137,26 @@ export default function Dashboard() {
       </div>
 
       <div className="max-w-7xl mx-auto px-8 py-8 space-y-8">
+      {/* Error Banner */}
+      {error && (
+        <Card className="border-destructive bg-destructive/10">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-destructive" />
+                <div>
+                  <p className="font-medium text-destructive">Failed to load dashboard data</p>
+                  <p className="text-sm text-muted-foreground mt-1">{error}</p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={fetchData}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -238,6 +274,11 @@ export default function Dashboard() {
             <CardContent>
               {loading ? (
                 <div className="flex justify-center py-8 text-muted-foreground">Loading...</div>
+              ) : error ? (
+                <div className="text-center py-8">
+                  <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Unable to load persona distribution</p>
+                </div>
               ) : Object.keys(conditionStats).length > 0 ? (
                 <div className="space-y-4">
                   {Object.entries(conditionStats).map(([condition, count]) => (
@@ -256,8 +297,14 @@ export default function Dashboard() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  No personas available.
+                <div className="text-center py-8">
+                  <Users className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm font-medium text-muted-foreground mb-1">No personas yet</p>
+                  <p className="text-xs text-muted-foreground mb-4">Create your first persona to get started</p>
+                  <Button size="sm" onClick={() => navigate('/create-persona')}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Persona
+                  </Button>
                 </div>
               )}
             </CardContent>
@@ -272,7 +319,14 @@ export default function Dashboard() {
               <CardDescription className="text-xs">Latest updates</CardDescription>
             </CardHeader>
             <CardContent>
-              {personas.length > 0 ? (
+              {loading ? (
+                <div className="flex justify-center py-6 text-muted-foreground text-sm">Loading...</div>
+              ) : error ? (
+                <div className="text-center py-6">
+                  <AlertCircle className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Unable to load recent activity</p>
+                </div>
+              ) : personas.length > 0 ? (
                 <div className="space-y-4">
                   {personas.slice(0, 3).map((persona) => (
                     <div key={persona.id} className="flex items-start gap-3 pb-3 border-b last:border-0 last:pb-0">
@@ -282,15 +336,31 @@ export default function Dashboard() {
                       <div>
                         <p className="text-sm font-medium">{persona.name} created</p>
                         <p className="text-xs text-muted-foreground">
-                          {persona.condition} • {persona.age}y
+                          {persona.condition || 'N/A'} • {persona.age || 'N/A'}y
                         </p>
                       </div>
                     </div>
                   ))}
+                  {personas.length > 3 && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full mt-2"
+                      onClick={() => navigate('/personas')}
+                    >
+                      View all personas <ArrowRight className="ml-2 h-3 w-3" />
+                    </Button>
+                  )}
                 </div>
               ) : (
-                <div className="text-center py-6 text-muted-foreground text-sm">
-                  No recent activity.
+                <div className="text-center py-6">
+                  <Activity className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm font-medium text-muted-foreground mb-1">No recent activity</p>
+                  <p className="text-xs text-muted-foreground mb-4">Create personas to see activity here</p>
+                  <Button size="sm" variant="outline" onClick={() => navigate('/create-persona')}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Persona
+                  </Button>
                 </div>
               )}
             </CardContent>

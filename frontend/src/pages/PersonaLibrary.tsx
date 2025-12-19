@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { useSearchParams, useNavigate } from "react-router-dom"
+import { useSearchParams } from "react-router-dom"
 import { PersonasAPI, BrandsAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -44,7 +44,6 @@ import {
   Database,
   Trash2,
   Library,
-  Filter,
 } from "lucide-react"
 import { PersonaDetailModal } from "../components/PersonaDetailModal"
 import { useToast } from "@/components/ui/use-toast"
@@ -92,7 +91,6 @@ const conditionColors: Record<string, string> = {
 export function PersonaLibrary() {
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
 
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
