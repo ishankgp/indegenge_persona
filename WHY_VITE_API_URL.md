@@ -178,3 +178,4 @@ Should see: `{"message":"PharmaPersonaSim API is running!"}`
 - **Security**: Never commit backend URLs to git - use environment variables
 - **Multiple Environments**: Can have different URLs for staging/production
 
+

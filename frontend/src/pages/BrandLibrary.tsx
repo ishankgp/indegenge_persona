@@ -191,7 +191,7 @@ const BrandLibrary = () => {
                 <SelectTrigger className="w-[240px] bg-white/10 backdrop-blur-sm border-white/20 text-white">
                   <SelectValue placeholder="Select Brand Context" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[100] bg-white dark:bg-gray-900">
                   {brands.map(b => (
                     <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
                   ))}
