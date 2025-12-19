@@ -50,6 +50,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { SavedSimulationsAPI, type SavedSimulation } from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
 
@@ -775,7 +781,20 @@ export function Analytics() {
                         </div>
                       </td>
                       <td className="p-4 max-w-md">
-                        <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{response.reasoning}</p>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 cursor-help">
+                                {response.reasoning}
+                              </p>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-md p-4 bg-white dark:bg-gray-800 shadow-xl">
+                              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                                {response.reasoning}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </td>
                       {metricPresent('intent_to_action', 'purchase_intent') && (
                         <td className="p-4 text-center">
