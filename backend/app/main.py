@@ -142,7 +142,8 @@ def transform_to_frontend_format(backend_response: dict) -> dict:
         'insights': backend_response.get('insights', []),
         'suggestions': backend_response.get('suggestions', []),
         'preamble': backend_response.get('preamble') or backend_response.get('content_summary', ''),
-        'created_at': backend_response.get('created_at', '')
+        'created_at': backend_response.get('created_at', ''),
+        'metric_weights': backend_response.get('metric_weights')
     }
 
 

@@ -630,7 +630,8 @@ def run_cohort_analysis(
         "insights": llm_generated_data.get("cumulative_insights", []),
         "suggestions": llm_generated_data.get("actionable_suggestions", []),
         "preamble": preamble_text,
-        "created_at": datetime.now().isoformat()
+        "created_at": datetime.now().isoformat(),
+        "metric_weights": metric_weights or {}
     }
     
     return final_analysis
