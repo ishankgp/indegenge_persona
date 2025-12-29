@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -31,11 +31,9 @@ import {
   Gauge,
   Lightbulb,
   PlayCircle,
-  Shield,
   Save,
   History,
   Loader2,
-  SlidersHorizontal,
   PieChart,
   LayoutGrid
 } from 'lucide-react';
@@ -80,6 +78,8 @@ import {
 } from "@/components/ui/tooltip";
 import { SavedSimulationsAPI, CohortAPI, type SavedSimulation } from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
+
+type CustomQuestionResponse = { question: string; answer: string };
 
 export function Analytics() {
   const location = useLocation();
@@ -372,6 +372,30 @@ export function Analytics() {
   const primaryScoreMetric = scoreMetrics.find((metric) => metric.id === "brand_trust")
     || scoreMetrics.find((metric) => metric.id === "intent_to_action")
     || scoreMetrics[0]
+
+  const metricChartData = summaryMetricEntries.map(({ metric, value }) => ({
+    metric: metric.label,
+    score: Number(value),
+  }))
+
+  const chartTooltipFormatter: Formatter<number, string> = (value) => {
+    const numeric = typeof value === 'number' ? value : Number(value)
+    return [Number.isFinite(numeric) ? numeric.toFixed(2) : String(value), 'Score']
+  }
+
+  const radarTooltipFormatter: Formatter<number, string> = (value) => {
+    const numeric = typeof value === 'number' ? value : Number(value)
+    return [Number.isFinite(numeric) ? numeric.toFixed(2) : String(value), 'Score']
+  }
+
+  const hasCustomQuestions = (questions?.length ?? 0) > 0
+  const aggregatedCustomQuestions = (questions || []).map((question, idx) => {
+    const answers =
+      individual_responses
+        ?.map((r) => r.answers?.[idx])
+        .filter((a): a is string => typeof a === 'string' && a.trim().length > 0) || []
+    return { question, answers }
+  })
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
@@ -1087,6 +1111,14 @@ export function Analytics() {
                         const numericValue = getNumericScore(response, metric)
 
                         if (metric.type === "sentiment") {
+                          if (typeof numericValue !== "number") {
+                            return (
+                              <td key={metric.id} className="p-4 text-center">
+                                <Badge variant="outline" className="text-xs">—</Badge>
+                              </td>
+                            )
+                          }
+
                           const descriptor = getSentimentDescriptor(numericValue)
                           return (
                             <td key={metric.id} className="p-4 text-center">

@@ -84,6 +84,7 @@ class CohortAnalysisRequest(BaseModel):
     persona_ids: List[int]
     stimulus_text: str
     metrics: List[str]
+    metric_weights: Optional[Dict[str, float]] = None
     questions: Optional[List[str]] = None
 
 class PersonaResponse(BaseModel):

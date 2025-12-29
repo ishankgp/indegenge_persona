@@ -24,9 +24,7 @@ import {
   Target,
   Brain,
   Zap,
-  Shield,
   MessageSquare,
-  AlertCircle,
   PlayCircle,
   Plus,
   CheckCircle2,
@@ -507,8 +505,6 @@ export function SimulationHub() {
 
     setAnalyzing(true)
     try {
-      // Create FormData for file upload
-      const formData = new FormData()
       const selectedMetricIds = Array.from(selectedMetrics)
       const metricWeights = selectedMetricIds.reduce<Record<string, number>>((acc, id) => {
         const selection = metricSelections[id]
@@ -516,40 +512,46 @@ export function SimulationHub() {
         return acc
       }, {})
 
-      formData.append("persona_ids", JSON.stringify(Array.from(selectedPersonas)))
-      formData.append("metrics", JSON.stringify(selectedMetricIds))
-      formData.append("metric_weights", JSON.stringify(metricWeights))
-      formData.append("content_type", contentType)
+      let response: any
+      const personaIds = Array.from(selectedPersonas)
 
-      if (hasText) {
-        formData.append("stimulus_text", stimulusText)
-      }
-
-      if (contentType === "text" && stimulusImages.length === 0) {
-        const payload: Record<string, any> = {
-          persona_ids: Array.from(selectedPersonas),
+      if (contentType === "text") {
+        const payload = {
+          persona_ids: personaIds,
           stimulus_text: stimulusText,
-          metrics: Array.from(selectedMetrics),
+          metrics: selectedMetricIds,
+          metric_weights: metricWeights,
+          questions: trimmedQuestions.length > 0 ? trimmedQuestions : undefined,
         }
 
-      // Note: This will require backend API updates to handle multipart/form-data
-      console.log("🚀 Sending request with FormData:", {
-        persona_ids: formData.get("persona_ids"),
-        metrics: formData.get("metrics"),
-        metric_weights: formData.get("metric_weights"),
-        content_type: formData.get("content_type"),
-        stimulus_text: formData.get("stimulus_text"),
-        stimulus_images_count: stimulusImages.length,
-      })
+        console.log("🚀 Sending JSON request:", payload)
+        response = await CohortAPI.analyze(payload)
+      } else {
+        // Create FormData for file upload (image-only or multimodal)
+        const formData = new FormData()
+        formData.append("persona_ids", JSON.stringify(personaIds))
+        formData.append("metrics", JSON.stringify(selectedMetricIds))
+        formData.append("metric_weights", JSON.stringify(metricWeights))
+        formData.append("content_type", contentType)
 
-        // Note: This will require backend API updates to handle multipart/form-data
-        console.log("🚀 Sending request with FormData:", {
+        if (hasText) {
+          formData.append("stimulus_text", stimulusText)
+        }
+        if (trimmedQuestions.length > 0) {
+          formData.append("questions", JSON.stringify(trimmedQuestions))
+        }
+        stimulusImages.forEach((file) => {
+          formData.append("stimulus_images", file)
+        })
+
+        console.log("🚀 Sending FormData request:", {
           persona_ids: formData.get("persona_ids"),
           metrics: formData.get("metrics"),
+          metric_weights: formData.get("metric_weights"),
           content_type: formData.get("content_type"),
           stimulus_text: formData.get("stimulus_text"),
-          stimulus_images_count: stimulusImages.length,
           questions: formData.get("questions"),
+          stimulus_images_count: stimulusImages.length,
         })
 
         response = await CohortAPI.analyze(formData)
@@ -1506,7 +1508,8 @@ export function SimulationHub() {
                     const isSelected = selectedMetrics.has(metric.id)
                     const label = metric.id === "intent_to_action" ? intentLabel : metric.label
                     const description = metric.id === "intent_to_action" ? intentDescription : metric.description
-                    const icon = metric.icon?.component
+                    const iconMeta = metric.icon
+                    const Icon = iconMeta?.component
                     const weightValue = metricSelections[metric.id]?.weight ?? metric.defaultWeight ?? 1
                     return (
                       <div
@@ -1525,9 +1528,9 @@ export function SimulationHub() {
                               onClick={(e) => e.stopPropagation()}
                               className="mt-1"
                             />
-                            {icon && (
-                              <div className={`p-2 rounded-lg ${metric.icon.bgColor}`}>
-                                <icon className={`h-4 w-4 ${metric.icon.color}`} />
+                            {Icon && iconMeta && (
+                              <div className={`p-2 rounded-lg ${iconMeta.bgColor}`}>
+                                <Icon className={`h-4 w-4 ${iconMeta.color}`} />
                               </div>
                             )}
                             <div className="flex-1">
