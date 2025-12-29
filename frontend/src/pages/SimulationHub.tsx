@@ -542,7 +542,13 @@ export function SimulationHub() {
           cohort_size: response.cohort_size,
           responses_count: response.individual_responses.length,
         })
-        navigate("/analytics", { state: { analysisResults: response } })
+        navigate("/analytics", { 
+          state: { 
+            analysisResults: response,
+            originalImages: stimulusImages, // Pass original images for improvement
+            contentType: contentType
+          } 
+        })
       }, 500)
     } catch (error) {
       console.error("❌ Error running analysis:", error)

@@ -22,7 +22,8 @@ import {
   AlertTriangle,
   CheckCircle,
   Download,
-
+  ImageIcon,
+  Wand2,
   Filter,
   Clock,
   Gauge,
@@ -30,7 +31,8 @@ import {
   PlayCircle,
   Shield,
   Save,
-  History
+  History,
+  Loader2
 } from 'lucide-react';
 import {
   Dialog,
@@ -56,7 +58,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { SavedSimulationsAPI, type SavedSimulation } from '@/lib/api';
+import { SavedSimulationsAPI, CohortAPI, type SavedSimulation } from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
 
 export function Analytics() {
@@ -66,6 +68,14 @@ export function Analytics() {
   const [analysisResults, setAnalysisResults] = useState<AnalysisResults | undefined>(
     location.state?.analysisResults as AnalysisResults | undefined
   );
+  const [originalImages, setOriginalImages] = useState<File[]>(
+    location.state?.originalImages as File[] | undefined || []
+  );
+  const [contentType, setContentType] = useState<string>(
+    location.state?.contentType as string | undefined || 'text'
+  );
+  const [improvedImages, setImprovedImages] = useState<Array<{original: string, improved: string, improvements: string}>>([]);
+  const [isImprovingImages, setIsImprovingImages] = useState(false);
 
   // History / Saved Simulations State
   const [savedSimulations, setSavedSimulations] = useState<SavedSimulation[]>([]);
@@ -90,6 +100,38 @@ export function Analytics() {
         description: "Could not fetch saved simulations.",
         variant: "destructive"
       });
+    }
+  };
+
+  const handleImproveImages = async () => {
+    if (!analysisResults || originalImages.length === 0) return;
+    
+    setIsImprovingImages(true);
+    try {
+      const improvedResults = await Promise.all(
+        originalImages.map(async (image) => {
+          const result = await CohortAPI.improveImage(analysisResults, image);
+          return {
+            original: URL.createObjectURL(image),
+            improved: `data:image/${result.original_format || 'png'};base64,${result.improved_image_base64}`,
+            improvements: result.improvements || result.analysis || 'Image enhanced based on persona feedback'
+          };
+        })
+      );
+      setImprovedImages(improvedResults);
+      toast({
+        title: "Images Improved",
+        description: `Successfully improved ${improvedResults.length} image(s) based on persona reactions.`,
+      });
+    } catch (error: any) {
+      console.error("Failed to improve images:", error);
+      toast({
+        title: "Error improving images",
+        description: error?.response?.data?.detail || "Could not improve images. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsImprovingImages(false);
     }
   };
 
@@ -455,9 +497,77 @@ export function Analytics() {
             </div>
           </CardHeader>
           <CardContent className="pt-6">
-            <blockquote className="border-l-4 border-primary pl-6 py-2 mb-6">
-              <p className="text-lg text-gray-700 dark:text-gray-300 italic">"{stimulus_text}"</p>
-            </blockquote>
+            {stimulus_text && (
+              <blockquote className="border-l-4 border-primary pl-6 py-2 mb-6">
+                <p className="text-lg text-gray-700 dark:text-gray-300 italic">"{stimulus_text}"</p>
+              </blockquote>
+            )}
+            {(contentType === 'image' || contentType === 'both') && originalImages.length > 0 && (
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <ImageIcon className="h-5 w-5" />
+                    Marketing Images Analyzed
+                  </h3>
+                  {improvedImages.length === 0 && (
+                    <Button 
+                      onClick={handleImproveImages} 
+                      disabled={isImprovingImages}
+                      className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                    >
+                      {isImprovingImages ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Improving...
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 className="h-4 w-4 mr-2" />
+                          Improve Images
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {originalImages.map((image, index) => {
+                    const originalUrl = URL.createObjectURL(image);
+                    const improved = improvedImages[index];
+                    return (
+                      <div key={index} className="border rounded-lg overflow-hidden">
+                        {improved ? (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="p-2">
+                              <p className="text-xs font-medium mb-2 text-gray-600">Original</p>
+                              <img src={originalUrl} alt={`Original ${index + 1}`} className="w-full rounded" />
+                            </div>
+                            <div className="p-2 bg-green-50 dark:bg-green-950/20">
+                              <p className="text-xs font-medium mb-2 text-green-700 dark:text-green-400 flex items-center gap-1">
+                                <Wand2 className="h-3 w-3" />
+                                Improved
+                              </p>
+                              <img src={improved.improved} alt={`Improved ${index + 1}`} className="w-full rounded" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-4">
+                            <img src={originalUrl} alt={`Image ${index + 1}`} className="w-full rounded" />
+                            <p className="text-xs text-gray-500 mt-2">{image.name}</p>
+                          </div>
+                        )}
+                        {improved && (
+                          <div className="p-3 bg-gray-50 dark:bg-gray-800 border-t">
+                            <p className="text-xs text-gray-600 dark:text-gray-400">
+                              <strong>Improvements:</strong> {improved.improvements.substring(0, 150)}...
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               {metrics_analyzed.map((metric: AnalyzedMetricKey) => (
                 <Badge key={metric} variant="outline" className="px-3 py-1">

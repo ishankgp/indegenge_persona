@@ -195,6 +195,16 @@ export const CohortAPI = {
       console.log('📤 Using regular endpoint for JSON request');
       return api.post('/cohorts/analyze', payload).then(r => r.data);
     }
+  },
+  improveImage: (analysisResults: any, originalImage: File) => {
+    const formData = new FormData();
+    formData.append('analysis_results', JSON.stringify(analysisResults));
+    formData.append('original_image', originalImage);
+    return api.post('/cohorts/improve-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }).then(r => r.data);
   }
 };
 

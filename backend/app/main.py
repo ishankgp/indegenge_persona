@@ -16,7 +16,7 @@ from datetime import datetime
 
 # Note: dotenv loading removed - pass environment variables directly
 
-from . import crud, models, schemas, persona_engine, cohort_engine, document_processor, avatar_engine
+from . import crud, models, schemas, persona_engine, cohort_engine, document_processor, avatar_engine, image_improvement, image_improvement
 from .database import engine, get_db
 import shutil
 
@@ -696,6 +696,67 @@ async def analyze_multimodal_cohort(
         logger.error("❌ Unexpected error in multimodal cohort analysis: %s", str(e))
         logger.error("❌ Full traceback:", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# --- Image Improvement Endpoint ---
+@app.post("/cohorts/improve-image")
+async def improve_marketing_image(
+    analysis_results: str = Form(...),
+    original_image: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Improve marketing images based on persona reactions from analysis.
+    Takes the analysis results and original image, returns improved version.
+    """
+    try:
+        logger.info("🎨 Image improvement request received")
+        
+        # Parse analysis results
+        try:
+            analysis_data = json.loads(analysis_results)
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ Failed to parse analysis_results JSON: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid analysis_results JSON: {str(e)}")
+        
+        # Read and encode original image
+        image_contents = await original_image.read()
+        original_image_base64 = base64.b64encode(image_contents).decode('utf-8')
+        
+        # Extract persona insights
+        individual_responses = analysis_data.get('individual_responses', [])
+        summary_statistics = analysis_data.get('summary_statistics', {})
+        
+        persona_insights = image_improvement.extract_persona_insights(
+            individual_responses,
+            summary_statistics
+        )
+        
+        logger.info(f"📊 Extracted insights from {len(individual_responses)} persona responses")
+        
+        # Generate improved image
+        improved_result = image_improvement.improve_image_with_ai(
+            original_image_base64=original_image_base64,
+            image_content_type=original_image.content_type or "image/png",
+            persona_insights=persona_insights,
+            individual_responses=individual_responses,
+            summary_statistics=summary_statistics
+        )
+        
+        logger.info("✅ Image improvement completed successfully")
+        
+        return {
+            "status": "success",
+            "improved_image_base64": improved_result['improved_image_base64'],
+            "improvements": improved_result['improvements'],
+            "analysis": improved_result['analysis'],
+            "original_format": improved_result.get('original_format', 'PNG')
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error improving image: {e}")
+        logger.error("❌ Full traceback:", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to improve image: {str(e)}")
 
 
 # --- Statistics Endpoint ---
