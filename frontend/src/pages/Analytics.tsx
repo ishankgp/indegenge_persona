@@ -81,6 +81,41 @@ import { toast } from '@/components/ui/use-toast';
 
 type CustomQuestionResponse = { question: string; answer: string };
 
+/**
+ * Computes a weighted composite score from metric values.
+ * Normalizes sentiment (-1 to 1) to 0-10 scale before averaging.
+ * Returns undefined if no valid numeric scores are available.
+ */
+function computeCompositeScore(
+  metricValues: Record<string, number | undefined>,
+  metricWeights: Record<string, number> | undefined,
+  analyzedMetricDefinitions: MetricDefinition[]
+): number | undefined {
+  let weightedSum = 0;
+  let totalWeight = 0;
+
+  for (const metric of analyzedMetricDefinitions) {
+    // Skip non-numeric metrics like key_concerns
+    if (metric.type === 'flag') continue;
+
+    const value = metricValues[metric.id] ?? metricValues[metric.backendKeys[0]];
+    if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+
+    // Normalize sentiment from -1..1 to 0..10
+    let normalizedValue = value;
+    if (metric.type === 'sentiment') {
+      normalizedValue = ((value + 1) / 2) * 10;
+    }
+
+    const weight = metricWeights?.[metric.id] ?? metricWeights?.[metric.backendKeys[0]] ?? 1;
+    weightedSum += normalizedValue * weight;
+    totalWeight += weight;
+  }
+
+  if (totalWeight === 0) return undefined;
+  return weightedSum / totalWeight;
+}
+
 export function Analytics() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -287,7 +322,8 @@ export function Analytics() {
     summary_statistics,
     insights,
     preamble,
-    created_at
+    created_at,
+    metric_weights
   } = analysisResults;
 
   const analyzedMetricDefinitions: MetricDefinition[] = Array.from(
@@ -377,6 +413,37 @@ export function Analytics() {
     metric: metric.label,
     score: Number(value),
   }))
+
+  // Compute overall composite score from summary statistics averages
+  const summaryMetricValues: Record<string, number | undefined> = {};
+  summaryMetricEntries.forEach(({ metric, value }) => {
+    if (typeof value === 'number') {
+      summaryMetricValues[metric.id] = value;
+    }
+  });
+  const overallCompositeScore = computeCompositeScore(
+    summaryMetricValues,
+    metric_weights,
+    analyzedMetricDefinitions
+  );
+
+  // Compute per-persona composite scores
+  const personaCompositeScores = new Map<number | string, number | undefined>();
+  individual_responses?.forEach((response) => {
+    const personaMetricValues: Record<string, number | undefined> = {};
+    analyzedMetricDefinitions.forEach((metric) => {
+      const value = getNumericScore(response, metric);
+      if (typeof value === 'number') {
+        personaMetricValues[metric.id] = value;
+      }
+    });
+    const composite = computeCompositeScore(
+      personaMetricValues,
+      metric_weights,
+      analyzedMetricDefinitions
+    );
+    personaCompositeScores.set(response.persona_id, composite);
+  });
 
   const chartTooltipFormatter: Formatter<number, string> = (value) => {
     const numeric = typeof value === 'number' ? value : Number(value)
@@ -658,6 +725,17 @@ export function Analytics() {
 
         {/* Key Metrics Grid - Enhanced */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
+          {/* Composite Score Card - Weighted average of all metrics */}
+          {overallCompositeScore !== undefined && scoreMetrics.length > 1 && (
+            <MetricCard
+              title="Composite Score"
+              value={overallCompositeScore.toFixed(1)}
+              subtitle="Weighted average (0-10 scale)"
+              icon={Gauge}
+              trend={overallCompositeScore >= 7 ? 'up' : overallCompositeScore >= 4 ? 'neutral' : 'down'}
+              color="primary"
+            />
+          )}
           {summaryMetricEntries.map(({ metric, value }) => {
             const Icon = metric.icon?.component || BarChart3
             const subtitle = `Scale of ${metric.scale.min} to ${metric.scale.max}`
@@ -1035,6 +1113,15 @@ export function Analytics() {
                   <tr>
                     <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Persona</th>
                     <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Reasoning</th>
+                    {/* Composite Score column - only show when multiple score metrics */}
+                    {scoreMetrics.length > 1 && (
+                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <div className="flex items-center justify-center gap-1">
+                          <Gauge className="h-4 w-4" />
+                          Overall
+                        </div>
+                      </th>
+                    )}
                     {analyzedMetricDefinitions.map((metric) => {
                       const Icon = metric.icon?.component || BarChart3
                       return (
@@ -1096,6 +1183,30 @@ export function Analytics() {
                       </Tooltip>
                     </TooltipProvider>
                   </td>
+                      {/* Composite Score cell - only show when multiple score metrics */}
+                      {scoreMetrics.length > 1 && (() => {
+                        const compositeScore = personaCompositeScores.get(response.persona_id);
+                        if (compositeScore === undefined) {
+                          return (
+                            <td className="p-4 text-center">
+                              <Badge variant="outline" className="text-xs">—</Badge>
+                            </td>
+                          );
+                        }
+                        return (
+                          <td className="p-4 text-center">
+                            <div className="flex flex-col items-center gap-1">
+                              <span className={`text-lg font-bold ${computeScoreColor(compositeScore, 10)}`}>
+                                {compositeScore.toFixed(1)}
+                              </span>
+                              <Progress
+                                value={(compositeScore / 10) * 100}
+                                className="w-16 h-1.5"
+                              />
+                            </div>
+                          </td>
+                        );
+                      })()}
                       {analyzedMetricDefinitions.map((metric) => {
                         const value = getResponseValue(response, metric)
                         if (metric.type === "flag") {
