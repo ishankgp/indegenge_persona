@@ -261,6 +261,7 @@ export function Analytics() {
     cohort_size,
     stimulus_text,
     metrics_analyzed,
+    questions,
     individual_responses,
     summary_statistics,
     insights,
@@ -683,6 +684,73 @@ export function Analytics() {
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {questions && questions.length > 0 && (
+          <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardHeader className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl">
+                    <MessageSquare className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Qualitative Responses</CardTitle>
+                    <CardDescription>Persona answers to your custom questions</CardDescription>
+                  </div>
+                </div>
+                <Badge className="bg-blue-100 text-blue-800 border-blue-200">Q&A</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-4">
+              {questions.map((question, qIndex) => {
+                const answersForQuestion = individual_responses?.map((response) => ({
+                  persona: response.persona_name,
+                  answer: response.answers?.[qIndex]
+                })) || []
+                const answeredCount = answersForQuestion.filter((a) => a.answer).length
+
+                return (
+                  <div
+                    key={qIndex}
+                    className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900"
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex items-start gap-2">
+                        <Badge variant="outline" className="mt-0.5">Q{qIndex + 1}</Badge>
+                        <div>
+                          <p className="font-semibold text-gray-900 dark:text-gray-100">{question}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {answeredCount} response
+                            {answeredCount === 1 ? '' : 's'} collected
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {answersForQuestion.map((entry, idx) => (
+                        <div
+                          key={`${qIndex}-${idx}`}
+                          className="p-3 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                              {entry.persona}
+                            </span>
+                            <Badge variant="secondary" className="text-xs">Persona</Badge>
+                          </div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                            {entry.answer || 'No answer provided.'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
             </CardContent>
           </Card>
         )}

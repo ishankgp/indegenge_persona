@@ -215,14 +215,27 @@ def create_cohort_analysis_prompt(
     persona_data: Dict[str, Any],
     persona_type: str,
     stimulus_text: str,
-    metrics: List[str]
+    metrics: List[str],
+    questions: Optional[List[str]] = None
 ) -> str:
     """Create a text-only analysis prompt that is persona and metric aware."""
-    
+
     persona_label = "healthcare professional" if (persona_type or "").strip().lower() == "hcp" else "patient"
     metric_guidance = format_metric_guidance(metrics)
     persona_snapshot = json.dumps(persona_data, indent=2)
-    
+
+    question_block = ""
+    answers_block = ""
+    if questions:
+        formatted_questions = "\n".join([f"- Q{idx+1}: {q}" for idx, q in enumerate(questions)])
+        question_block = f"\n**Qualitative Questions:**\n{formatted_questions}\n"
+        answers_block = """
+    ,"answers": [
+        "<response to Q1>",
+        "<response to Q2>",
+        ...
+    ]"""
+
     prompt = f"""
 **Role:** You are an AI expert in pharmaceutical marketing analytics. Simulate how a {persona_label} persona responds to the provided marketing stimulus.
 
@@ -231,6 +244,7 @@ def create_cohort_analysis_prompt(
 
 **Stimulus Text:**
 "{stimulus_text}"
+{question_block}
 
 **Analysis Instructions:**
 - Ground your assessment in the persona's medical condition, motivations, and behavioral context.
@@ -246,11 +260,12 @@ def create_cohort_analysis_prompt(
         "<metric_name>": <value per metric instructions above>
     }},
     "reasoning": "2-3 sentences explaining why the persona responded this way, referencing persona traits."
+    {answers_block}
 }}
 
 Ensure numeric scores respect the ranges provided above. For textual metrics (e.g., key_concerns), return the most salient objection in plain text. Do not include metrics that were not requested.
 """
-    
+
     return prompt
 
 def generate_tool_preamble(persona_count: int, metrics: List[str], stimulus_text: str) -> str:
@@ -271,11 +286,12 @@ def analyze_persona_response(
     persona_data: Dict[str, Any],
     persona_type: str,
     stimulus_text: str,
-    metrics: List[str]
+    metrics: List[str],
+    questions: Optional[List[str]] = None
 ) -> Dict[str, Any]:
     """Analyzes how a single persona responds to a stimulus using chat completions."""
     normalized_metrics = [normalize_metric(metric) for metric in metrics]
-    prompt = create_cohort_analysis_prompt(persona_data, persona_type, stimulus_text, normalized_metrics)
+    prompt = create_cohort_analysis_prompt(persona_data, persona_type, stimulus_text, normalized_metrics, questions)
     persona_role = "healthcare professional" if (persona_type or "").strip().lower() == "hcp" else "patient"
     messages = [
         {
@@ -297,9 +313,22 @@ def analyze_persona_response(
         for metric in normalized_metrics:
             if metric in data.get('responses', {}):
                 filtered[metric] = data['responses'][metric]
+        answers = data.get('answers') if questions else None
+        if questions:
+            # Ensure answers align with questions order and length
+            normalized_answers: List[str] = []
+            for idx, _ in enumerate(questions):
+                if isinstance(answers, list) and idx < len(answers):
+                    normalized_answers.append(str(answers[idx]))
+                else:
+                    normalized_answers.append("No answer provided.")
+        else:
+            normalized_answers = None
+
         return {
             'responses': filtered,
-            'reasoning': data.get('reasoning', 'No reasoning provided.')
+            'reasoning': data.get('reasoning', 'No reasoning provided.'),
+            'answers': normalized_answers
         }
     except Exception as e:
         print(f"Error analyzing persona response: {e}")
@@ -315,9 +344,11 @@ def analyze_persona_response(
                 fallback[metric] = random.randint(5, 9)
             elif metric == 'key_concerns':
                 fallback[metric] = "Need more information about side effects and effectiveness"
+        fallback_answers = ["No answer generated."] * len(questions) if questions else None
         return {
             'responses': fallback,
-            'reasoning': 'Analysis failed, using fallback response.'
+            'reasoning': 'Analysis failed, using fallback response.',
+            'answers': fallback_answers
         }
 
 def calculate_summary_statistics(individual_responses: List[Dict[str, Any]], metrics: List[str]) -> Dict[str, Any]:
@@ -503,7 +534,7 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
     
     return insights
 
-def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: List[str], db) -> Dict[str, Any]:
+def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: List[str], db, questions: Optional[List[str]] = None) -> Dict[str, Any]:
     """Runs a complete cohort analysis for the given personas and stimulus."""
     
     normalized_metrics: List[str] = []
@@ -532,15 +563,16 @@ def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: Lis
         # Parse the JSON string to get the persona data
         persona_data = json.loads(persona.full_persona_json)
         persona_type = getattr(persona, "persona_type", None) or persona_data.get("persona_type") or "Patient"
-        analysis_result = analyze_persona_response(persona_data, persona_type, stimulus_text, metrics)
-        
+        analysis_result = analyze_persona_response(persona_data, persona_type, stimulus_text, metrics, questions)
+
         individual_responses.append({
             'persona_id': persona.id,
             'persona_name': persona.name,
             'avatar_url': getattr(persona, 'avatar_url', None),
             'persona_type': persona_type,
             'responses': analysis_result['responses'],
-            'reasoning': analysis_result['reasoning']
+            'reasoning': analysis_result['reasoning'],
+            'answers': analysis_result.get('answers')
         })
     
     # Calculate summary statistics
@@ -554,6 +586,7 @@ def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: Lis
         "cohort_size": len(personas),
         "stimulus_text": stimulus_text,
         "metrics_analyzed": metrics,
+        "questions": questions or [],
         "individual_responses": individual_responses,
         "summary_statistics": summary_stats,
         "insights": llm_generated_data.get("cumulative_insights", []),

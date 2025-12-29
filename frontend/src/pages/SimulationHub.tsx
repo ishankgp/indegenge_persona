@@ -63,6 +63,7 @@ const SAMPLE_MESSAGES = [
 
 const DEFAULT_AGE_RANGE: [number, number] = [18, 100]
 const PERSONA_TYPES = ["HCP", "Patient"] as const
+const MAX_QUESTIONS = 5
 
 type PersonaType = (typeof PERSONA_TYPES)[number]
 
@@ -92,6 +93,7 @@ export function SimulationHub() {
   const [stimulusImages, setStimulusImages] = useState<File[]>([])
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const [contentType, setContentType] = useState<"text" | "image" | "both">("text")
+  const [questions, setQuestions] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
@@ -443,6 +445,22 @@ export function SimulationHub() {
     setStimulusImages((prev) => [...prev, ...newImages])
   }
 
+  const addQuestion = () => {
+    if (questions.length >= MAX_QUESTIONS) {
+      alert(`You can add up to ${MAX_QUESTIONS} questions.`)
+      return
+    }
+    setQuestions((prev) => [...prev, ""])
+  }
+
+  const updateQuestion = (index: number, value: string) => {
+    setQuestions((prev) => prev.map((q, i) => (i === index ? value : q)))
+  }
+
+  const removeQuestion = (index: number) => {
+    setQuestions((prev) => prev.filter((_, i) => i !== index))
+  }
+
   const removeImage = (index: number) => {
     setStimulusImages((prev) => prev.filter((_, i) => i !== index))
     setImagePreviews((prev) => prev.filter((_, i) => i !== index))
@@ -451,6 +469,18 @@ export function SimulationHub() {
   const handleRunAnalysis = async () => {
     if (selectedPersonas.size === 0) {
       alert("Please select at least one persona")
+      return
+    }
+
+    const trimmedQuestions = questions.map((q) => q.trim()).filter((q) => q.length > 0)
+
+    if (questions.some((q) => q.trim().length === 0) && questions.length > 0) {
+      alert("Please fill in all questions or remove empty ones.")
+      return
+    }
+
+    if (trimmedQuestions.length > MAX_QUESTIONS) {
+      alert(`Please limit qualitative questions to ${MAX_QUESTIONS}.`)
       return
     }
     if (selectedMetrics.size === 0) {
@@ -495,9 +525,12 @@ export function SimulationHub() {
         formData.append("stimulus_text", stimulusText)
       }
 
-      stimulusImages.forEach((image) => {
-        formData.append(`stimulus_images`, image)
-      })
+      if (contentType === "text" && stimulusImages.length === 0) {
+        const payload: Record<string, any> = {
+          persona_ids: Array.from(selectedPersonas),
+          stimulus_text: stimulusText,
+          metrics: Array.from(selectedMetrics),
+        }
 
       // Note: This will require backend API updates to handle multipart/form-data
       console.log("🚀 Sending request with FormData:", {
@@ -509,7 +542,18 @@ export function SimulationHub() {
         stimulus_images_count: stimulusImages.length,
       })
 
-      const response = await CohortAPI.analyze(formData)
+        // Note: This will require backend API updates to handle multipart/form-data
+        console.log("🚀 Sending request with FormData:", {
+          persona_ids: formData.get("persona_ids"),
+          metrics: formData.get("metrics"),
+          content_type: formData.get("content_type"),
+          stimulus_text: formData.get("stimulus_text"),
+          stimulus_images_count: stimulusImages.length,
+          questions: formData.get("questions"),
+        })
+
+        response = await CohortAPI.analyze(formData)
+      }
 
       console.log("✅ Received response:", {
         responseType: typeof response,
@@ -1310,6 +1354,53 @@ export function SimulationHub() {
                         Sample {index + 1}
                       </Button>
                     ))}
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-4 bg-gray-50/60 dark:bg-gray-900/50">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4 text-primary" />
+                          Optional Qualitative Questions
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Ask up to {MAX_QUESTIONS} custom questions and get persona-specific answers.
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={addQuestion}
+                        disabled={questions.length >= MAX_QUESTIONS}
+                        className="flex items-center gap-1"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add Question
+                      </Button>
+                    </div>
+
+                    {questions.length === 0 && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+                        No questions added yet.
+                      </p>
+                    )}
+
+                    <div className="space-y-3">
+                      {questions.map((question, index) => (
+                        <div key={index} className="flex items-start gap-2">
+                          <Badge variant="outline" className="mt-2">Q{index + 1}</Badge>
+                          <Input
+                            value={question}
+                            placeholder="e.g., What would make this message more convincing for you?"
+                            onChange={(e) => updateQuestion(index, e.target.value)}
+                            className="flex-1"
+                          />
+                          <Button variant="ghost" size="icon" onClick={() => removeQuestion(index)}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
