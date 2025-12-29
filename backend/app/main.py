@@ -11,7 +11,9 @@ import base64
 import io
 import logging
 import os
+import re
 import time
+import uuid
 from datetime import datetime
 
 # Note: dotenv loading removed - pass environment variables directly
@@ -966,13 +968,18 @@ async def upload_brand_document(
     upload_dir = "uploads"
     os.makedirs(upload_dir, exist_ok=True)
     
-    # Save file locally
-    file_location = f"{upload_dir}/{int(time.time())}_{file.filename}"
-    with open(file_location, "wb") as buffer:
+    # Save file locally with sanitized filename and UUID prefix to avoid collisions
+    original_filename = file.filename or "upload"
+    safe_filename = os.path.basename(original_filename)
+    safe_filename = re.sub(r"[^A-Za-z0-9._-]", "_", safe_filename).lstrip(".") or "upload"
+    unique_prefix = uuid.uuid4().hex
+    safe_file_location = os.path.join(upload_dir, f"{unique_prefix}_{safe_filename}")
+
+    with open(safe_file_location, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
     # Extract text
-    text = document_processor.extract_text(file_location)
+    text = document_processor.extract_text(safe_file_location)
     
     # Classify
     category = document_processor.classify_document(text)
@@ -980,7 +987,7 @@ async def upload_brand_document(
     extracted_insights = [
         {
             **insight,
-            "source_document": file.filename
+            "source_document": safe_filename
         }
         for insight in persona_engine.extract_mbt_from_text(text)
     ]
@@ -988,8 +995,8 @@ async def upload_brand_document(
     # Create document record
     doc_create = schemas.BrandDocumentCreate(
         brand_id=brand_id,
-        filename=file.filename,
-        filepath=file_location,
+        filename=safe_filename,
+        filepath=safe_file_location,
         category=category,
         summary=text[:200] + "..." if text else "No text extracted",
         extracted_insights=extracted_insights
