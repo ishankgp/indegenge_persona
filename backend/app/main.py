@@ -32,35 +32,51 @@ def run_startup_migration():
     """Add brand_id and avatar_url columns to personas table if they don't exist."""
     try:
         from sqlalchemy import inspect, text
-        inspector = inspect(engine)
-        columns = [c['name'] for c in inspector.get_columns('personas')]
-        
-        if 'brand_id' not in columns:
-            logger.info("🔄 Running migration: Adding brand_id column to personas table...")
+
+        def add_column_if_missing(column_name: str, ddl_statement: str):
+            inspector = inspect(engine)
+            columns = {c['name'] for c in inspector.get_columns('personas')}
+            if column_name in columns:
+                logger.info("✅ %s column already exists in personas table", column_name)
+                return False
+
+            logger.info("🔄 Running migration: Adding %s column to personas table...", column_name)
             with engine.connect() as conn:
-                # Delete existing personas per user preference for clean start
-                conn.execute(text("DELETE FROM personas"))
-                # Add brand_id column
-                conn.execute(text(
-                    "ALTER TABLE personas ADD COLUMN brand_id INTEGER REFERENCES brands(id)"
-                ))
+                conn.execute(text(ddl_statement))
                 conn.commit()
-            logger.info("✅ Migration complete: brand_id column added")
+            logger.info("✅ Migration complete: %s column added", column_name)
+            return True
+
+        with engine.connect() as conn:
+            initial_count = conn.execute(text("SELECT COUNT(*) FROM personas")).scalar() or 0
+
+        brand_added = add_column_if_missing(
+            'brand_id',
+            "ALTER TABLE personas ADD COLUMN brand_id INTEGER REFERENCES brands(id)"
+        )
+        avatar_added = add_column_if_missing(
+            'avatar_url',
+            "ALTER TABLE personas ADD COLUMN avatar_url VARCHAR"
+        )
+
+        with engine.connect() as conn:
+            final_count = conn.execute(text("SELECT COUNT(*) FROM personas")).scalar() or 0
+
+        if initial_count == final_count:
+            logger.info(
+                "✅ personas table row count unchanged after migrations: %s rows",
+                final_count
+            )
         else:
-            logger.info("✅ brand_id column already exists in personas table")
-        
-        # Add avatar_url column if missing
-        if 'avatar_url' not in columns:
-            logger.info("🔄 Running migration: Adding avatar_url column to personas table...")
-            with engine.connect() as conn:
-                conn.execute(text(
-                    "ALTER TABLE personas ADD COLUMN avatar_url VARCHAR"
-                ))
-                conn.commit()
-            logger.info("✅ Migration complete: avatar_url column added")
-        else:
-            logger.info("✅ avatar_url column already exists in personas table")
-            
+            logger.warning(
+                "⚠️ personas table row count changed during migrations: before=%s, after=%s",
+                initial_count,
+                final_count
+            )
+
+        if not (brand_added or avatar_added):
+            logger.info("ℹ️ No schema changes required during startup migration")
+
     except Exception as e:
         logger.error(f"Migration warning: {e}")
 
