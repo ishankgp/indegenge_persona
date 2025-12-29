@@ -907,14 +907,14 @@ export function Analytics() {
                         const numericValue = getNumericScore(response, metric)
 
                         if (metric.type === "sentiment") {
-                          const descriptor = getSentimentDescriptor(numericValue)
+                          const descriptor = getSentimentDescriptor(numericValue ?? 0)
                           return (
                             <td key={metric.id} className="p-4 text-center">
                               <Badge className={descriptor.badgeClassName}>
                                 {descriptor.level}
                               </Badge>
                               <div className="text-xs mt-1 text-gray-500">
-                                {numericValue.toFixed(2)}
+                                {Number.isFinite(numericValue) ? numericValue.toFixed(2) : "—"}
                               </div>
                             </td>
                           )
