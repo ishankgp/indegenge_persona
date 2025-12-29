@@ -46,6 +46,21 @@ export function normalizeMetricKey(metric: string): string {
   return normalized[metric] || metric;
 }
 
+export function normalizeMetricScore(metric: string, score: number): number {
+  const key = normalizeMetricKey(metric);
+  if (key === 'sentiment') {
+    // Convert -1 to 1 sentiment into a 0-10 scale
+    return ((score + 1) / 2) * 10;
+  }
+  return score;
+}
+
+export function formatMetricLabel(metric: string): string {
+  return normalizeMetricKey(metric)
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export function computeScoreColor(score: number, max: number = 10): string {
   const percentage = (score / max) * 100;
   if (percentage >= 70) return 'text-emerald-600';

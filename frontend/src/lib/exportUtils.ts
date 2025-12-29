@@ -1,4 +1,5 @@
-import type { AnalysisResults } from '@/types/analytics';
+import type { AnalysisResults, IndividualResponseRow } from '@/types/analytics';
+import { formatMetricLabel, normalizeMetricKey } from '@/lib/analytics';
 
 export function exportToJSON(analysisResults: AnalysisResults, filename?: string) {
     const dataStr = JSON.stringify(analysisResults, null, 2);
@@ -14,26 +15,26 @@ export function exportToJSON(analysisResults: AnalysisResults, filename?: string
 export function exportToCSV(analysisResults: AnalysisResults, filename?: string) {
     const { individual_responses, metrics_analyzed } = analysisResults;
 
-    // Create CSV header
-    const headers = ['Persona Name', 'Persona ID', 'Reasoning'];
-    if (metrics_analyzed.includes('purchase_intent')) headers.push('Purchase Intent');
-    if (metrics_analyzed.includes('sentiment')) headers.push('Sentiment');
-    if (metrics_analyzed.includes('trust_in_brand')) headers.push('Trust in Brand');
-    if (metrics_analyzed.includes('message_clarity')) headers.push('Message Clarity');
-    if (metrics_analyzed.includes('key_concern_flagged')) headers.push('Key Concern');
+    const metricOrder = Array.from(new Set(metrics_analyzed.map((metric) => normalizeMetricKey(metric))));
 
-    // Create CSV rows
+    const headers = ['Persona Name', 'Persona ID', 'Reasoning', ...metricOrder.map((metric) => formatMetricLabel(metric))];
+
     const rows = individual_responses.map((response) => {
         const row = [
             `"${response.persona_name}"`,
             response.persona_id,
             `"${response.reasoning.replace(/"/g, '""')}"`
         ];
-        if (metrics_analyzed.includes('purchase_intent')) row.push(String(response.responses.purchase_intent || ''));
-        if (metrics_analyzed.includes('sentiment')) row.push(String(response.responses.sentiment || ''));
-        if (metrics_analyzed.includes('trust_in_brand')) row.push(String(response.responses.trust_in_brand || ''));
-        if (metrics_analyzed.includes('message_clarity')) row.push(String(response.responses.message_clarity || ''));
-        if (metrics_analyzed.includes('key_concern_flagged')) row.push(`"${response.responses.key_concern_flagged || ''}"`);
+
+        metricOrder.forEach((metric) => {
+            const value = getMetricValue(response, metric);
+            if (typeof value === 'string') {
+                row.push(`"${value.replace(/"/g, '""')}"`);
+            } else {
+                row.push(value === undefined || value === null ? '' : String(value));
+            }
+        });
+
         return row.join(',');
     });
 
@@ -45,6 +46,26 @@ export function exportToCSV(analysisResults: AnalysisResults, filename?: string)
     linkElement.setAttribute('href', dataUri);
     linkElement.setAttribute('download', exportFileDefaultName);
     linkElement.click();
+}
+
+function getMetricValue(response: IndividualResponseRow, metric: string) {
+    const normalized = normalizeMetricKey(metric);
+    const variants: Record<string, string[]> = {
+        sentiment: ['sentiment', 'emotional_response'],
+        purchase_intent: ['purchase_intent', 'intent_to_action'],
+        trust_in_brand: ['trust_in_brand', 'brand_trust'],
+        message_clarity: ['message_clarity'],
+        key_concerns: ['key_concerns', 'key_concern_flagged'],
+    };
+
+    const possibleKeys = variants[normalized] || [metric];
+    for (const key of possibleKeys) {
+        const value = response.responses[key];
+        if (value !== undefined && value !== null) {
+            return value;
+        }
+    }
+    return '';
 }
 
 export async function copyToClipboard(text: string): Promise<boolean> {

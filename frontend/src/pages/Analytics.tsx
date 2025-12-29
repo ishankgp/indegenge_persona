@@ -1,12 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import MetricCard from '@/components/analytics/MetricCard';
-import { computeScoreColor, computeScoreProgress, getSentimentDescriptor } from '@/lib/analytics';
-import type { AnalysisResults, AnalyzedMetricKey, IndividualResponseRow, PersonaResponseScores } from '@/types/analytics';
+import {
+  computeScoreColor,
+  computeScoreProgress,
+  formatMetricLabel,
+  getSentimentDescriptor,
+  normalizeMetricKey,
+  normalizeMetricScore
+} from '@/lib/analytics';
+import type {
+  AnalysisResults,
+  AnalyzedMetricKey,
+  CustomQuestionResponse,
+  IndividualResponseRow,
+  PersonaResponseScores
+} from '@/types/analytics';
 import {
   TrendingUp,
   TrendingDown,
@@ -32,8 +45,26 @@ import {
   Shield,
   Save,
   History,
-  Loader2
+  Loader2,
+  SlidersHorizontal,
+  PieChart,
+  LayoutGrid
 } from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  Legend,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis
+} from 'recharts';
+import type { Formatter } from 'recharts/types/component/DefaultTooltipContent';
 import {
   Dialog,
   DialogContent,
@@ -68,10 +99,10 @@ export function Analytics() {
   const [analysisResults, setAnalysisResults] = useState<AnalysisResults | undefined>(
     location.state?.analysisResults as AnalysisResults | undefined
   );
-  const [originalImages, setOriginalImages] = useState<File[]>(
+  const [originalImages] = useState<File[]>(
     location.state?.originalImages as File[] | undefined || []
   );
-  const [contentType, setContentType] = useState<string>(
+  const [contentType] = useState<string>(
     location.state?.contentType as string | undefined || 'text'
   );
   const [improvedImages, setImprovedImages] = useState<Array<{original: string, improved: string, improvements: string}>>([]);
@@ -83,6 +114,9 @@ export function Analytics() {
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedQAResponse, setSelectedQAResponse] = useState<
+    { persona: string; qas: CustomQuestionResponse[] } | null
+  >(null);
 
   // Load saved simulations on mount
   useEffect(() => {
@@ -266,8 +300,115 @@ export function Analytics() {
     created_at
   } = analysisResults;
 
-  const metricPresent = (...keys: string[]) =>
-    keys.some((key) => metrics_analyzed.includes(key as AnalyzedMetricKey));
+  type MetricType = 'score' | 'sentiment' | 'text';
+  type MetricCardColor = 'primary' | 'secondary' | 'success' | 'warning';
+
+  interface MetricDefinition {
+    key: string;
+    label: string;
+    subtitle?: string;
+    icon?: typeof Gauge;
+    color?: MetricCardColor;
+    type: MetricType;
+    responseKeys: Array<keyof PersonaResponseScores>;
+    averageKeys: string[];
+  }
+
+  const normalizedMetrics = useMemo(
+    () => Array.from(new Set(metrics_analyzed.map((metric) => normalizeMetricKey(metric)))),
+    [metrics_analyzed]
+  );
+
+  const metricDefinitions: Record<string, MetricDefinition> = {
+    purchase_intent: {
+      key: 'purchase_intent',
+      label: 'Request/Prescribe Intent',
+      subtitle: 'Scale of 1-10',
+      icon: Target,
+      color: 'primary',
+      type: 'score',
+      responseKeys: ['intent_to_action', 'purchase_intent'],
+      averageKeys: ['intent_to_action_avg', 'purchase_intent_avg']
+    },
+    sentiment: {
+      key: 'sentiment',
+      label: 'Sentiment',
+      subtitle: 'Scale of -1 to 1',
+      icon: Brain,
+      color: 'secondary',
+      type: 'sentiment',
+      responseKeys: ['emotional_response', 'sentiment'],
+      averageKeys: ['emotional_response_avg', 'sentiment_avg']
+    },
+    trust_in_brand: {
+      key: 'trust_in_brand',
+      label: 'Brand Trust',
+      subtitle: 'Scale of 1-10',
+      icon: Shield,
+      color: 'success',
+      type: 'score',
+      responseKeys: ['brand_trust', 'trust_in_brand'],
+      averageKeys: ['brand_trust_avg', 'trust_in_brand_avg']
+    },
+    message_clarity: {
+      key: 'message_clarity',
+      label: 'Message Clarity',
+      subtitle: 'Scale of 1-10',
+      icon: MessageSquare,
+      color: 'warning',
+      type: 'score',
+      responseKeys: ['message_clarity'],
+      averageKeys: ['message_clarity_avg']
+    },
+    key_concerns: {
+      key: 'key_concerns',
+      label: 'Key Concerns',
+      subtitle: 'Top concern surfaced',
+      icon: AlertTriangle,
+      color: 'warning',
+      type: 'text',
+      responseKeys: ['key_concerns', 'key_concern_flagged'],
+      averageKeys: ['key_concerns']
+    }
+  };
+
+  const getMetricConfig = (metricKey: AnalyzedMetricKey | string): MetricDefinition => {
+    const normalizedKey = normalizeMetricKey(metricKey);
+    if (metricDefinitions[normalizedKey]) {
+      return metricDefinitions[normalizedKey];
+    }
+
+    return {
+      key: normalizedKey,
+      label: formatMetricLabel(normalizedKey),
+      subtitle: 'Scale of 1-10',
+      icon: Gauge,
+      color: 'primary',
+      type: 'score',
+      responseKeys: [metricKey as keyof PersonaResponseScores],
+      averageKeys: [`${normalizedKey}_avg`]
+    };
+  };
+
+  const [metricWeights, setMetricWeights] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const initialWeights: Record<string, number> = {};
+    const existingWeights = analysisResults.metric_weights || {};
+    normalizedMetrics.forEach((metric) => {
+      initialWeights[metric] = existingWeights[metric] ?? 1;
+    });
+    setMetricWeights(initialWeights);
+  }, [analysisResults.metric_weights, normalizedMetrics]);
+
+  const weightTotal = useMemo(
+    () => normalizedMetrics.reduce((sum, metric) => sum + (metricWeights[metric] ?? 1), 0),
+    [metricWeights, normalizedMetrics]
+  );
+
+  const updateWeight = (metric: string, value: number) => {
+    setMetricWeights((prev) => ({ ...prev, [metric]: value }));
+  };
 
   const getResponseValue = (
     row: IndividualResponseRow,
@@ -321,9 +462,228 @@ export function Analytics() {
     return [];
   };
 
-  const summaryIntent = summary_statistics.intent_to_action_avg ?? summary_statistics.purchase_intent_avg;
-  const summaryEmotion = summary_statistics.emotional_response_avg ?? summary_statistics.sentiment_avg;
-  const summaryTrust = summary_statistics.brand_trust_avg ?? summary_statistics.trust_in_brand_avg;
+  const getMetricAverageValue = (metricKey: AnalyzedMetricKey | string): number | undefined => {
+    const config = getMetricConfig(metricKey);
+    for (const avgKey of config.averageKeys) {
+      const value = summary_statistics[avgKey];
+      if (typeof value === 'number') return value;
+    }
+    const fallback = summary_statistics[`${config.key}_avg`];
+    return typeof fallback === 'number' ? fallback : undefined;
+  };
+
+  const metricColumns = useMemo(
+    () => normalizedMetrics.map((metric) => getMetricConfig(metric)),
+    [normalizedMetrics]
+  );
+
+  const numericMetricKeys = useMemo(
+    () => metricColumns.filter((metric) => metric.type !== 'text').map((metric) => metric.key),
+    [metricColumns]
+  );
+
+  const computeMetricScore = (row: IndividualResponseRow, metricKey: string): number | undefined => {
+    const config = getMetricConfig(metricKey);
+    for (const key of config.responseKeys) {
+      const score = getNumericScore(row, key, key);
+      if (score !== undefined) return score;
+    }
+    return undefined;
+  };
+
+  const computeCompositeScore = (row: IndividualResponseRow): number | undefined => {
+    if (numericMetricKeys.length < 2) return undefined;
+    let weightedTotal = 0;
+    let totalWeight = 0;
+
+    numericMetricKeys.forEach((metricKey) => {
+      const score = computeMetricScore(row, metricKey);
+      if (score === undefined) return;
+      const normalizedScore = normalizeMetricScore(metricKey, score);
+      const weight = metricWeights[metricKey] ?? 1;
+      weightedTotal += normalizedScore * weight;
+      totalWeight += weight;
+    });
+
+    if (totalWeight === 0) return undefined;
+    return Number((weightedTotal / totalWeight).toFixed(2));
+  };
+
+  const compositeAverage = useMemo(() => {
+    const scores = individual_responses
+      .map((row) => computeCompositeScore(row))
+      .filter((score): score is number => typeof score === 'number');
+    if (scores.length === 0) return undefined;
+    const total = scores.reduce((sum, score) => sum + score, 0);
+    return Number((total / scores.length).toFixed(2));
+  }, [individual_responses, metricWeights, numericMetricKeys]);
+
+  const metricChartData = useMemo(
+    () =>
+      metricColumns
+        .map((metric) => {
+          const average = getMetricAverageValue(metric.key);
+          if (average === undefined || metric.type === 'text') return null;
+          return {
+            metric: metric.label,
+            score: Number(normalizeMetricScore(metric.key, average).toFixed(2)),
+            rawScore: average,
+            isSentiment: metric.type === 'sentiment'
+          };
+        })
+        .filter(Boolean) as Array<{ metric: string; score: number; rawScore: number; isSentiment: boolean }>,
+    [metricColumns, summary_statistics]
+  );
+
+  const chartTooltipFormatter: Formatter<string | number, string | number> = (value, name) => {
+    const numeric = typeof value === 'number' ? value : Number(value);
+    const display = Number.isFinite(numeric) ? numeric.toFixed(2) : String(value ?? '');
+    return [`${display}/10`, String(name ?? '')];
+  };
+
+  const radarTooltipFormatter: Formatter<string | number, string | number> = (value) => {
+    const numeric = typeof value === 'number' ? value : Number(value);
+    const display = Number.isFinite(numeric) ? numeric.toFixed(2) : String(value ?? '');
+    return `${display}/10`;
+  };
+
+  const metricCardItems = useMemo(() => {
+    const items = metricColumns
+      .map((metric) => {
+        const average = getMetricAverageValue(metric.key);
+        if (average === undefined || metric.type === 'text') return null;
+
+        if (metric.type === 'sentiment') {
+          const descriptor = getSentimentDescriptor(average);
+          return {
+            key: metric.key,
+            label: metric.label,
+            value: (
+              <div className="flex items-center gap-2">
+                <span className={descriptor.color}>{average.toFixed(2)}</span>
+                {descriptor.iconTone === 'up' && <TrendingUp className="h-4 w-4 text-emerald-500" />}
+                {descriptor.iconTone === 'down' && <TrendingDown className="h-4 w-4 text-red-500" />}
+                {descriptor.iconTone === 'neutral' && <Minus className="h-4 w-4 text-gray-500" />}
+              </div>
+            ),
+            subtitle: metric.subtitle,
+            icon: metric.icon,
+            color: metric.color,
+            trend: descriptor.iconTone === 'neutral' ? 'neutral' : 'up'
+          };
+        }
+
+        return {
+          key: metric.key,
+          label: metric.label,
+          value: average.toFixed(1),
+          subtitle: metric.subtitle,
+          icon: metric.icon,
+          color: metric.color,
+          trend: average > 7 ? 'up' : average < 4 ? 'down' : 'neutral'
+        };
+      })
+      .filter(Boolean) as Array<{
+        key: string;
+        label: string;
+        value: ReactNode;
+        subtitle?: string;
+        icon?: typeof Gauge;
+        color?: MetricCardColor;
+        trend?: 'up' | 'down' | 'neutral';
+      }>;
+
+    if (numericMetricKeys.length > 1 && compositeAverage !== undefined) {
+      items.unshift({
+        key: 'composite',
+        label: 'Overall Composite',
+        value: compositeAverage.toFixed(2),
+        subtitle: 'Weighted by selected metrics',
+        icon: Gauge,
+        color: 'primary',
+        trend: compositeAverage > 7 ? 'up' : compositeAverage < 4 ? 'down' : 'neutral'
+      });
+    }
+
+    return items;
+  }, [metricColumns, numericMetricKeys, compositeAverage, summary_statistics]);
+
+  const showCompositeScore = numericMetricKeys.length > 1;
+
+  const extractCustomQuestions = (response: IndividualResponseRow): CustomQuestionResponse[] => {
+    const qas: CustomQuestionResponse[] = [];
+
+    const addPair = (question?: string, answer?: unknown) => {
+      if (!question || answer === undefined || answer === null) return;
+      qas.push({ question: String(question), answer: String(answer) });
+    };
+
+    if (Array.isArray(response.custom_questions)) {
+      response.custom_questions.forEach((qa) => addPair(qa.question, qa.answer));
+    }
+
+    const responseCustomQuestions = response.responses?.custom_questions;
+    if (Array.isArray(responseCustomQuestions)) {
+      responseCustomQuestions.forEach((qa: any) => addPair(qa.question, qa.answer));
+    }
+
+    const customQuestionAnswers = response.responses?.custom_question_answers;
+    if (customQuestionAnswers && typeof customQuestionAnswers === 'object') {
+      Object.entries(customQuestionAnswers).forEach(([question, answer]) => addPair(question, answer));
+    }
+
+    return qas.filter((qa) => qa.question && qa.answer);
+  };
+
+  const aggregatedCustomQuestions = useMemo(() => {
+    const map = new Map<string, { question: string; answers: string[] }>();
+
+    individual_responses.forEach((response) => {
+      extractCustomQuestions(response).forEach((qa) => {
+        const existing = map.get(qa.question) || { question: qa.question, answers: [] };
+        existing.answers.push(`${response.persona_name}: ${qa.answer}`);
+        map.set(qa.question, existing);
+      });
+    });
+
+    return Array.from(map.values());
+  }, [individual_responses]);
+
+  const hasCustomQuestions = aggregatedCustomQuestions.length > 0;
+
+  const renderMetricCell = (response: IndividualResponseRow, metric: MetricDefinition) => {
+    if (metric.type === 'text') {
+      const concerns = getConcernsList(response);
+      const rawValue = getResponseValue(response, metric.responseKeys[0], metric.responseKeys[1]);
+      const textValue = concerns.length > 0 ? concerns.join(', ') : rawValue ? String(rawValue) : '—';
+      return (
+        <Badge variant="outline" className="text-xs whitespace-pre-wrap">
+          {textValue || '—'}
+        </Badge>
+      );
+    }
+
+    if (metric.type === 'sentiment') {
+      const sentimentScore = computeMetricScore(response, metric.key) ?? 0;
+      const descriptor = getSentimentDescriptor(sentimentScore);
+      return (
+        <div className="flex flex-col items-center gap-1">
+          <Badge className={descriptor.badgeClassName}>{descriptor.level}</Badge>
+          <div className="text-xs mt-1 text-gray-500">{sentimentScore.toFixed(2)}</div>
+        </div>
+      );
+    }
+
+    const score = computeMetricScore(response, metric.key);
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <span className={`text-lg font-bold ${computeScoreColor(score ?? 0)}`}>
+          {score ?? '—'}
+        </span>
+        <Progress value={computeScoreProgress(score ?? 0)} className="w-16 h-1.5" />
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
@@ -579,65 +939,134 @@ export function Analytics() {
           </CardContent>
         </Card>
 
-        {/* Key Metrics Grid - Enhanced */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          {summaryIntent !== undefined && (
-            <MetricCard
-              title="Average Purchase Intent"
-              value={summaryIntent.toFixed(1)}
-              subtitle="Scale of 1-10"
-              icon={Target}
-              trend={summaryIntent > 5 ? 'up' : 'down'}
-              color="primary"
-            />
-          )}
-          {summaryEmotion !== undefined && (
-            <MetricCard
-              title="Average Sentiment"
-              value={
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const d = getSentimentDescriptor(summaryEmotion);
-                    return (
-                      <span className={d.color}>
-                        {summaryEmotion.toFixed(2)}
-                      </span>
-                    );
-                  })()}
-                  {(() => {
-                    const d = getSentimentDescriptor(summaryEmotion);
-                    if (d.iconTone === 'up') return <TrendingUp className="h-4 w-4 text-emerald-500" />;
-                    if (d.iconTone === 'down') return <TrendingDown className="h-4 w-4 text-red-500" />;
-                    return <Minus className="h-4 w-4 text-gray-500" />;
-                  })()}
+        {showCompositeScore && (
+          <Card className="mb-6 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardHeader className="bg-gradient-to-r from-primary/10 to-secondary/10 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-gradient-to-br from-primary to-secondary rounded-xl">
+                    <SlidersHorizontal className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Metric Weights</CardTitle>
+                    <CardDescription>Adjust how each metric influences the composite score</CardDescription>
+                  </div>
                 </div>
-              }
-              subtitle="Scale of -1 to 1"
-              icon={Brain}
-              color="secondary"
-            />
-          )}
-          {summaryTrust !== undefined && (
+                <Badge variant="outline" className="bg-white/40">
+                  Composite Avg: {compositeAverage ?? '—'}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                We normalize sentiment (-1 to 1) onto a 0-10 scale so it blends fairly with 1-10 metrics. Use weights to emphasize
+                priority metrics.
+              </p>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {numericMetricKeys.map((metricKey) => {
+                  const config = getMetricConfig(metricKey);
+                  const weight = metricWeights[metricKey] ?? 0;
+                  const share = weightTotal > 0 ? Math.round((weight / weightTotal) * 100) : 0;
+                  return (
+                    <div
+                      key={metricKey}
+                      className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-900/50"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          {config.icon && <config.icon className="h-4 w-4 text-primary" />}
+                          <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{config.label}</span>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {share}%
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Input
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          value={weight}
+                          onChange={(e) => updateWeight(metricKey, Math.max(0, Number(e.target.value)))}
+                          className="h-9"
+                        />
+                        <span className="text-xs text-gray-500">weight</span>
+                      </div>
+                      <Progress value={weightTotal > 0 ? (weight / weightTotal) * 100 : 0} className="mt-2 h-2" />
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Key Metrics Grid - Enhanced */}
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mb-8">
+          {metricCardItems.map((metric) => (
             <MetricCard
-              title="Average Brand Trust"
-              value={summaryTrust.toFixed(1)}
-              subtitle="Scale of 1-10"
-              icon={Shield}
-              trend={summaryTrust > 5 ? 'up' : 'down'}
-              color="success"
+              key={metric.key}
+              title={metric.label}
+              value={metric.value}
+              subtitle={metric.subtitle}
+              icon={metric.icon}
+              trend={metric.trend}
+              color={metric.color}
             />
-          )}
-          {summary_statistics.message_clarity_avg !== undefined && (
-            <MetricCard
-              title="Message Clarity"
-              value={summary_statistics.message_clarity_avg.toFixed(1)}
-              subtitle="Scale of 1-10"
-              icon={MessageSquare}
-              trend={summary_statistics.message_clarity_avg > 7 ? 'up' : 'neutral'}
-              color="warning"
-            />
-          )}
+          ))}
         </div>
+
+        {metricChartData.length > 0 && (
+          <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardHeader className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl">
+                    <PieChart className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Metric Performance Overview</CardTitle>
+                    <CardDescription>Normalized averages across all analyzed metrics</CardDescription>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-6">
+              <div className={`grid gap-6 ${metricChartData.length > 1 ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={metricChartData} margin={{ left: 0, right: 12 }}>
+                      <XAxis dataKey="metric" tick={{ fontSize: 12 }} angle={-10} textAnchor="end" height={60} interval={0} />
+                      <YAxis domain={[0, 10]} tick={{ fontSize: 12 }} />
+                      <RechartsTooltip formatter={chartTooltipFormatter} />
+                      <Legend />
+                      <Bar dataKey="score" name="Normalized Score" fill="#7c3aed" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart data={metricChartData} margin={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                      <PolarGrid />
+                      <PolarAngleAxis dataKey="metric" tick={{ fontSize: 12 }} />
+                      <PolarRadiusAxis angle={30} domain={[0, 10]} tick={{ fontSize: 12 }} />
+                      <Radar
+                        name="Normalized Score"
+                        dataKey="score"
+                        stroke="#6366f1"
+                        fill="#6366f1"
+                        fillOpacity={0.3}
+                      />
+                      <Legend />
+                      <RechartsTooltip formatter={radarTooltipFormatter} />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {insights && insights.length > 0 && (
           <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
@@ -790,6 +1219,45 @@ export function Analytics() {
         })()}
 
 
+        {hasCustomQuestions && (
+          <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardHeader className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl">
+                    <LayoutGrid className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Custom Question Responses</CardTitle>
+                    <CardDescription>Quick view of persona answers to custom prompts</CardDescription>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-3">
+              {aggregatedCustomQuestions.map((qa, idx) => (
+                <div
+                  key={`${qa.question}-${idx}`}
+                  className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60"
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{qa.question}</p>
+                    <Badge variant="outline" className="text-xs">
+                      {qa.answers.length} response{qa.answers.length !== 1 ? 's' : ''}
+                    </Badge>
+                  </div>
+                  <ul className="mt-2 space-y-1 text-sm text-gray-700 dark:text-gray-300 max-h-32 overflow-y-auto list-disc list-inside">
+                    {qa.answers.map((answer, answerIdx) => (
+                      <li key={`${qa.question}-${answerIdx}`}>{answer}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+
         {/* Individual Responses - Enhanced Table */}
         <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
           <CardHeader className="bg-gradient-to-r from-primary/10 to-secondary/10 rounded-t-xl">
@@ -816,44 +1284,25 @@ export function Analytics() {
                   <tr>
                     <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Persona</th>
                     <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Reasoning</th>
-                    {metricPresent('intent_to_action', 'purchase_intent') && (
+                    {showCompositeScore && (
                       <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
                         <div className="flex items-center justify-center gap-1">
-                          <Target className="h-4 w-4" />
-                          Intent
+                          <Gauge className="h-4 w-4" />
+                          Overall
                         </div>
                       </th>
                     )}
-                    {metricPresent('emotional_response', 'sentiment') && (
-                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {metricColumns.map((metric) => (
+                      <th key={metric.key} className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
                         <div className="flex items-center justify-center gap-1">
-                          <Brain className="h-4 w-4" />
-                          Sentiment
+                          {metric.icon && <metric.icon className="h-4 w-4" />}
+                          {metric.label}
                         </div>
                       </th>
-                    )}
-                    {metricPresent('brand_trust', 'trust_in_brand') && (
+                    ))}
+                    {hasCustomQuestions && (
                       <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                        <div className="flex items-center justify-center gap-1">
-                          <Shield className="h-4 w-4" />
-                          Trust
-                        </div>
-                      </th>
-                    )}
-                    {metricPresent('message_clarity') && (
-                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                        <div className="flex items-center justify-center gap-1">
-                          <MessageSquare className="h-4 w-4" />
-                          Clarity
-                        </div>
-                      </th>
-                    )}
-                    {metricPresent('key_concerns', 'key_concern_flagged') && (
-                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                        <div className="flex items-center justify-center gap-1">
-                          <AlertTriangle className="h-4 w-4" />
-                          Concern
-                        </div>
+                        Custom Q&A
                       </th>
                     )}
                   </tr>
@@ -906,17 +1355,18 @@ export function Analytics() {
                           </Tooltip>
                         </TooltipProvider>
                       </td>
-                      {metricPresent('intent_to_action', 'purchase_intent') && (
+                      {showCompositeScore && (
                         <td className="p-4 text-center">
                           {(() => {
-                            const intentScore = getNumericScore(response, 'intent_to_action', 'purchase_intent');
+                            const compositeScore = computeCompositeScore(response);
+                            if (compositeScore === undefined) return <span className="text-xs text-gray-500">—</span>;
                             return (
                               <div className="flex flex-col items-center gap-1">
-                                <span className={`text-lg font-bold ${computeScoreColor(intentScore ?? 0)}`}>
-                                  {intentScore ?? '—'}
+                                <span className={`text-lg font-bold ${computeScoreColor(compositeScore)}`}>
+                                  {compositeScore.toFixed(2)}
                                 </span>
                                 <Progress
-                                  value={computeScoreProgress(intentScore ?? 0)}
+                                  value={computeScoreProgress(compositeScore)}
                                   className="w-16 h-1.5"
                                 />
                               </div>
@@ -924,68 +1374,24 @@ export function Analytics() {
                           })()}
                         </td>
                       )}
-                      {metricPresent('emotional_response', 'sentiment') && (
+                      {metricColumns.map((metric) => (
+                        <td key={`${response.persona_id}-${metric.key}`} className="p-4 text-center">
+                          {renderMetricCell(response, metric)}
+                        </td>
+                      ))}
+                      {hasCustomQuestions && (
                         <td className="p-4 text-center">
                           {(() => {
-                            const sentimentScore = getNumericScore(response, 'emotional_response', 'sentiment') ?? 0;
-                            const descriptor = getSentimentDescriptor(sentimentScore);
+                            const qaResponses = extractCustomQuestions(response);
+                            if (qaResponses.length === 0) return <span className="text-xs text-gray-500">—</span>;
                             return (
-                              <>
-                                <Badge className={descriptor.badgeClassName}>
-                                  {descriptor.level}
-                                </Badge>
-                                <div className="text-xs mt-1 text-gray-500">
-                                  {sentimentScore.toFixed(2)}
-                                </div>
-                              </>
-                            );
-                          })()}
-                        </td>
-                      )}
-                      {metricPresent('brand_trust', 'trust_in_brand') && (
-                        <td className="p-4 text-center">
-                          {(() => {
-                            const trustScore = getNumericScore(response, 'brand_trust', 'trust_in_brand');
-                            return (
-                              <div className="flex flex-col items-center gap-1">
-                                <span className={`text-lg font-bold ${computeScoreColor(trustScore ?? 0)}`}>
-                                  {trustScore ?? '—'}
-                                </span>
-                                <Progress
-                                  value={computeScoreProgress(trustScore ?? 0)}
-                                  className="w-16 h-1.5"
-                                />
-                              </div>
-                            );
-                          })()}
-                        </td>
-                      )}
-                      {metricPresent('message_clarity') && (
-                        <td className="p-4 text-center">
-                          {(() => {
-                            const clarityScore = getNumericScore(response, 'message_clarity');
-                            return (
-                              <div className="flex flex-col items-center gap-1">
-                                <span className={`text-lg font-bold ${computeScoreColor(clarityScore ?? 0)}`}>
-                                  {clarityScore ?? '—'}
-                                </span>
-                                <Progress
-                                  value={computeScoreProgress(clarityScore ?? 0)}
-                                  className="w-16 h-1.5"
-                                />
-                              </div>
-                            );
-                          })()}
-                        </td>
-                      )}
-                      {metricPresent('key_concerns', 'key_concern_flagged') && (
-                        <td className="p-4">
-                          {(() => {
-                            const concernValue = getResponseValue(response, 'key_concerns', 'key_concern_flagged');
-                            return (
-                              <Badge variant="outline" className="text-xs">
-                                {concernValue ? String(concernValue) : '—'}
-                              </Badge>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setSelectedQAResponse({ persona: response.persona_name, qas: qaResponses })}
+                              >
+                                View ({qaResponses.length})
+                              </Button>
                             );
                           })()}
                         </td>
@@ -997,6 +1403,26 @@ export function Analytics() {
             </div>
           </CardContent>
         </Card>
+
+        <Dialog open={!!selectedQAResponse} onOpenChange={(open) => !open && setSelectedQAResponse(null)}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Custom Q&A {selectedQAResponse ? `- ${selectedQAResponse.persona}` : ''}</DialogTitle>
+              <DialogDescription>Detailed answers for persona-specific custom questions.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 mt-2">
+              {selectedQAResponse?.qas.map((qa, idx) => (
+                <div
+                  key={`${qa.question}-${idx}`}
+                  className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800"
+                >
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{qa.question}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap">{qa.answer}</p>
+                </div>
+              )) || <p className="text-sm text-gray-500">No answers available.</p>}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Action Buttons */}
         <div className="flex justify-center gap-4 mt-8 pb-8">

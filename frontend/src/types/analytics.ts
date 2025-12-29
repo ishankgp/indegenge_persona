@@ -28,6 +28,7 @@ export interface SummaryStatistics {
   brand_trust_avg?: number;
   trust_in_brand_avg?: number;   // legacy alias
   message_clarity_avg?: number;
+  [key: string]: unknown;
 }
 
 export interface PersonaResponseScores {
@@ -40,6 +41,9 @@ export interface PersonaResponseScores {
   message_clarity?: number;
   key_concern_flagged?: string | boolean | number;
   key_concerns?: string | boolean | number;  // Support both naming conventions
+  custom_questions?: CustomQuestionResponse[];
+  custom_question_answers?: Record<string, string>;
+  [key: string]: unknown;
 }
 
 export interface IndividualResponseRow {
@@ -49,11 +53,17 @@ export interface IndividualResponseRow {
   persona_type?: string;
   reasoning: string;
   responses: PersonaResponseScores;
+  custom_questions?: CustomQuestionResponse[];
 }
 
 export interface ActionableSuggestion {
   suggestion: string;
   reasoning: string;
+}
+
+export interface CustomQuestionResponse {
+  question: string;
+  answer: string;
 }
 
 export interface AnalysisResults {
@@ -66,6 +76,8 @@ export interface AnalysisResults {
   suggestions?: ActionableSuggestion[];
   preamble?: string;
   created_at: string;
+  metric_weights?: Record<string, number>;
+  custom_questions?: CustomQuestionResponse[];
 }
 
 export type TrendDirection = 'up' | 'down' | 'neutral';
