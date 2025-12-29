@@ -158,7 +158,7 @@ export function PersonaCoverage() {
 
     // Underrepresented conditions (less than 2 personas)
     const underrepresentedConditions = Object.entries(conditionCounts)
-      .filter(([_, count]) => count < 2)
+      .filter(([, count]) => count < 2)
       .map(([condition, count]) => ({ condition, count }))
       .sort((a, b) => a.count - b.count)
 

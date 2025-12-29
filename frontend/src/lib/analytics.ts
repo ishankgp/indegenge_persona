@@ -6,6 +6,14 @@ import { metricRegistry, mapBackendMetricToFrontend, mapFrontendMetricToBackend,
  */
 export { mapFrontendMetricToBackend, mapBackendMetricToFrontend, normalizeBackendMetricKey }
 
+/**
+ * Back-compat helper used by older callers.
+ * Prefer `normalizeBackendMetricKey` directly for backend keys.
+ */
+export function normalizeMetricKey(metric: string): string {
+  return normalizeBackendMetricKey(metric)
+}
+
 export function getMetricLabelFromBackendKey(backendKey: string): string {
   const metric = getMetricByBackendKey(backendKey)
   return metric?.label || backendKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
@@ -20,18 +28,19 @@ export function listSentimentBackends(): string[] {
 }
 
 export function normalizeMetricScore(metric: string, score: number): number {
-  const key = normalizeMetricKey(metric);
-  if (key === 'sentiment') {
+  const key = normalizeMetricKey(metric)
+  // Sentiment can come back as `sentiment` (legacy) or `emotional_response` (current).
+  if (key === 'sentiment' || key === 'emotional_response') {
     // Convert -1 to 1 sentiment into a 0-10 scale
-    return ((score + 1) / 2) * 10;
+    return ((score + 1) / 2) * 10
   }
-  return score;
+  return score
 }
 
 export function formatMetricLabel(metric: string): string {
   return normalizeMetricKey(metric)
     .replace(/_/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+    .replace(/\b\w/g, (char: string) => char.toUpperCase())
 }
 
 export function computeScoreColor(score: number, max: number = 10): string {

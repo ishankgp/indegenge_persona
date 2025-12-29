@@ -89,7 +89,7 @@ def normalize_metric(metric: str) -> str:
     return LEGACY_METRIC_ALIASES.get(metric, metric)
 
 
-def format_metric_guidance(metrics: List[str]) -> str:
+def format_metric_guidance(metrics: List[str], metric_weights: Optional[Dict[str, float]] = None) -> str:
     """Return human-readable instructions for each requested metric."""
     if not metrics:
         return "- No metrics provided."
@@ -97,11 +97,19 @@ def format_metric_guidance(metrics: List[str]) -> str:
     lines = []
     for metric in metrics:
         canonical = normalize_metric(metric)
+        weight_note = ""
+        if metric_weights:
+            # Accept either canonical or original key.
+            weight = metric_weights.get(canonical)
+            if weight is None:
+                weight = metric_weights.get(metric)
+            if weight is not None:
+                weight_note = f" (weight={weight})"
         description = PHARMA_METRIC_DESCRIPTIONS.get(
             canonical,
             f"Provide an evidence-based assessment for '{canonical}'."
         )
-        lines.append(f'- "{canonical}": {description}')
+        lines.append(f'- "{canonical}": {description}{weight_note}')
     return "\n".join(lines)
 
 
@@ -216,12 +224,13 @@ def create_cohort_analysis_prompt(
     persona_type: str,
     stimulus_text: str,
     metrics: List[str],
-    questions: Optional[List[str]] = None
+    questions: Optional[List[str]] = None,
+    metric_weights: Optional[Dict[str, float]] = None
 ) -> str:
     """Create a text-only analysis prompt that is persona and metric aware."""
 
     persona_label = "healthcare professional" if (persona_type or "").strip().lower() == "hcp" else "patient"
-    metric_guidance = format_metric_guidance(metrics)
+    metric_guidance = format_metric_guidance(metrics, metric_weights=metric_weights)
     persona_snapshot = json.dumps(persona_data, indent=2)
 
     question_block = ""
@@ -287,11 +296,26 @@ def analyze_persona_response(
     persona_type: str,
     stimulus_text: str,
     metrics: List[str],
-    questions: Optional[List[str]] = None
+    questions: Optional[List[str]] = None,
+    metric_weights: Optional[Dict[str, float]] = None
 ) -> Dict[str, Any]:
     """Analyzes how a single persona responds to a stimulus using chat completions."""
     normalized_metrics = [normalize_metric(metric) for metric in metrics]
-    prompt = create_cohort_analysis_prompt(persona_data, persona_type, stimulus_text, normalized_metrics, questions)
+    normalized_weights = None
+    if metric_weights:
+        # Normalize any legacy metric keys to canonical keys to keep weights aligned.
+        normalized_weights = {}
+        for key, weight in metric_weights.items():
+            normalized_weights[normalize_metric(str(key))] = weight
+
+    prompt = create_cohort_analysis_prompt(
+        persona_data,
+        persona_type,
+        stimulus_text,
+        normalized_metrics,
+        questions,
+        metric_weights=normalized_weights,
+    )
     persona_role = "healthcare professional" if (persona_type or "").strip().lower() == "hcp" else "patient"
     messages = [
         {
@@ -534,7 +558,14 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
     
     return insights
 
-def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: List[str], db, questions: Optional[List[str]] = None) -> Dict[str, Any]:
+def run_cohort_analysis(
+    persona_ids: List[int],
+    stimulus_text: str,
+    metrics: List[str],
+    db,
+    questions: Optional[List[str]] = None,
+    metric_weights: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
     """Runs a complete cohort analysis for the given personas and stimulus."""
     
     normalized_metrics: List[str] = []
@@ -563,7 +594,14 @@ def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: Lis
         # Parse the JSON string to get the persona data
         persona_data = json.loads(persona.full_persona_json)
         persona_type = getattr(persona, "persona_type", None) or persona_data.get("persona_type") or "Patient"
-        analysis_result = analyze_persona_response(persona_data, persona_type, stimulus_text, metrics, questions)
+        analysis_result = analyze_persona_response(
+            persona_data,
+            persona_type,
+            stimulus_text,
+            metrics,
+            questions,
+            metric_weights=metric_weights,
+        )
 
         individual_responses.append({
             'persona_id': persona.id,
@@ -598,10 +636,18 @@ def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: Lis
     return final_analysis
 
 
-def create_multimodal_analysis_prompt(persona_data: Dict[str, Any], stimulus_text: str, stimulus_images: List[Dict], content_type: str, metrics: List[str]) -> str:
+def create_multimodal_analysis_prompt(
+    persona_data: Dict[str, Any],
+    stimulus_text: str,
+    stimulus_images: List[Dict],
+    content_type: str,
+    metrics: List[str],
+    questions: Optional[List[str]] = None,
+    metric_weights: Optional[Dict[str, float]] = None,
+) -> str:
     """Creates a prompt for analyzing how a persona responds to multimodal stimulus (text + images)."""
     
-    metric_guidance = format_metric_guidance(metrics)
+    metric_guidance = format_metric_guidance(metrics, metric_weights=metric_weights)
     
     # Build content description
     content_description = ""
@@ -612,6 +658,11 @@ def create_multimodal_analysis_prompt(persona_data: Dict[str, Any], stimulus_tex
     elif content_type == 'both':
         content_description = f"Text Message: {stimulus_text}\nVisual Content: {len(stimulus_images)} image(s) provided"
     
+    question_block = ""
+    if questions:
+        formatted_questions = "\n".join([f"- Q{idx+1}: {q}" for idx, q in enumerate(questions)])
+        question_block = f"\nQUALITATIVE QUESTIONS:\n{formatted_questions}\n"
+
     prompt = f"""
 You are analyzing how a specific pharmaceutical persona responds to marketing content. 
 
@@ -627,6 +678,7 @@ DETAILED PERSONA CHARACTERISTICS:
 
 MARKETING CONTENT TO ANALYZE:
 {content_description}
+{question_block}
 
 ANALYSIS TASK:
 Analyze how this specific persona would respond to the provided content. Consider their unique characteristics, health condition, concerns, and behavioral patterns.
@@ -642,6 +694,9 @@ Provide a JSON response with the following structure:
     "metrics": {{
         // For each requested metric, provide the score and reasoning
     }},
+    "answers": [
+        // If qualitative questions were provided, include one answer per question in order.
+    ],
     "key_insights": [
         "List of 2-3 key insights about this persona's response"
     ],
@@ -654,7 +709,15 @@ Be specific and consider the persona's unique characteristics in your analysis.
     return prompt
 
 
-def _process_persona_multimodal(persona, stimulus_text: str, stimulus_images: List[Dict], content_type: str, metrics: List[str]) -> Dict[str, Any]:
+def _process_persona_multimodal(
+    persona,
+    stimulus_text: str,
+    stimulus_images: List[Dict],
+    content_type: str,
+    metrics: List[str],
+    questions: Optional[List[str]] = None,
+    metric_weights: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
     """
     Process a single persona for multimodal analysis.
     This function is designed to be called in parallel.
@@ -682,7 +745,15 @@ def _process_persona_multimodal(persona, stimulus_text: str, stimulus_images: Li
     
     # Create multimodal prompt
     logger.info(f"🔄 Creating multimodal prompt for {persona.name}")
-    prompt = create_multimodal_analysis_prompt(persona_data, stimulus_text, stimulus_images, content_type, metrics)
+    prompt = create_multimodal_analysis_prompt(
+        persona_data,
+        stimulus_text,
+        stimulus_images,
+        content_type,
+        metrics,
+        questions=questions,
+        metric_weights=metric_weights,
+    )
     logger.info(f"✅ Prompt created, length: {len(prompt)} chars")
     
     # Prepare messages for GPT-5
@@ -722,12 +793,24 @@ def _process_persona_multimodal(persona, stimulus_text: str, stimulus_images: Li
         logger.info(f"✅ GPT-5 response received for {persona.name}")
         logger.info(f"📊 Response keys: {list(data.keys())}")
         
+        answers = data.get("answers")
+        if questions:
+            normalized_answers: List[str] = []
+            for idx, _ in enumerate(questions):
+                if isinstance(answers, list) and idx < len(answers):
+                    normalized_answers.append(str(answers[idx]))
+                else:
+                    normalized_answers.append("No answer provided.")
+        else:
+            normalized_answers = None
+
         result = {
             'persona_id': persona.id,
             'persona_name': persona_data.get('name', f'Persona {persona.id}'),
             'condition': persona.condition,
             'analysis_summary': data.get('analysis_summary', ''),
             'metrics': data.get('metrics', {}),
+            'answers': normalized_answers,
             'key_insights': data.get('key_insights', []),
             'behavioral_prediction': data.get('behavioral_prediction', ''),
             'raw_response': json.dumps(data)[:500]
@@ -750,7 +833,16 @@ def _process_persona_multimodal(persona, stimulus_text: str, stimulus_images: Li
         }
 
 
-def run_multimodal_cohort_analysis(persona_ids: List[int], stimulus_text: str, stimulus_images: List[Dict], content_type: str, metrics: List[str], db) -> Dict[str, Any]:
+def run_multimodal_cohort_analysis(
+    persona_ids: List[int],
+    stimulus_text: str,
+    stimulus_images: List[Dict],
+    content_type: str,
+    metrics: List[str],
+    db,
+    metric_weights: Optional[Dict[str, float]] = None,
+    questions: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """
     Runs a multimodal cohort analysis using GPT-5's vision capabilities for image processing.
     """
@@ -786,7 +878,16 @@ def run_multimodal_cohort_analysis(persona_ids: List[int], stimulus_text: str, s
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all persona processing tasks
         future_to_persona = {
-            executor.submit(_process_persona_multimodal, persona, stimulus_text, stimulus_images, content_type, metrics): persona 
+            executor.submit(
+                _process_persona_multimodal,
+                persona,
+                stimulus_text,
+                stimulus_images,
+                content_type,
+                metrics,
+                questions,
+                metric_weights,
+            ): persona 
             for persona in personas
         }
         
@@ -835,6 +936,8 @@ def run_multimodal_cohort_analysis(persona_ids: List[int], stimulus_text: str, s
         'stimulus_images_count': len(stimulus_images) if stimulus_images else 0,
         'content_summary': content_summary,
         'metrics_analyzed': metrics,
+        'metric_weights': metric_weights or {},
+        'questions': questions or [],
         'individual_responses': individual_responses,
         'summary_statistics': summary_stats,
         'insights': llm_generated_data.get("cumulative_insights", []),

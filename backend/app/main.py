@@ -547,6 +547,7 @@ async def analyze_cohort(request: schemas.CohortAnalysisRequest, db: Session = D
             persona_ids=request.persona_ids,
             stimulus_text=request.stimulus_text,
             metrics=request.metrics,
+            metric_weights=request.metric_weights,
             db=db,
             questions=request.questions
         )
@@ -578,8 +579,10 @@ async def analyze_cohort(request: schemas.CohortAnalysisRequest, db: Session = D
 async def analyze_multimodal_cohort(
     persona_ids: str = Form(...),
     metrics: str = Form(...),
+    metric_weights: Optional[str] = Form(None),
     content_type: str = Form(...),
     stimulus_text: Optional[str] = Form(None),
+    questions: Optional[str] = Form(None),
     stimulus_images: List[UploadFile] = File(default=[]),
     db: Session = Depends(get_db)
 ):
@@ -609,6 +612,33 @@ async def analyze_multimodal_cohort(
         except json.JSONDecodeError as e:
             logger.error("❌ Failed to parse metrics JSON: %s", e)
             raise HTTPException(status_code=400, detail=f"Invalid metrics JSON: {str(e)}")
+
+        metric_weights_dict: Optional[Dict[str, float]] = None
+        if metric_weights:
+            try:
+                parsed_weights = json.loads(metric_weights)
+                if isinstance(parsed_weights, dict):
+                    metric_weights_dict = {
+                        str(k): float(v) for k, v in parsed_weights.items() if v is not None
+                    }
+                    logger.info("✅ Parsed metric_weights: %s", metric_weights_dict)
+            except json.JSONDecodeError as e:
+                logger.error("❌ Failed to parse metric_weights JSON: %s", e)
+                raise HTTPException(status_code=400, detail=f"Invalid metric_weights JSON: {str(e)}")
+            except Exception as e:
+                logger.error("❌ Failed to normalize metric_weights: %s", e)
+                raise HTTPException(status_code=400, detail=f"Invalid metric_weights payload: {str(e)}")
+
+        questions_list: Optional[List[str]] = None
+        if questions:
+            try:
+                parsed_questions = json.loads(questions)
+                if isinstance(parsed_questions, list):
+                    questions_list = [str(q) for q in parsed_questions if str(q).strip()]
+                    logger.info("✅ Parsed questions: %s", questions_list)
+            except json.JSONDecodeError as e:
+                logger.error("❌ Failed to parse questions JSON: %s", e)
+                raise HTTPException(status_code=400, detail=f"Invalid questions JSON: {str(e)}")
             
         logger.info("✅ Parsed: %d personas, %d metrics", len(persona_ids_list), len(metrics_list))
 
@@ -676,6 +706,8 @@ async def analyze_multimodal_cohort(
             stimulus_images=processed_images,
             content_type=content_type,
             metrics=metrics_list,
+            metric_weights=metric_weights_dict,
+            questions=questions_list,
             db=db
         )
         logger.info("✅ Multimodal cohort analysis completed successfully")
