@@ -5,8 +5,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import MetricCard from '@/components/analytics/MetricCard';
-import { computeScoreColor, computeScoreProgress, getSentimentDescriptor } from '@/lib/analytics';
-import type { AnalysisResults, AnalyzedMetricKey, IndividualResponseRow, PersonaResponseScores } from '@/types/analytics';
+import { computeScoreColor, getMetricLabelFromBackendKey, getSentimentDescriptor, normalizeBackendMetricKey } from '@/lib/analytics';
+import { getMetricByBackendKey, mapBackendMetricToFrontend } from '@/lib/metricsRegistry';
+import type { MetricDefinition } from '@/lib/metricsRegistry';
+import type { AnalysisResults, AnalyzedMetricKey, IndividualResponseRow, PersonaResponseScores, SummaryStatistics } from '@/types/analytics';
 import {
   TrendingUp,
   TrendingDown,
@@ -266,64 +268,88 @@ export function Analytics() {
     created_at
   } = analysisResults;
 
-  const metricPresent = (...keys: string[]) =>
-    keys.some((key) => metrics_analyzed.includes(key as AnalyzedMetricKey));
+  const analyzedMetricDefinitions: MetricDefinition[] = Array.from(
+    (metrics_analyzed || []).reduce((map, metricKey) => {
+      const normalized = normalizeBackendMetricKey(metricKey)
+      const definition =
+        getMetricByBackendKey(normalized) || {
+          id: mapBackendMetricToFrontend(normalized),
+          backendKeys: [normalized as AnalyzedMetricKey],
+          label: getMetricLabelFromBackendKey(normalized),
+          description: "",
+          type: "score",
+          scale: { min: 0, max: 10 },
+        }
 
-  const getResponseValue = (
-    row: IndividualResponseRow,
-    key: keyof PersonaResponseScores,
-    legacyKey?: keyof PersonaResponseScores
-  ) => {
-    const responses = row?.responses || {};
-    const value = responses[key];
-    if (value !== undefined && value !== null) {
-      return value;
-    }
-    if (legacyKey) {
-      const legacyValue = responses[legacyKey];
-      if (legacyValue !== undefined && legacyValue !== null) {
-        return legacyValue;
+      if (!map.has(definition.id)) {
+        map.set(definition.id, definition)
       }
-    }
-    return undefined;
-  };
+      return map
+    }, new Map<string, MetricDefinition>()).values()
+  )
 
-  const getNumericScore = (
-    row: IndividualResponseRow,
-    key: keyof PersonaResponseScores,
-    legacyKey?: keyof PersonaResponseScores
-  ): number | undefined => {
-    const value = getResponseValue(row, key, legacyKey);
-    if (typeof value === 'number') {
-      return value;
+  const getResponseValue = (row: IndividualResponseRow, metric: MetricDefinition) => {
+    const responses = row?.responses || {}
+    const keysToCheck = [...metric.backendKeys, metric.id]
+    for (const key of keysToCheck) {
+      const value = responses[key as keyof PersonaResponseScores]
+      if (value !== undefined && value !== null) return value
     }
-    if (typeof value === 'string' && value.trim() !== '') {
-      const parsed = Number(value);
-      if (!Number.isNaN(parsed)) {
-        return parsed;
-      }
+    return undefined
+  }
+
+  const getNumericScore = (row: IndividualResponseRow, metric: MetricDefinition): number | undefined => {
+    const value = getResponseValue(row, metric)
+    if (typeof value === "number") return value
+    if (typeof value === "string" && value.trim() !== "") {
+      const parsed = Number(value)
+      if (!Number.isNaN(parsed)) return parsed
     }
-    return undefined;
-  };
+    return undefined
+  }
+
+  const concernsMetric = analyzedMetricDefinitions.find((metric) => metric.id === "key_concerns")
 
   const getConcernsList = (row: IndividualResponseRow): string[] => {
-    const value = getResponseValue(row, 'key_concerns', 'key_concern_flagged');
-    if (!value) return [];
+    if (!concernsMetric) return []
+    const value = getResponseValue(row, concernsMetric)
+    if (!value) return []
     if (Array.isArray(value)) {
-      return value.filter(Boolean).map((item) => String(item));
+      return value.filter(Boolean).map((item) => String(item))
     }
-    if (typeof value === 'string') {
-      return [value];
+    if (typeof value === "string") {
+      return [value]
     }
-    if (typeof value === 'number') {
-      return [value.toString()];
+    if (typeof value === "number") {
+      return [value.toString()]
     }
-    return [];
-  };
+    return []
+  }
 
-  const summaryIntent = summary_statistics.intent_to_action_avg ?? summary_statistics.purchase_intent_avg;
-  const summaryEmotion = summary_statistics.emotional_response_avg ?? summary_statistics.sentiment_avg;
-  const summaryTrust = summary_statistics.brand_trust_avg ?? summary_statistics.trust_in_brand_avg;
+  const getSummaryValueForMetric = (summary: SummaryStatistics, metric: MetricDefinition): number | undefined => {
+    const keysToCheck = [metric.id, ...metric.backendKeys].map((key) => `${key}_avg` as keyof SummaryStatistics)
+    for (const key of keysToCheck) {
+      const value = summary[key]
+      if (typeof value === "number") return value
+    }
+    return undefined
+  }
+
+  const metricProgress = (metric: MetricDefinition, score: number) => {
+    const { min, max } = metric.scale
+    if (max === min) return 0
+    return ((score - min) / (max - min)) * 100
+  }
+
+  const summaryMetricEntries = analyzedMetricDefinitions
+    .filter((metric) => metric.type !== "flag")
+    .map((metric) => ({ metric, value: getSummaryValueForMetric(summary_statistics, metric) }))
+    .filter((entry) => typeof entry.value === "number")
+
+  const scoreMetrics = analyzedMetricDefinitions.filter((metric) => metric.type === "score")
+  const primaryScoreMetric = scoreMetrics.find((metric) => metric.id === "brand_trust")
+    || scoreMetrics.find((metric) => metric.id === "intent_to_action")
+    || scoreMetrics[0]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
@@ -569,74 +595,63 @@ export function Analytics() {
               </div>
             )}
             <div className="flex flex-wrap gap-2">
-              {metrics_analyzed.map((metric: AnalyzedMetricKey) => (
-                <Badge key={metric} variant="outline" className="px-3 py-1">
-                  <CheckCircle className="h-3 w-3 mr-1 text-emerald-500" />
-                  {metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                </Badge>
-              ))}
+              {metrics_analyzed.map((metric: AnalyzedMetricKey) => {
+                const normalized = normalizeBackendMetricKey(metric)
+                const definition = getMetricByBackendKey(normalized)
+                const label = definition?.label || getMetricLabelFromBackendKey(metric)
+                return (
+                  <Badge key={metric} variant="outline" className="px-3 py-1">
+                    <CheckCircle className="h-3 w-3 mr-1 text-emerald-500" />
+                    {label}
+                  </Badge>
+                )
+              })}
             </div>
           </CardContent>
         </Card>
 
         {/* Key Metrics Grid - Enhanced */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          {summaryIntent !== undefined && (
-            <MetricCard
-              title="Average Purchase Intent"
-              value={summaryIntent.toFixed(1)}
-              subtitle="Scale of 1-10"
-              icon={Target}
-              trend={summaryIntent > 5 ? 'up' : 'down'}
-              color="primary"
-            />
-          )}
-          {summaryEmotion !== undefined && (
-            <MetricCard
-              title="Average Sentiment"
-              value={
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const d = getSentimentDescriptor(summaryEmotion);
-                    return (
-                      <span className={d.color}>
-                        {summaryEmotion.toFixed(2)}
-                      </span>
-                    );
-                  })()}
-                  {(() => {
-                    const d = getSentimentDescriptor(summaryEmotion);
-                    if (d.iconTone === 'up') return <TrendingUp className="h-4 w-4 text-emerald-500" />;
-                    if (d.iconTone === 'down') return <TrendingDown className="h-4 w-4 text-red-500" />;
-                    return <Minus className="h-4 w-4 text-gray-500" />;
-                  })()}
-                </div>
-              }
-              subtitle="Scale of -1 to 1"
-              icon={Brain}
-              color="secondary"
-            />
-          )}
-          {summaryTrust !== undefined && (
-            <MetricCard
-              title="Average Brand Trust"
-              value={summaryTrust.toFixed(1)}
-              subtitle="Scale of 1-10"
-              icon={Shield}
-              trend={summaryTrust > 5 ? 'up' : 'down'}
-              color="success"
-            />
-          )}
-          {summary_statistics.message_clarity_avg !== undefined && (
-            <MetricCard
-              title="Message Clarity"
-              value={summary_statistics.message_clarity_avg.toFixed(1)}
-              subtitle="Scale of 1-10"
-              icon={MessageSquare}
-              trend={summary_statistics.message_clarity_avg > 7 ? 'up' : 'neutral'}
-              color="warning"
-            />
-          )}
+          {summaryMetricEntries.map(({ metric, value }) => {
+            const Icon = metric.icon?.component || BarChart3
+            const subtitle = `Scale of ${metric.scale.min} to ${metric.scale.max}`
+            if (metric.type === "sentiment") {
+              const descriptor = getSentimentDescriptor(value as number)
+              return (
+                <MetricCard
+                  key={metric.id}
+                  title={metric.label}
+                  value={
+                    <div className="flex items-center gap-2">
+                      <span className={descriptor.color}>{(value as number).toFixed(2)}</span>
+                      {descriptor.iconTone === "up" && <TrendingUp className="h-4 w-4 text-emerald-500" />}
+                      {descriptor.iconTone === "down" && <TrendingDown className="h-4 w-4 text-red-500" />}
+                      {descriptor.iconTone === "neutral" && <Minus className="h-4 w-4 text-gray-500" />}
+                    </div>
+                  }
+                  subtitle={subtitle}
+                  icon={Icon}
+                  color="secondary"
+                />
+              )
+            }
+
+            const numericValue = value as number
+            const colorKey = metric.id === "brand_trust" ? "success" : metric.id === "intent_to_action" ? "primary" : "warning"
+            const trend = numericValue > (metric.scale.max - metric.scale.min) / 2 ? "up" : "neutral"
+
+            return (
+              <MetricCard
+                key={metric.id}
+                title={metric.label}
+                value={numericValue.toFixed(1)}
+                subtitle={subtitle}
+                icon={Icon}
+                trend={trend}
+                color={colorKey}
+              />
+            )
+          })}
         </div>
 
         {insights && insights.length > 0 && (
@@ -674,12 +689,12 @@ export function Analytics() {
 
         {/* Message Refinement Suggestions - NEW */}
         {individual_responses && individual_responses.length > 0 && (() => {
-          const lowScorePersonas = individual_responses.filter((row) => {
-            const trustScore = getNumericScore(row, 'brand_trust', 'trust_in_brand');
-            const intentScore = getNumericScore(row, 'intent_to_action', 'purchase_intent');
-            const score = trustScore ?? intentScore;
-            return typeof score === 'number' && score < 5;
-          });
+          const lowScorePersonas = primaryScoreMetric
+            ? individual_responses.filter((row) => {
+                const score = getNumericScore(row, primaryScoreMetric)
+                return typeof score === "number" && score < primaryScoreMetric.scale.max * 0.5
+              })
+            : []
 
           const hasConcern = (keywords: string[]) =>
             lowScorePersonas.some((row) =>
@@ -816,46 +831,17 @@ export function Analytics() {
                   <tr>
                     <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Persona</th>
                     <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Reasoning</th>
-                    {metricPresent('intent_to_action', 'purchase_intent') && (
-                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                        <div className="flex items-center justify-center gap-1">
-                          <Target className="h-4 w-4" />
-                          Intent
-                        </div>
-                      </th>
-                    )}
-                    {metricPresent('emotional_response', 'sentiment') && (
-                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                        <div className="flex items-center justify-center gap-1">
-                          <Brain className="h-4 w-4" />
-                          Sentiment
-                        </div>
-                      </th>
-                    )}
-                    {metricPresent('brand_trust', 'trust_in_brand') && (
-                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                        <div className="flex items-center justify-center gap-1">
-                          <Shield className="h-4 w-4" />
-                          Trust
-                        </div>
-                      </th>
-                    )}
-                    {metricPresent('message_clarity') && (
-                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                        <div className="flex items-center justify-center gap-1">
-                          <MessageSquare className="h-4 w-4" />
-                          Clarity
-                        </div>
-                      </th>
-                    )}
-                    {metricPresent('key_concerns', 'key_concern_flagged') && (
-                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                        <div className="flex items-center justify-center gap-1">
-                          <AlertTriangle className="h-4 w-4" />
-                          Concern
-                        </div>
-                      </th>
-                    )}
+                    {analyzedMetricDefinitions.map((metric) => {
+                      const Icon = metric.icon?.component || BarChart3
+                      return (
+                        <th key={metric.id} className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                          <div className="flex items-center justify-center gap-1">
+                            <Icon className="h-4 w-4" />
+                            {metric.label}
+                          </div>
+                        </th>
+                      )
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -901,100 +887,58 @@ export function Analytics() {
                             <TooltipContent className="max-w-md p-4 bg-white dark:bg-gray-800 shadow-xl">
                               <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
                                 {response.reasoning}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </td>
-                      {metricPresent('intent_to_action', 'purchase_intent') && (
-                        <td className="p-4 text-center">
-                          {(() => {
-                            const intentScore = getNumericScore(response, 'intent_to_action', 'purchase_intent');
-                            return (
-                              <div className="flex flex-col items-center gap-1">
-                                <span className={`text-lg font-bold ${computeScoreColor(intentScore ?? 0)}`}>
-                                  {intentScore ?? '—'}
-                                </span>
-                                <Progress
-                                  value={computeScoreProgress(intentScore ?? 0)}
-                                  className="w-16 h-1.5"
-                                />
-                              </div>
-                            );
-                          })()}
-                        </td>
-                      )}
-                      {metricPresent('emotional_response', 'sentiment') && (
-                        <td className="p-4 text-center">
-                          {(() => {
-                            const sentimentScore = getNumericScore(response, 'emotional_response', 'sentiment') ?? 0;
-                            const descriptor = getSentimentDescriptor(sentimentScore);
-                            return (
-                              <>
-                                <Badge className={descriptor.badgeClassName}>
-                                  {descriptor.level}
-                                </Badge>
-                                <div className="text-xs mt-1 text-gray-500">
-                                  {sentimentScore.toFixed(2)}
-                                </div>
-                              </>
-                            );
-                          })()}
-                        </td>
-                      )}
-                      {metricPresent('brand_trust', 'trust_in_brand') && (
-                        <td className="p-4 text-center">
-                          {(() => {
-                            const trustScore = getNumericScore(response, 'brand_trust', 'trust_in_brand');
-                            return (
-                              <div className="flex flex-col items-center gap-1">
-                                <span className={`text-lg font-bold ${computeScoreColor(trustScore ?? 0)}`}>
-                                  {trustScore ?? '—'}
-                                </span>
-                                <Progress
-                                  value={computeScoreProgress(trustScore ?? 0)}
-                                  className="w-16 h-1.5"
-                                />
-                              </div>
-                            );
-                          })()}
-                        </td>
-                      )}
-                      {metricPresent('message_clarity') && (
-                        <td className="p-4 text-center">
-                          {(() => {
-                            const clarityScore = getNumericScore(response, 'message_clarity');
-                            return (
-                              <div className="flex flex-col items-center gap-1">
-                                <span className={`text-lg font-bold ${computeScoreColor(clarityScore ?? 0)}`}>
-                                  {clarityScore ?? '—'}
-                                </span>
-                                <Progress
-                                  value={computeScoreProgress(clarityScore ?? 0)}
-                                  className="w-16 h-1.5"
-                                />
-                              </div>
-                            );
-                          })()}
-                        </td>
-                      )}
-                      {metricPresent('key_concerns', 'key_concern_flagged') && (
-                        <td className="p-4">
-                          {(() => {
-                            const concernValue = getResponseValue(response, 'key_concerns', 'key_concern_flagged');
-                            return (
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </td>
+                      {analyzedMetricDefinitions.map((metric) => {
+                        const value = getResponseValue(response, metric)
+                        if (metric.type === "flag") {
+                          return (
+                            <td key={metric.id} className="p-4">
                               <Badge variant="outline" className="text-xs">
-                                {concernValue ? String(concernValue) : '—'}
+                                {value ? String(value) : "—"}
                               </Badge>
-                            );
-                          })()}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                            </td>
+                          )
+                        }
+
+                        const numericValue = getNumericScore(response, metric)
+
+                        if (metric.type === "sentiment") {
+                          const descriptor = getSentimentDescriptor(numericValue)
+                          return (
+                            <td key={metric.id} className="p-4 text-center">
+                              <Badge className={descriptor.badgeClassName}>
+                                {descriptor.level}
+                              </Badge>
+                              <div className="text-xs mt-1 text-gray-500">
+                                {numericValue.toFixed(2)}
+                              </div>
+                            </td>
+                          )
+                        }
+
+                        return (
+                          <td key={metric.id} className="p-4 text-center">
+                            <div className="flex flex-col items-center gap-1">
+                              <span className={`text-lg font-bold ${computeScoreColor(numericValue ?? 0, metric.scale.max)}`}>
+                                {Number.isFinite(numericValue) ? numericValue : "—"}
+                              </span>
+                              <Progress
+                                value={metricProgress(metric, numericValue ?? metric.scale.min)}
+                                className="w-16 h-1.5"
+                              />
+                            </div>
+                          </td>
+                        )
+                      })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           </CardContent>
         </Card>
 
