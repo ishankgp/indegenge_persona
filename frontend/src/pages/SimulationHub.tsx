@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { PersonasAPI, CohortAPI } from "@/lib/api"
+import { metricRegistry } from "@/lib/metricsRegistry"
 import { useNavigate, useLocation } from "react-router-dom"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -54,49 +55,6 @@ interface Persona {
   specialty?: string | null
 }
 
-const availableMetrics = [
-  {
-    id: "emotional_response",
-    label: "Emotional Response",
-    description: "Primary emotional reaction and sentiment toward messaging",
-    icon: Brain,
-    color: "text-violet-600",
-    bgColor: "bg-violet-100 dark:bg-violet-900/30",
-  },
-  {
-    id: "message_clarity",
-    label: "Message Clarity",
-    description: "How well they understand the key messages",
-    icon: MessageSquare,
-    color: "text-blue-600",
-    bgColor: "bg-blue-100 dark:bg-blue-900/30",
-  },
-  {
-    id: "brand_trust",
-    label: "Brand Trust",
-    description: "Credibility and trustworthiness of the message and brand",
-    icon: Shield,
-    color: "text-emerald-600",
-    bgColor: "bg-emerald-100 dark:bg-emerald-900/30",
-  },
-  {
-    id: "intent_to_action",
-    label: "Request/Prescribe Intent",
-    description: "Likelihood to request (patients) or prescribe (HCPs)",
-    icon: Target,
-    color: "text-amber-600",
-    bgColor: "bg-amber-100 dark:bg-amber-900/30",
-  },
-  {
-    id: "key_concerns",
-    label: "Key Concerns",
-    description: "Barriers and objections identified",
-    icon: AlertCircle,
-    color: "text-red-600",
-    bgColor: "bg-red-100 dark:bg-red-900/30",
-  },
-]
-
 const SAMPLE_MESSAGES = [
   "Introducing our new diabetes management solution with 24/7 glucose monitoring",
   "Experience relief from chronic pain with our breakthrough therapy",
@@ -121,7 +79,16 @@ export function SimulationHub() {
   const navigate = useNavigate()
   const [personas, setPersonas] = useState<Persona[]>([])
   const [selectedPersonas, setSelectedPersonas] = useState<Set<number>>(new Set())
-  const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(new Set(["emotional_response", "message_clarity"]))
+  const [metricSelections, setMetricSelections] = useState<Record<string, { selected: boolean; weight?: number }>>(() => {
+    return metricRegistry.reduce<Record<string, { selected: boolean; weight?: number }>>((acc, metric) => {
+      acc[metric.id] = { selected: !!metric.defaultSelected, weight: metric.defaultWeight ?? 1 }
+      return acc
+    }, {})
+  })
+  const selectedMetrics = useMemo(
+    () => new Set(Object.entries(metricSelections).filter(([, config]) => config.selected).map(([id]) => id)),
+    [metricSelections],
+  )
   const [stimulusText, setStimulusText] = useState("")
   const [stimulusImages, setStimulusImages] = useState<File[]>([])
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
@@ -144,6 +111,7 @@ export function SimulationHub() {
   const [isRecruiting, setIsRecruiting] = useState(false)
   const [isVariant, setIsVariant] = useState(false)
   const [originalMessage, setOriginalMessage] = useState("")
+  const [showMetricWeights, setShowMetricWeights] = useState(false)
 
   // Handle pre-filled message from Analytics page (for message variants)
   const location = useLocation()
@@ -430,13 +398,30 @@ export function SimulationHub() {
   }
 
   const toggleMetric = (id: string) => {
-    const newSelected = new Set(selectedMetrics)
-    if (newSelected.has(id)) {
-      newSelected.delete(id)
-    } else {
-      newSelected.add(id)
-    }
-    setSelectedMetrics(newSelected)
+    setMetricSelections((prev) => {
+      const current = prev[id] || { selected: false, weight: metricRegistry.find((m) => m.id === id)?.defaultWeight ?? 1 }
+      return {
+        ...prev,
+        [id]: {
+          ...current,
+          selected: !current.selected,
+          weight: current.weight ?? metricRegistry.find((m) => m.id === id)?.defaultWeight ?? 1,
+        },
+      }
+    })
+  }
+
+  const updateMetricWeight = (id: string, weight: number) => {
+    const defaultWeight = metricRegistry.find((m) => m.id === id)?.defaultWeight ?? 1
+    const safeWeight = Number.isFinite(weight) ? weight : defaultWeight
+    setMetricSelections((prev) => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        selected: prev[id]?.selected ?? true,
+        weight: safeWeight,
+      },
+    }))
   }
 
   const handleImageUpload = (files: FileList | null) => {
@@ -522,7 +507,23 @@ export function SimulationHub() {
 
     setAnalyzing(true)
     try {
-      let response
+      // Create FormData for file upload
+      const formData = new FormData()
+      const selectedMetricIds = Array.from(selectedMetrics)
+      const metricWeights = selectedMetricIds.reduce<Record<string, number>>((acc, id) => {
+        const selection = metricSelections[id]
+        acc[id] = selection?.weight ?? metricRegistry.find((m) => m.id === id)?.defaultWeight ?? 1
+        return acc
+      }, {})
+
+      formData.append("persona_ids", JSON.stringify(Array.from(selectedPersonas)))
+      formData.append("metrics", JSON.stringify(selectedMetricIds))
+      formData.append("metric_weights", JSON.stringify(metricWeights))
+      formData.append("content_type", contentType)
+
+      if (hasText) {
+        formData.append("stimulus_text", stimulusText)
+      }
 
       if (contentType === "text" && stimulusImages.length === 0) {
         const payload: Record<string, any> = {
@@ -531,29 +532,15 @@ export function SimulationHub() {
           metrics: Array.from(selectedMetrics),
         }
 
-        if (trimmedQuestions.length > 0) {
-          payload.questions = trimmedQuestions
-        }
-
-        response = await CohortAPI.analyze(payload)
-      } else {
-        // Create FormData for file upload
-        const formData = new FormData()
-        formData.append("persona_ids", JSON.stringify(Array.from(selectedPersonas)))
-        formData.append("metrics", JSON.stringify(Array.from(selectedMetrics)))
-        formData.append("content_type", contentType)
-
-        if (hasText) {
-          formData.append("stimulus_text", stimulusText)
-        }
-
-        if (trimmedQuestions.length > 0) {
-          formData.append("questions", JSON.stringify(trimmedQuestions))
-        }
-
-        stimulusImages.forEach((image) => {
-          formData.append(`stimulus_images`, image)
-        })
+      // Note: This will require backend API updates to handle multipart/form-data
+      console.log("🚀 Sending request with FormData:", {
+        persona_ids: formData.get("persona_ids"),
+        metrics: formData.get("metrics"),
+        metric_weights: formData.get("metric_weights"),
+        content_type: formData.get("content_type"),
+        stimulus_text: formData.get("stimulus_text"),
+        stimulus_images_count: stimulusImages.length,
+      })
 
         // Note: This will require backend API updates to handle multipart/form-data
         console.log("🚀 Sending request with FormData:", {
@@ -1499,15 +1486,28 @@ export function SimulationHub() {
                     <BarChart3 className="h-4 w-4 text-gray-500" />
                     Analysis Metrics
                   </Label>
-                  <span className="text-sm text-gray-500">
-                    {selectedMetrics.size} of {availableMetrics.length} selected
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant={showMetricWeights ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-8"
+                      onClick={() => setShowMetricWeights((prev) => !prev)}
+                    >
+                      <Gauge className="h-4 w-4 mr-1" />
+                      {showMetricWeights ? "Hide Weights" : "Set Weights"}
+                    </Button>
+                    <span className="text-sm text-gray-500">
+                      {selectedMetrics.size} of {metricRegistry.length} selected
+                    </span>
+                  </div>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  {availableMetrics.map((metric) => {
+                  {metricRegistry.map((metric) => {
                     const isSelected = selectedMetrics.has(metric.id)
                     const label = metric.id === "intent_to_action" ? intentLabel : metric.label
                     const description = metric.id === "intent_to_action" ? intentDescription : metric.description
+                    const icon = metric.icon?.component
+                    const weightValue = metricSelections[metric.id]?.weight ?? metric.defaultWeight ?? 1
                     return (
                       <div
                         key={metric.id}
@@ -1525,15 +1525,34 @@ export function SimulationHub() {
                               onClick={(e) => e.stopPropagation()}
                               className="mt-1"
                             />
-                            <div className={`p-2 rounded-lg ${metric.bgColor}`}>
-                              <metric.icon className={`h-4 w-4 ${metric.color}`} />
-                            </div>
+                            {icon && (
+                              <div className={`p-2 rounded-lg ${metric.icon.bgColor}`}>
+                                <icon className={`h-4 w-4 ${metric.icon.color}`} />
+                              </div>
+                            )}
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
                                 <span className="font-medium text-gray-900 dark:text-gray-100">{label}</span>
                                 {isSelected && <CheckCircle2 className="h-4 w-4 text-primary" />}
                               </div>
                               <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{description}</p>
+                              {isSelected && showMetricWeights && (
+                                <div className="mt-3 flex items-center gap-2">
+                                  <Label htmlFor={`${metric.id}-weight`} className="text-xs text-gray-500">
+                                    Weight
+                                  </Label>
+                                  <Input
+                                    id={`${metric.id}-weight`}
+                                    type="number"
+                                    min={0}
+                                    step={0.1}
+                                    value={weightValue}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => updateMetricWeight(metric.id, Number(e.target.value))}
+                                    className="w-24 h-9"
+                                  />
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
