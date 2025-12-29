@@ -73,6 +73,26 @@ export function exportToCSV(analysisResults: AnalysisResults, filename?: string)
     linkElement.click();
 }
 
+function getMetricValue(response: IndividualResponseRow, metric: string) {
+    const normalized = normalizeMetricKey(metric);
+    const variants: Record<string, string[]> = {
+        sentiment: ['sentiment', 'emotional_response'],
+        purchase_intent: ['purchase_intent', 'intent_to_action'],
+        trust_in_brand: ['trust_in_brand', 'brand_trust'],
+        message_clarity: ['message_clarity'],
+        key_concerns: ['key_concerns', 'key_concern_flagged'],
+    };
+
+    const possibleKeys = variants[normalized] || [metric];
+    for (const key of possibleKeys) {
+        const value = response.responses[key];
+        if (value !== undefined && value !== null) {
+            return value;
+        }
+    }
+    return '';
+}
+
 export async function copyToClipboard(text: string): Promise<boolean> {
     try {
         await navigator.clipboard.writeText(text);

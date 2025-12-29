@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -34,8 +34,26 @@ import {
   Shield,
   Save,
   History,
-  Loader2
+  Loader2,
+  SlidersHorizontal,
+  PieChart,
+  LayoutGrid
 } from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  Legend,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis
+} from 'recharts';
+import type { Formatter } from 'recharts/types/component/DefaultTooltipContent';
 import {
   Dialog,
   DialogContent,
@@ -70,10 +88,10 @@ export function Analytics() {
   const [analysisResults, setAnalysisResults] = useState<AnalysisResults | undefined>(
     location.state?.analysisResults as AnalysisResults | undefined
   );
-  const [originalImages, setOriginalImages] = useState<File[]>(
+  const [originalImages] = useState<File[]>(
     location.state?.originalImages as File[] | undefined || []
   );
-  const [contentType, setContentType] = useState<string>(
+  const [contentType] = useState<string>(
     location.state?.contentType as string | undefined || 'text'
   );
   const [improvedImages, setImprovedImages] = useState<Array<{original: string, improved: string, improvements: string}>>([]);
@@ -85,6 +103,9 @@ export function Analytics() {
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedQAResponse, setSelectedQAResponse] = useState<
+    { persona: string; qas: CustomQuestionResponse[] } | null
+  >(null);
 
   // Load saved simulations on mount
   useEffect(() => {
@@ -655,6 +676,58 @@ export function Analytics() {
           })}
         </div>
 
+        {metricChartData.length > 0 && (
+          <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardHeader className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl">
+                    <PieChart className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Metric Performance Overview</CardTitle>
+                    <CardDescription>Normalized averages across all analyzed metrics</CardDescription>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-6">
+              <div className={`grid gap-6 ${metricChartData.length > 1 ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={metricChartData} margin={{ left: 0, right: 12 }}>
+                      <XAxis dataKey="metric" tick={{ fontSize: 12 }} angle={-10} textAnchor="end" height={60} interval={0} />
+                      <YAxis domain={[0, 10]} tick={{ fontSize: 12 }} />
+                      <RechartsTooltip formatter={chartTooltipFormatter} />
+                      <Legend />
+                      <Bar dataKey="score" name="Normalized Score" fill="#7c3aed" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart data={metricChartData} margin={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                      <PolarGrid />
+                      <PolarAngleAxis dataKey="metric" tick={{ fontSize: 12 }} />
+                      <PolarRadiusAxis angle={30} domain={[0, 10]} tick={{ fontSize: 12 }} />
+                      <Radar
+                        name="Normalized Score"
+                        dataKey="score"
+                        stroke="#6366f1"
+                        fill="#6366f1"
+                        fillOpacity={0.3}
+                      />
+                      <Legend />
+                      <RechartsTooltip formatter={radarTooltipFormatter} />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {insights && insights.length > 0 && (
           <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
             <CardHeader className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 rounded-t-xl">
@@ -873,6 +946,45 @@ export function Analytics() {
         })()}
 
 
+        {hasCustomQuestions && (
+          <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardHeader className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl">
+                    <LayoutGrid className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Custom Question Responses</CardTitle>
+                    <CardDescription>Quick view of persona answers to custom prompts</CardDescription>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-3">
+              {aggregatedCustomQuestions.map((qa, idx) => (
+                <div
+                  key={`${qa.question}-${idx}`}
+                  className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60"
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{qa.question}</p>
+                    <Badge variant="outline" className="text-xs">
+                      {qa.answers.length} response{qa.answers.length !== 1 ? 's' : ''}
+                    </Badge>
+                  </div>
+                  <ul className="mt-2 space-y-1 text-sm text-gray-700 dark:text-gray-300 max-h-32 overflow-y-auto list-disc list-inside">
+                    {qa.answers.map((answer, answerIdx) => (
+                      <li key={`${qa.question}-${answerIdx}`}>{answer}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+
         {/* Individual Responses - Enhanced Table */}
         <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
           <CardHeader className="bg-gradient-to-r from-primary/10 to-secondary/10 rounded-t-xl">
@@ -1009,6 +1121,26 @@ export function Analytics() {
           </div>
           </CardContent>
         </Card>
+
+        <Dialog open={!!selectedQAResponse} onOpenChange={(open) => !open && setSelectedQAResponse(null)}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Custom Q&A {selectedQAResponse ? `- ${selectedQAResponse.persona}` : ''}</DialogTitle>
+              <DialogDescription>Detailed answers for persona-specific custom questions.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 mt-2">
+              {selectedQAResponse?.qas.map((qa, idx) => (
+                <div
+                  key={`${qa.question}-${idx}`}
+                  className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800"
+                >
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{qa.question}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap">{qa.answer}</p>
+                </div>
+              )) || <p className="text-sm text-gray-500">No answers available.</p>}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Action Buttons */}
         <div className="flex justify-center gap-4 mt-8 pb-8">
