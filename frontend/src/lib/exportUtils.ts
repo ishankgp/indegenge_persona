@@ -1,5 +1,6 @@
-import type { AnalysisResults, IndividualResponseRow } from '@/types/analytics';
-import { formatMetricLabel, normalizeMetricKey } from '@/lib/analytics';
+import type { AnalysisResults } from '@/types/analytics';
+import type { MetricDefinition } from './metricsRegistry';
+import { getMetricByBackendKey, normalizeBackendMetricKey } from './metricsRegistry';
 
 export function exportToJSON(analysisResults: AnalysisResults, filename?: string) {
     const dataStr = JSON.stringify(analysisResults, null, 2);
@@ -15,9 +16,34 @@ export function exportToJSON(analysisResults: AnalysisResults, filename?: string
 export function exportToCSV(analysisResults: AnalysisResults, filename?: string) {
     const { individual_responses, metrics_analyzed } = analysisResults;
 
-    const metricOrder = Array.from(new Set(metrics_analyzed.map((metric) => normalizeMetricKey(metric))));
+    const metricDefinitions: MetricDefinition[] = Array.from(
+        (metrics_analyzed || []).reduce((map, metricKey) => {
+            const normalized = normalizeBackendMetricKey(metricKey);
+            const definition = getMetricByBackendKey(normalized) || {
+                id: normalized,
+                backendKeys: [normalized],
+                label: normalized.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+                description: '',
+                type: 'score',
+                scale: { min: 0, max: 10 }
+            };
+            if (!map.has(definition.id)) {
+                map.set(definition.id, definition);
+            }
+            return map;
+        }, new Map<string, MetricDefinition>()).values()
+    );
 
-    const headers = ['Persona Name', 'Persona ID', 'Reasoning', ...metricOrder.map((metric) => formatMetricLabel(metric))];
+    const headers = ['Persona Name', 'Persona ID', 'Reasoning', ...metricDefinitions.map((metric) => metric.label)];
+
+    const getResponseValue = (response: any, metric: MetricDefinition) => {
+        const keysToCheck = [metric.id, ...(metric.backendKeys || [])];
+        for (const key of keysToCheck) {
+            const value = response.responses?.[key];
+            if (value !== undefined && value !== null) return value;
+        }
+        return '';
+    };
 
     const rows = individual_responses.map((response) => {
         const row = [
@@ -26,15 +52,14 @@ export function exportToCSV(analysisResults: AnalysisResults, filename?: string)
             `"${response.reasoning.replace(/"/g, '""')}"`
         ];
 
-        metricOrder.forEach((metric) => {
-            const value = getMetricValue(response, metric);
-            if (typeof value === 'string') {
-                row.push(`"${value.replace(/"/g, '""')}"`);
+        metricDefinitions.forEach((metric) => {
+            const value = getResponseValue(response, metric);
+            if (Array.isArray(value)) {
+                row.push(`"${value.map((v) => String(v)).join('; ').replace(/"/g, '""')}"`);
             } else {
-                row.push(value === undefined || value === null ? '' : String(value));
+                row.push(`"${String(value ?? '').replace(/"/g, '""')}"`);
             }
         });
-
         return row.join(',');
     });
 

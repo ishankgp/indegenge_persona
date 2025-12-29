@@ -53,7 +53,7 @@ export interface IndividualResponseRow {
   persona_type?: string;
   reasoning: string;
   responses: PersonaResponseScores;
-  custom_questions?: CustomQuestionResponse[];
+  answers?: string[];
 }
 
 export interface ActionableSuggestion {
@@ -70,6 +70,7 @@ export interface AnalysisResults {
   cohort_size: number;
   stimulus_text: string;
   metrics_analyzed: AnalyzedMetricKey[];
+  questions?: string[];
   individual_responses: IndividualResponseRow[];
   summary_statistics: SummaryStatistics;
   insights?: string[];

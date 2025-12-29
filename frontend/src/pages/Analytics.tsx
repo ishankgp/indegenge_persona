@@ -5,21 +5,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import MetricCard from '@/components/analytics/MetricCard';
-import {
-  computeScoreColor,
-  computeScoreProgress,
-  formatMetricLabel,
-  getSentimentDescriptor,
-  normalizeMetricKey,
-  normalizeMetricScore
-} from '@/lib/analytics';
-import type {
-  AnalysisResults,
-  AnalyzedMetricKey,
-  CustomQuestionResponse,
-  IndividualResponseRow,
-  PersonaResponseScores
-} from '@/types/analytics';
+import { computeScoreColor, getMetricLabelFromBackendKey, getSentimentDescriptor, normalizeBackendMetricKey } from '@/lib/analytics';
+import { getMetricByBackendKey, mapBackendMetricToFrontend } from '@/lib/metricsRegistry';
+import type { MetricDefinition } from '@/lib/metricsRegistry';
+import type { AnalysisResults, AnalyzedMetricKey, IndividualResponseRow, PersonaResponseScores, SummaryStatistics } from '@/types/analytics';
 import {
   TrendingUp,
   TrendingDown,
@@ -293,6 +282,7 @@ export function Analytics() {
     cohort_size,
     stimulus_text,
     metrics_analyzed,
+    questions,
     individual_responses,
     summary_statistics,
     insights,
@@ -300,390 +290,88 @@ export function Analytics() {
     created_at
   } = analysisResults;
 
-  type MetricType = 'score' | 'sentiment' | 'text';
-  type MetricCardColor = 'primary' | 'secondary' | 'success' | 'warning';
-
-  interface MetricDefinition {
-    key: string;
-    label: string;
-    subtitle?: string;
-    icon?: typeof Gauge;
-    color?: MetricCardColor;
-    type: MetricType;
-    responseKeys: Array<keyof PersonaResponseScores>;
-    averageKeys: string[];
-  }
-
-  const normalizedMetrics = useMemo(
-    () => Array.from(new Set(metrics_analyzed.map((metric) => normalizeMetricKey(metric)))),
-    [metrics_analyzed]
-  );
-
-  const metricDefinitions: Record<string, MetricDefinition> = {
-    purchase_intent: {
-      key: 'purchase_intent',
-      label: 'Request/Prescribe Intent',
-      subtitle: 'Scale of 1-10',
-      icon: Target,
-      color: 'primary',
-      type: 'score',
-      responseKeys: ['intent_to_action', 'purchase_intent'],
-      averageKeys: ['intent_to_action_avg', 'purchase_intent_avg']
-    },
-    sentiment: {
-      key: 'sentiment',
-      label: 'Sentiment',
-      subtitle: 'Scale of -1 to 1',
-      icon: Brain,
-      color: 'secondary',
-      type: 'sentiment',
-      responseKeys: ['emotional_response', 'sentiment'],
-      averageKeys: ['emotional_response_avg', 'sentiment_avg']
-    },
-    trust_in_brand: {
-      key: 'trust_in_brand',
-      label: 'Brand Trust',
-      subtitle: 'Scale of 1-10',
-      icon: Shield,
-      color: 'success',
-      type: 'score',
-      responseKeys: ['brand_trust', 'trust_in_brand'],
-      averageKeys: ['brand_trust_avg', 'trust_in_brand_avg']
-    },
-    message_clarity: {
-      key: 'message_clarity',
-      label: 'Message Clarity',
-      subtitle: 'Scale of 1-10',
-      icon: MessageSquare,
-      color: 'warning',
-      type: 'score',
-      responseKeys: ['message_clarity'],
-      averageKeys: ['message_clarity_avg']
-    },
-    key_concerns: {
-      key: 'key_concerns',
-      label: 'Key Concerns',
-      subtitle: 'Top concern surfaced',
-      icon: AlertTriangle,
-      color: 'warning',
-      type: 'text',
-      responseKeys: ['key_concerns', 'key_concern_flagged'],
-      averageKeys: ['key_concerns']
-    }
-  };
-
-  const getMetricConfig = (metricKey: AnalyzedMetricKey | string): MetricDefinition => {
-    const normalizedKey = normalizeMetricKey(metricKey);
-    if (metricDefinitions[normalizedKey]) {
-      return metricDefinitions[normalizedKey];
-    }
-
-    return {
-      key: normalizedKey,
-      label: formatMetricLabel(normalizedKey),
-      subtitle: 'Scale of 1-10',
-      icon: Gauge,
-      color: 'primary',
-      type: 'score',
-      responseKeys: [metricKey as keyof PersonaResponseScores],
-      averageKeys: [`${normalizedKey}_avg`]
-    };
-  };
-
-  const [metricWeights, setMetricWeights] = useState<Record<string, number>>({});
-
-  useEffect(() => {
-    const initialWeights: Record<string, number> = {};
-    const existingWeights = analysisResults.metric_weights || {};
-    normalizedMetrics.forEach((metric) => {
-      initialWeights[metric] = existingWeights[metric] ?? 1;
-    });
-    setMetricWeights(initialWeights);
-  }, [analysisResults.metric_weights, normalizedMetrics]);
-
-  const weightTotal = useMemo(
-    () => normalizedMetrics.reduce((sum, metric) => sum + (metricWeights[metric] ?? 1), 0),
-    [metricWeights, normalizedMetrics]
-  );
-
-  const updateWeight = (metric: string, value: number) => {
-    setMetricWeights((prev) => ({ ...prev, [metric]: value }));
-  };
-
-  const getResponseValue = (
-    row: IndividualResponseRow,
-    key: keyof PersonaResponseScores,
-    legacyKey?: keyof PersonaResponseScores
-  ) => {
-    const responses = row?.responses || {};
-    const value = responses[key];
-    if (value !== undefined && value !== null) {
-      return value;
-    }
-    if (legacyKey) {
-      const legacyValue = responses[legacyKey];
-      if (legacyValue !== undefined && legacyValue !== null) {
-        return legacyValue;
-      }
-    }
-    return undefined;
-  };
-
-  const getNumericScore = (
-    row: IndividualResponseRow,
-    key: keyof PersonaResponseScores,
-    legacyKey?: keyof PersonaResponseScores
-  ): number | undefined => {
-    const value = getResponseValue(row, key, legacyKey);
-    if (typeof value === 'number') {
-      return value;
-    }
-    if (typeof value === 'string' && value.trim() !== '') {
-      const parsed = Number(value);
-      if (!Number.isNaN(parsed)) {
-        return parsed;
-      }
-    }
-    return undefined;
-  };
-
-  const getConcernsList = (row: IndividualResponseRow): string[] => {
-    const value = getResponseValue(row, 'key_concerns', 'key_concern_flagged');
-    if (!value) return [];
-    if (Array.isArray(value)) {
-      return value.filter(Boolean).map((item) => String(item));
-    }
-    if (typeof value === 'string') {
-      return [value];
-    }
-    if (typeof value === 'number') {
-      return [value.toString()];
-    }
-    return [];
-  };
-
-  const getMetricAverageValue = (metricKey: AnalyzedMetricKey | string): number | undefined => {
-    const config = getMetricConfig(metricKey);
-    for (const avgKey of config.averageKeys) {
-      const value = summary_statistics[avgKey];
-      if (typeof value === 'number') return value;
-    }
-    const fallback = summary_statistics[`${config.key}_avg`];
-    return typeof fallback === 'number' ? fallback : undefined;
-  };
-
-  const metricColumns = useMemo(
-    () => normalizedMetrics.map((metric) => getMetricConfig(metric)),
-    [normalizedMetrics]
-  );
-
-  const numericMetricKeys = useMemo(
-    () => metricColumns.filter((metric) => metric.type !== 'text').map((metric) => metric.key),
-    [metricColumns]
-  );
-
-  const computeMetricScore = (row: IndividualResponseRow, metricKey: string): number | undefined => {
-    const config = getMetricConfig(metricKey);
-    for (const key of config.responseKeys) {
-      const score = getNumericScore(row, key, key);
-      if (score !== undefined) return score;
-    }
-    return undefined;
-  };
-
-  const computeCompositeScore = (row: IndividualResponseRow): number | undefined => {
-    if (numericMetricKeys.length < 2) return undefined;
-    let weightedTotal = 0;
-    let totalWeight = 0;
-
-    numericMetricKeys.forEach((metricKey) => {
-      const score = computeMetricScore(row, metricKey);
-      if (score === undefined) return;
-      const normalizedScore = normalizeMetricScore(metricKey, score);
-      const weight = metricWeights[metricKey] ?? 1;
-      weightedTotal += normalizedScore * weight;
-      totalWeight += weight;
-    });
-
-    if (totalWeight === 0) return undefined;
-    return Number((weightedTotal / totalWeight).toFixed(2));
-  };
-
-  const compositeAverage = useMemo(() => {
-    const scores = individual_responses
-      .map((row) => computeCompositeScore(row))
-      .filter((score): score is number => typeof score === 'number');
-    if (scores.length === 0) return undefined;
-    const total = scores.reduce((sum, score) => sum + score, 0);
-    return Number((total / scores.length).toFixed(2));
-  }, [individual_responses, metricWeights, numericMetricKeys]);
-
-  const metricChartData = useMemo(
-    () =>
-      metricColumns
-        .map((metric) => {
-          const average = getMetricAverageValue(metric.key);
-          if (average === undefined || metric.type === 'text') return null;
-          return {
-            metric: metric.label,
-            score: Number(normalizeMetricScore(metric.key, average).toFixed(2)),
-            rawScore: average,
-            isSentiment: metric.type === 'sentiment'
-          };
-        })
-        .filter(Boolean) as Array<{ metric: string; score: number; rawScore: number; isSentiment: boolean }>,
-    [metricColumns, summary_statistics]
-  );
-
-  const chartTooltipFormatter: Formatter<string | number, string | number> = (value, name) => {
-    const numeric = typeof value === 'number' ? value : Number(value);
-    const display = Number.isFinite(numeric) ? numeric.toFixed(2) : String(value ?? '');
-    return [`${display}/10`, String(name ?? '')];
-  };
-
-  const radarTooltipFormatter: Formatter<string | number, string | number> = (value) => {
-    const numeric = typeof value === 'number' ? value : Number(value);
-    const display = Number.isFinite(numeric) ? numeric.toFixed(2) : String(value ?? '');
-    return `${display}/10`;
-  };
-
-  const metricCardItems = useMemo(() => {
-    const items = metricColumns
-      .map((metric) => {
-        const average = getMetricAverageValue(metric.key);
-        if (average === undefined || metric.type === 'text') return null;
-
-        if (metric.type === 'sentiment') {
-          const descriptor = getSentimentDescriptor(average);
-          return {
-            key: metric.key,
-            label: metric.label,
-            value: (
-              <div className="flex items-center gap-2">
-                <span className={descriptor.color}>{average.toFixed(2)}</span>
-                {descriptor.iconTone === 'up' && <TrendingUp className="h-4 w-4 text-emerald-500" />}
-                {descriptor.iconTone === 'down' && <TrendingDown className="h-4 w-4 text-red-500" />}
-                {descriptor.iconTone === 'neutral' && <Minus className="h-4 w-4 text-gray-500" />}
-              </div>
-            ),
-            subtitle: metric.subtitle,
-            icon: metric.icon,
-            color: metric.color,
-            trend: descriptor.iconTone === 'neutral' ? 'neutral' : 'up'
-          };
+  const analyzedMetricDefinitions: MetricDefinition[] = Array.from(
+    (metrics_analyzed || []).reduce((map, metricKey) => {
+      const normalized = normalizeBackendMetricKey(metricKey)
+      const definition =
+        getMetricByBackendKey(normalized) || {
+          id: mapBackendMetricToFrontend(normalized),
+          backendKeys: [normalized as AnalyzedMetricKey],
+          label: getMetricLabelFromBackendKey(normalized),
+          description: "",
+          type: "score",
+          scale: { min: 0, max: 10 },
         }
 
-        return {
-          key: metric.key,
-          label: metric.label,
-          value: average.toFixed(1),
-          subtitle: metric.subtitle,
-          icon: metric.icon,
-          color: metric.color,
-          trend: average > 7 ? 'up' : average < 4 ? 'down' : 'neutral'
-        };
-      })
-      .filter(Boolean) as Array<{
-        key: string;
-        label: string;
-        value: ReactNode;
-        subtitle?: string;
-        icon?: typeof Gauge;
-        color?: MetricCardColor;
-        trend?: 'up' | 'down' | 'neutral';
-      }>;
+      if (!map.has(definition.id)) {
+        map.set(definition.id, definition)
+      }
+      return map
+    }, new Map<string, MetricDefinition>()).values()
+  )
 
-    if (numericMetricKeys.length > 1 && compositeAverage !== undefined) {
-      items.unshift({
-        key: 'composite',
-        label: 'Overall Composite',
-        value: compositeAverage.toFixed(2),
-        subtitle: 'Weighted by selected metrics',
-        icon: Gauge,
-        color: 'primary',
-        trend: compositeAverage > 7 ? 'up' : compositeAverage < 4 ? 'down' : 'neutral'
-      });
+  const getResponseValue = (row: IndividualResponseRow, metric: MetricDefinition) => {
+    const responses = row?.responses || {}
+    const keysToCheck = [...metric.backendKeys, metric.id]
+    for (const key of keysToCheck) {
+      const value = responses[key as keyof PersonaResponseScores]
+      if (value !== undefined && value !== null) return value
     }
+    return undefined
+  }
 
-    return items;
-  }, [metricColumns, numericMetricKeys, compositeAverage, summary_statistics]);
-
-  const showCompositeScore = numericMetricKeys.length > 1;
-
-  const extractCustomQuestions = (response: IndividualResponseRow): CustomQuestionResponse[] => {
-    const qas: CustomQuestionResponse[] = [];
-
-    const addPair = (question?: string, answer?: unknown) => {
-      if (!question || answer === undefined || answer === null) return;
-      qas.push({ question: String(question), answer: String(answer) });
-    };
-
-    if (Array.isArray(response.custom_questions)) {
-      response.custom_questions.forEach((qa) => addPair(qa.question, qa.answer));
+  const getNumericScore = (row: IndividualResponseRow, metric: MetricDefinition): number | undefined => {
+    const value = getResponseValue(row, metric)
+    if (typeof value === "number") return value
+    if (typeof value === "string" && value.trim() !== "") {
+      const parsed = Number(value)
+      if (!Number.isNaN(parsed)) return parsed
     }
+    return undefined
+  }
 
-    const responseCustomQuestions = response.responses?.custom_questions;
-    if (Array.isArray(responseCustomQuestions)) {
-      responseCustomQuestions.forEach((qa: any) => addPair(qa.question, qa.answer));
+  const concernsMetric = analyzedMetricDefinitions.find((metric) => metric.id === "key_concerns")
+
+  const getConcernsList = (row: IndividualResponseRow): string[] => {
+    if (!concernsMetric) return []
+    const value = getResponseValue(row, concernsMetric)
+    if (!value) return []
+    if (Array.isArray(value)) {
+      return value.filter(Boolean).map((item) => String(item))
     }
-
-    const customQuestionAnswers = response.responses?.custom_question_answers;
-    if (customQuestionAnswers && typeof customQuestionAnswers === 'object') {
-      Object.entries(customQuestionAnswers).forEach(([question, answer]) => addPair(question, answer));
+    if (typeof value === "string") {
+      return [value]
     }
-
-    return qas.filter((qa) => qa.question && qa.answer);
-  };
-
-  const aggregatedCustomQuestions = useMemo(() => {
-    const map = new Map<string, { question: string; answers: string[] }>();
-
-    individual_responses.forEach((response) => {
-      extractCustomQuestions(response).forEach((qa) => {
-        const existing = map.get(qa.question) || { question: qa.question, answers: [] };
-        existing.answers.push(`${response.persona_name}: ${qa.answer}`);
-        map.set(qa.question, existing);
-      });
-    });
-
-    return Array.from(map.values());
-  }, [individual_responses]);
-
-  const hasCustomQuestions = aggregatedCustomQuestions.length > 0;
-
-  const renderMetricCell = (response: IndividualResponseRow, metric: MetricDefinition) => {
-    if (metric.type === 'text') {
-      const concerns = getConcernsList(response);
-      const rawValue = getResponseValue(response, metric.responseKeys[0], metric.responseKeys[1]);
-      const textValue = concerns.length > 0 ? concerns.join(', ') : rawValue ? String(rawValue) : '—';
-      return (
-        <Badge variant="outline" className="text-xs whitespace-pre-wrap">
-          {textValue || '—'}
-        </Badge>
-      );
+    if (typeof value === "number") {
+      return [value.toString()]
     }
+    return []
+  }
 
-    if (metric.type === 'sentiment') {
-      const sentimentScore = computeMetricScore(response, metric.key) ?? 0;
-      const descriptor = getSentimentDescriptor(sentimentScore);
-      return (
-        <div className="flex flex-col items-center gap-1">
-          <Badge className={descriptor.badgeClassName}>{descriptor.level}</Badge>
-          <div className="text-xs mt-1 text-gray-500">{sentimentScore.toFixed(2)}</div>
-        </div>
-      );
+  const getSummaryValueForMetric = (summary: SummaryStatistics, metric: MetricDefinition): number | undefined => {
+    const keysToCheck = [metric.id, ...metric.backendKeys].map((key) => `${key}_avg` as keyof SummaryStatistics)
+    for (const key of keysToCheck) {
+      const value = summary[key]
+      if (typeof value === "number") return value
     }
+    return undefined
+  }
 
-    const score = computeMetricScore(response, metric.key);
-    return (
-      <div className="flex flex-col items-center gap-1">
-        <span className={`text-lg font-bold ${computeScoreColor(score ?? 0)}`}>
-          {score ?? '—'}
-        </span>
-        <Progress value={computeScoreProgress(score ?? 0)} className="w-16 h-1.5" />
-      </div>
-    );
-  };
+  const metricProgress = (metric: MetricDefinition, score: number) => {
+    const { min, max } = metric.scale
+    if (max === min) return 0
+    return ((score - min) / (max - min)) * 100
+  }
+
+  const summaryMetricEntries = analyzedMetricDefinitions
+    .filter((metric) => metric.type !== "flag")
+    .map((metric) => ({ metric, value: getSummaryValueForMetric(summary_statistics, metric) }))
+    .filter((entry) => typeof entry.value === "number")
+
+  const scoreMetrics = analyzedMetricDefinitions.filter((metric) => metric.type === "score")
+  const primaryScoreMetric = scoreMetrics.find((metric) => metric.id === "brand_trust")
+    || scoreMetrics.find((metric) => metric.id === "intent_to_action")
+    || scoreMetrics[0]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
@@ -929,91 +617,63 @@ export function Analytics() {
               </div>
             )}
             <div className="flex flex-wrap gap-2">
-              {metrics_analyzed.map((metric: AnalyzedMetricKey) => (
-                <Badge key={metric} variant="outline" className="px-3 py-1">
-                  <CheckCircle className="h-3 w-3 mr-1 text-emerald-500" />
-                  {metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                </Badge>
-              ))}
+              {metrics_analyzed.map((metric: AnalyzedMetricKey) => {
+                const normalized = normalizeBackendMetricKey(metric)
+                const definition = getMetricByBackendKey(normalized)
+                const label = definition?.label || getMetricLabelFromBackendKey(metric)
+                return (
+                  <Badge key={metric} variant="outline" className="px-3 py-1">
+                    <CheckCircle className="h-3 w-3 mr-1 text-emerald-500" />
+                    {label}
+                  </Badge>
+                )
+              })}
             </div>
           </CardContent>
         </Card>
 
-        {showCompositeScore && (
-          <Card className="mb-6 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
-            <CardHeader className="bg-gradient-to-r from-primary/10 to-secondary/10 rounded-t-xl">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2.5 bg-gradient-to-br from-primary to-secondary rounded-xl">
-                    <SlidersHorizontal className="h-5 w-5 text-white" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-xl">Metric Weights</CardTitle>
-                    <CardDescription>Adjust how each metric influences the composite score</CardDescription>
-                  </div>
-                </div>
-                <Badge variant="outline" className="bg-white/40">
-                  Composite Avg: {compositeAverage ?? '—'}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                We normalize sentiment (-1 to 1) onto a 0-10 scale so it blends fairly with 1-10 metrics. Use weights to emphasize
-                priority metrics.
-              </p>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {numericMetricKeys.map((metricKey) => {
-                  const config = getMetricConfig(metricKey);
-                  const weight = metricWeights[metricKey] ?? 0;
-                  const share = weightTotal > 0 ? Math.round((weight / weightTotal) * 100) : 0;
-                  return (
-                    <div
-                      key={metricKey}
-                      className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-900/50"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          {config.icon && <config.icon className="h-4 w-4 text-primary" />}
-                          <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{config.label}</span>
-                        </div>
-                        <Badge variant="outline" className="text-xs">
-                          {share}%
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <Input
-                          type="number"
-                          min={0}
-                          step={0.1}
-                          value={weight}
-                          onChange={(e) => updateWeight(metricKey, Math.max(0, Number(e.target.value)))}
-                          className="h-9"
-                        />
-                        <span className="text-xs text-gray-500">weight</span>
-                      </div>
-                      <Progress value={weightTotal > 0 ? (weight / weightTotal) * 100 : 0} className="mt-2 h-2" />
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Key Metrics Grid - Enhanced */}
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mb-8">
-          {metricCardItems.map((metric) => (
-            <MetricCard
-              key={metric.key}
-              title={metric.label}
-              value={metric.value}
-              subtitle={metric.subtitle}
-              icon={metric.icon}
-              trend={metric.trend}
-              color={metric.color}
-            />
-          ))}
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
+          {summaryMetricEntries.map(({ metric, value }) => {
+            const Icon = metric.icon?.component || BarChart3
+            const subtitle = `Scale of ${metric.scale.min} to ${metric.scale.max}`
+            if (metric.type === "sentiment") {
+              const descriptor = getSentimentDescriptor(value as number)
+              return (
+                <MetricCard
+                  key={metric.id}
+                  title={metric.label}
+                  value={
+                    <div className="flex items-center gap-2">
+                      <span className={descriptor.color}>{(value as number).toFixed(2)}</span>
+                      {descriptor.iconTone === "up" && <TrendingUp className="h-4 w-4 text-emerald-500" />}
+                      {descriptor.iconTone === "down" && <TrendingDown className="h-4 w-4 text-red-500" />}
+                      {descriptor.iconTone === "neutral" && <Minus className="h-4 w-4 text-gray-500" />}
+                    </div>
+                  }
+                  subtitle={subtitle}
+                  icon={Icon}
+                  color="secondary"
+                />
+              )
+            }
+
+            const numericValue = value as number
+            const colorKey = metric.id === "brand_trust" ? "success" : metric.id === "intent_to_action" ? "primary" : "warning"
+            const trend = numericValue > (metric.scale.max - metric.scale.min) / 2 ? "up" : "neutral"
+
+            return (
+              <MetricCard
+                key={metric.id}
+                title={metric.label}
+                value={numericValue.toFixed(1)}
+                subtitle={subtitle}
+                icon={Icon}
+                trend={trend}
+                color={colorKey}
+              />
+            )
+          })}
         </div>
 
         {metricChartData.length > 0 && (
@@ -1101,14 +761,81 @@ export function Analytics() {
           </Card>
         )}
 
+        {questions && questions.length > 0 && (
+          <Card className="mb-8 border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+            <CardHeader className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl">
+                    <MessageSquare className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Qualitative Responses</CardTitle>
+                    <CardDescription>Persona answers to your custom questions</CardDescription>
+                  </div>
+                </div>
+                <Badge className="bg-blue-100 text-blue-800 border-blue-200">Q&A</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-4">
+              {questions.map((question, qIndex) => {
+                const answersForQuestion = individual_responses?.map((response) => ({
+                  persona: response.persona_name,
+                  answer: response.answers?.[qIndex]
+                })) || []
+                const answeredCount = answersForQuestion.filter((a) => a.answer).length
+
+                return (
+                  <div
+                    key={qIndex}
+                    className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900"
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex items-start gap-2">
+                        <Badge variant="outline" className="mt-0.5">Q{qIndex + 1}</Badge>
+                        <div>
+                          <p className="font-semibold text-gray-900 dark:text-gray-100">{question}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {answeredCount} response
+                            {answeredCount === 1 ? '' : 's'} collected
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {answersForQuestion.map((entry, idx) => (
+                        <div
+                          key={`${qIndex}-${idx}`}
+                          className="p-3 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                              {entry.persona}
+                            </span>
+                            <Badge variant="secondary" className="text-xs">Persona</Badge>
+                          </div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                            {entry.answer || 'No answer provided.'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Message Refinement Suggestions - NEW */}
         {individual_responses && individual_responses.length > 0 && (() => {
-          const lowScorePersonas = individual_responses.filter((row) => {
-            const trustScore = getNumericScore(row, 'brand_trust', 'trust_in_brand');
-            const intentScore = getNumericScore(row, 'intent_to_action', 'purchase_intent');
-            const score = trustScore ?? intentScore;
-            return typeof score === 'number' && score < 5;
-          });
+          const lowScorePersonas = primaryScoreMetric
+            ? individual_responses.filter((row) => {
+                const score = getNumericScore(row, primaryScoreMetric)
+                return typeof score === "number" && score < primaryScoreMetric.scale.max * 0.5
+              })
+            : []
 
           const hasConcern = (keywords: string[]) =>
             lowScorePersonas.some((row) =>
@@ -1284,27 +1011,17 @@ export function Analytics() {
                   <tr>
                     <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Persona</th>
                     <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">Reasoning</th>
-                    {showCompositeScore && (
-                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                        <div className="flex items-center justify-center gap-1">
-                          <Gauge className="h-4 w-4" />
-                          Overall
-                        </div>
-                      </th>
-                    )}
-                    {metricColumns.map((metric) => (
-                      <th key={metric.key} className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                        <div className="flex items-center justify-center gap-1">
-                          {metric.icon && <metric.icon className="h-4 w-4" />}
-                          {metric.label}
-                        </div>
-                      </th>
-                    ))}
-                    {hasCustomQuestions && (
-                      <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Custom Q&A
-                      </th>
-                    )}
+                    {analyzedMetricDefinitions.map((metric) => {
+                      const Icon = metric.icon?.component || BarChart3
+                      return (
+                        <th key={metric.id} className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                          <div className="flex items-center justify-center gap-1">
+                            <Icon className="h-4 w-4" />
+                            {metric.label}
+                          </div>
+                        </th>
+                      )
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -1350,57 +1067,58 @@ export function Analytics() {
                             <TooltipContent className="max-w-md p-4 bg-white dark:bg-gray-800 shadow-xl">
                               <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
                                 {response.reasoning}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </td>
-                      {showCompositeScore && (
-                        <td className="p-4 text-center">
-                          {(() => {
-                            const compositeScore = computeCompositeScore(response);
-                            if (compositeScore === undefined) return <span className="text-xs text-gray-500">—</span>;
-                            return (
-                              <div className="flex flex-col items-center gap-1">
-                                <span className={`text-lg font-bold ${computeScoreColor(compositeScore)}`}>
-                                  {compositeScore.toFixed(2)}
-                                </span>
-                                <Progress
-                                  value={computeScoreProgress(compositeScore)}
-                                  className="w-16 h-1.5"
-                                />
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </td>
+                      {analyzedMetricDefinitions.map((metric) => {
+                        const value = getResponseValue(response, metric)
+                        if (metric.type === "flag") {
+                          return (
+                            <td key={metric.id} className="p-4">
+                              <Badge variant="outline" className="text-xs">
+                                {value ? String(value) : "—"}
+                              </Badge>
+                            </td>
+                          )
+                        }
+
+                        const numericValue = getNumericScore(response, metric)
+
+                        if (metric.type === "sentiment") {
+                          const descriptor = getSentimentDescriptor(numericValue)
+                          return (
+                            <td key={metric.id} className="p-4 text-center">
+                              <Badge className={descriptor.badgeClassName}>
+                                {descriptor.level}
+                              </Badge>
+                              <div className="text-xs mt-1 text-gray-500">
+                                {numericValue.toFixed(2)}
                               </div>
-                            );
-                          })()}
-                        </td>
-                      )}
-                      {metricColumns.map((metric) => (
-                        <td key={`${response.persona_id}-${metric.key}`} className="p-4 text-center">
-                          {renderMetricCell(response, metric)}
-                        </td>
-                      ))}
-                      {hasCustomQuestions && (
-                        <td className="p-4 text-center">
-                          {(() => {
-                            const qaResponses = extractCustomQuestions(response);
-                            if (qaResponses.length === 0) return <span className="text-xs text-gray-500">—</span>;
-                            return (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setSelectedQAResponse({ persona: response.persona_name, qas: qaResponses })}
-                              >
-                                View ({qaResponses.length})
-                              </Button>
-                            );
-                          })()}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                            </td>
+                          )
+                        }
+
+                        return (
+                          <td key={metric.id} className="p-4 text-center">
+                            <div className="flex flex-col items-center gap-1">
+                              <span className={`text-lg font-bold ${computeScoreColor(numericValue ?? 0, metric.scale.max)}`}>
+                                {Number.isFinite(numericValue) ? numericValue : "—"}
+                              </span>
+                              <Progress
+                                value={metricProgress(metric, numericValue ?? metric.scale.min)}
+                                className="w-16 h-1.5"
+                              />
+                            </div>
+                          </td>
+                        )
+                      })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           </CardContent>
         </Card>
 

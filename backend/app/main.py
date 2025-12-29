@@ -99,7 +99,8 @@ def transform_to_frontend_format(backend_response: dict) -> dict:
             'avatar_url': response.get('avatar_url'),
             'persona_type': response.get('persona_type'),
             'reasoning': reasoning,
-            'responses': responses
+            'responses': responses,
+            'answers': response.get('answers')
         })
 
     backend_stats = backend_response.get('summary_statistics', {}) or {}
@@ -117,6 +118,7 @@ def transform_to_frontend_format(backend_response: dict) -> dict:
         'cohort_size': backend_response.get('cohort_size', 0),
         'stimulus_text': backend_response.get('stimulus_text', ''),
         'metrics_analyzed': backend_response.get('metrics_analyzed', []),
+        'questions': backend_response.get('questions'),
         'individual_responses': transformed_responses,
         'summary_statistics': summary_stats,
         'insights': backend_response.get('insights', []),
@@ -527,7 +529,8 @@ async def analyze_cohort(request: schemas.CohortAnalysisRequest, db: Session = D
             persona_ids=request.persona_ids,
             stimulus_text=request.stimulus_text,
             metrics=request.metrics,
-            db=db
+            db=db,
+            questions=request.questions
         )
         
         # Save simulation data
