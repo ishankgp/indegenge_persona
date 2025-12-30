@@ -114,11 +114,24 @@ export function SimulationHub() {
   // Handle pre-filled message from Analytics page (for message variants)
   const location = useLocation()
   useEffect(() => {
-    const state = location.state as { prefillMessage?: string; isVariant?: boolean; originalMessage?: string } | null
+    const state = location.state as {
+      prefillMessage?: string
+      isVariant?: boolean
+      originalMessage?: string
+      preselectedPersonaIds?: number[]
+    } | null
+
     if (state?.prefillMessage) {
       setStimulusText(state.prefillMessage)
       setIsVariant(state.isVariant ?? false)
       setOriginalMessage(state.originalMessage ?? "")
+    }
+
+    if (state?.preselectedPersonaIds?.length) {
+      setSelectedPersonas(new Set(state.preselectedPersonaIds))
+    }
+
+    if (state) {
       // Clear the state to prevent re-filling on refresh
       window.history.replaceState({}, document.title)
     }

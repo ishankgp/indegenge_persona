@@ -107,6 +107,7 @@ export function CreatePersona() {
   const [transcriptFile, setTranscriptFile] = useState<File | null>(null)
   const [transcriptSuggestions, setTranscriptSuggestions] = useState<TranscriptSuggestions | null>(null)
   const [transcriptLoading, setTranscriptLoading] = useState(false)
+  const [recentlyCreated, setRecentlyCreated] = useState<{ ids: number[]; names: string[] }>({ ids: [], names: [] })
 
   const manualFieldStatuses = useMemo<FieldStatus[]>(() => {
     const ageValue = parseInt(manualFormData.age)
@@ -218,6 +219,11 @@ export function CreatePersona() {
         )}
       </div>
     )
+  }
+
+  const handleNavigateToSimulator = (personaIds: number[]) => {
+    if (personaIds.length === 0) return
+    navigate('/simulation', { state: { preselectedPersonaIds: personaIds } })
   }
 
   const renderLabelWithStatus = (id: string, label: string, fieldStatuses: FieldStatus[], key: string) => {
@@ -481,12 +487,7 @@ export function CreatePersona() {
         }
       })
 
-      alert(`Successfully created manual persona. Redirecting to Persona Library...`)
-
-      // Redirect to persona library after successful creation
-      setTimeout(() => {
-        navigate('/personas')
-      }, 2000)
+      setRecentlyCreated({ ids: [newPersona.id], names: [newPersona.name || manualFormData.name] })
 
     } catch (error: any) {
       console.error("Error creating manual persona:", error)
@@ -553,12 +554,10 @@ export function CreatePersona() {
         count: '1'
       })
       setGenerationProgress({ current: 0, total: 0 })
-      alert(`Successfully generated ${count} new persona${count > 1 ? 's' : ''}${aiBrandId ? ' grounded in brand context' : ''}. Redirecting to Persona Library...`)
-
-      // Redirect to persona library after successful creation
-      setTimeout(() => {
-        navigate('/personas')
-      }, 2000)
+      setRecentlyCreated({
+        ids: createdPersonas.map((persona) => persona.id),
+        names: createdPersonas.map((persona) => persona.name)
+      })
 
     } catch (error: any) {
       console.error("Error generating persona:", error)
@@ -630,6 +629,47 @@ export function CreatePersona() {
       {/* Main Content */}
       <div className="max-w-6xl mx-auto px-8 py-12">
         <div className="space-y-8">
+          {recentlyCreated.ids.length > 0 && (
+            <Card className="border-0 shadow-2xl bg-gradient-to-r from-emerald-50 via-white to-violet-50 dark:from-emerald-950/30 dark:via-gray-900 dark:to-violet-900/30">
+              <CardContent className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between py-6">
+                <div className="flex items-start gap-3">
+                  <div className="mt-1 rounded-full bg-emerald-500/10 p-3 text-emerald-600 dark:text-emerald-300">
+                    <CheckCircle className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm uppercase tracking-wide text-emerald-600 dark:text-emerald-300 font-semibold">
+                      Persona Ready
+                    </p>
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                      {recentlyCreated.names.length === 1
+                        ? `${recentlyCreated.names[0]} is ready for testing`
+                        : `${recentlyCreated.names.length} personas ready for cohort simulation`}
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Jump straight into the simulator to see how this persona responds to your content.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    onClick={() => handleNavigateToSimulator(recentlyCreated.ids)}
+                    className="bg-gradient-to-r from-primary to-secondary text-white shadow-lg"
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    {recentlyCreated.ids.length > 1 ? "Test this cohort" : "Test this persona"}
+                  </Button>
+                  <Button variant="outline" onClick={() => navigate('/personas')}>
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    View in Persona Library
+                  </Button>
+                  <Button variant="ghost" onClick={() => setRecentlyCreated({ ids: [], names: [] })}>
+                    Create another
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Creation Mode Selection */}
           <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
             <CardHeader className="text-center">

@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { PersonasAPI, BrandsAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -28,7 +28,6 @@ import {
   Sparkles,
   Brain,
   Target,
-  ChevronRight,
   Star,
   TrendingUp,
   Shield,
@@ -90,6 +89,7 @@ const conditionColors: Record<string, string> = {
 
 export function PersonaLibrary() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -105,6 +105,7 @@ export function PersonaLibrary() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [selectedPersonaIds, setSelectedPersonaIds] = useState<Set<number>>(new Set());
 
   // Form data for single persona creation
   const [formData, setFormData] = useState({
@@ -137,6 +138,13 @@ export function PersonaLibrary() {
     fetchPersonas()
   }, [selectedBrandId])
 
+  useEffect(() => {
+    setSelectedPersonaIds((prev) => {
+      const availableIds = new Set(personas.map((p) => p.id))
+      return new Set([...prev].filter((id) => availableIds.has(id)))
+    })
+  }, [personas])
+
   // Update URL when brand filter changes
   const handleBrandFilterChange = (value: string) => {
     setSelectedBrandId(value)
@@ -146,6 +154,23 @@ export function PersonaLibrary() {
       searchParams.set('brand_id', value)
     }
     setSearchParams(searchParams)
+  }
+
+  const handleSimulatePersonas = (personaIds: number[]) => {
+    if (personaIds.length === 0) return
+    navigate('/simulation', { state: { preselectedPersonaIds: personaIds } })
+  }
+
+  const togglePersonaSelection = (id: number) => {
+    setSelectedPersonaIds((prev) => {
+      const updated = new Set(prev)
+      if (updated.has(id)) {
+        updated.delete(id)
+      } else {
+        updated.add(id)
+      }
+      return updated
+    })
   }
 
   const fetchBrands = async () => {
@@ -186,6 +211,11 @@ export function PersonaLibrary() {
     try {
       await PersonasAPI.delete(personaId);
       setPersonas(personas.filter(p => p.id !== personaId));
+      setSelectedPersonaIds((prev) => {
+        const updated = new Set(prev)
+        updated.delete(personaId)
+        return updated
+      })
       toast({
         title: "Deleted",
         description: `Persona "${personaName}" has been removed.`,
@@ -465,7 +495,19 @@ export function PersonaLibrary() {
     return brand?.name || null
   }
 
-  const PersonaCard = ({ persona, onDelete }: { persona: Persona, onDelete: (id: number, name: string) => void }) => {
+  const PersonaCard = ({
+    persona,
+    onDelete,
+    onToggleSelect,
+    onSimulate,
+    isSelected
+  }: {
+    persona: Persona
+    onDelete: (id: number, name: string) => void
+    onToggleSelect: () => void
+    onSimulate: () => void
+    isSelected: boolean
+  }) => {
     let personaData: any = {};
     try {
       personaData = JSON.parse(persona.full_persona_json);
@@ -477,7 +519,11 @@ export function PersonaLibrary() {
     const brandName = getBrandName(persona.brand_id)
 
     return (
-      <Card className="group relative overflow-hidden border-0 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+      <Card
+        className={`group relative overflow-hidden border-0 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm bg-white/90 dark:bg-gray-900/90 ${
+          isSelected ? "ring-2 ring-primary/30 dark:ring-primary/50" : ""
+        }`}
+      >
         {/* Gradient Border Effect */}
         <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-secondary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
 
@@ -536,6 +582,11 @@ export function PersonaLibrary() {
             <div className="flex flex-col items-end gap-2">
               <div className="flex items-center gap-2">
                 <Badge className={cn("text-xs", conditionClass)}>{persona.condition}</Badge>
+                {isSelected && (
+                  <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+                    Selected
+                  </Badge>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -619,17 +670,31 @@ export function PersonaLibrary() {
         </CardContent>
 
         <CardFooter className="pt-3 relative">
-          <Button
-            variant="ghost"
-            className="w-full group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-secondary group-hover:text-white transition-all duration-200"
-            onClick={() => {
-              setSelectedPersona(persona)
-              setIsDetailModalOpen(true)
-            }}
-          >
-            View Detailed Profile
-            <ChevronRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
-          </Button>
+          <div className="flex flex-col gap-2 w-full sm:flex-row">
+            <Button
+              variant="outline"
+              className="sm:w-1/3"
+              onClick={() => {
+                setSelectedPersona(persona)
+                setIsDetailModalOpen(true)
+              }}
+            >
+              View Profile
+            </Button>
+            <Button
+              variant={isSelected ? "secondary" : "outline"}
+              className="sm:w-1/3"
+              onClick={onToggleSelect}
+            >
+              {isSelected ? "Remove from Cohort" : "Add to Cohort"}
+            </Button>
+            <Button
+              className="sm:w-1/3 bg-gradient-to-r from-primary to-secondary text-white"
+              onClick={onSimulate}
+            >
+              Test in Simulator
+            </Button>
+          </div>
         </CardFooter>
       </Card>
     )
@@ -781,6 +846,34 @@ export function PersonaLibrary() {
               </Card>
             ) : (
               <>
+                {selectedPersonaIds.size > 0 && (
+                  <div className="mb-6 flex flex-col gap-3 rounded-xl border border-primary/10 bg-white/90 p-4 shadow-lg backdrop-blur-sm dark:border-primary/30 dark:bg-gray-900/80 md:flex-row md:items-center md:justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-full bg-primary/10 p-2 text-primary">
+                        <Users className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                          {selectedPersonaIds.size} persona{selectedPersonaIds.size > 1 ? 's' : ''} selected for cohort testing
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">Launch the simulator with this curated group.</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2 md:flex-row">
+                      <Button
+                        className="bg-gradient-to-r from-primary to-secondary text-white"
+                        onClick={() => handleSimulatePersonas(Array.from(selectedPersonaIds))}
+                      >
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        Test Selection in Simulator
+                      </Button>
+                      <Button variant="outline" onClick={() => setSelectedPersonaIds(new Set())}>
+                        Clear Selection
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Stats Bar */}
                 <div className="grid grid-cols-4 gap-4 mb-6">
                   <Card className="border-0 shadow-lg bg-gradient-to-br from-violet-50 to-violet-100 dark:from-violet-950/30 dark:to-violet-900/30">
@@ -831,7 +924,14 @@ export function PersonaLibrary() {
                 {/* Personas Grid */}
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                   {filteredPersonas.map((persona) => (
-                    <PersonaCard key={persona.id} persona={persona} onDelete={handleDeletePersona} />
+                    <PersonaCard
+                      key={persona.id}
+                      persona={persona}
+                      onDelete={handleDeletePersona}
+                      onToggleSelect={() => togglePersonaSelection(persona.id)}
+                      onSimulate={() => handleSimulatePersonas([persona.id])}
+                      isSelected={selectedPersonaIds.has(persona.id)}
+                    />
                   ))}
                 </div>
               </>
