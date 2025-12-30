@@ -18,7 +18,7 @@ from datetime import datetime
 
 # Note: dotenv loading removed - pass environment variables directly
 
-from . import crud, models, schemas, persona_engine, cohort_engine, document_processor, avatar_engine, image_improvement, image_improvement
+from . import crud, models, schemas, persona_engine, cohort_engine, document_processor, avatar_engine, image_improvement, image_improvement, vector_search
 from .database import engine, get_db
 import shutil
 
@@ -910,43 +910,86 @@ def _dedupe_and_limit(insights: List[Dict[str, str]], limit: int = 5) -> List[Di
     return unique
 
 
-def _aggregate_brand_insights(
-    documents: List[models.BrandDocument],
+def _aggregate_insight_entries(
+    insight_entries: List[Dict[str, str]],
     target_segment: Optional[str],
-    limit_per_category: int
+    limit_per_category: int,
 ) -> Dict[str, List[Dict[str, str]]]:
     motivations: List[Dict[str, str]] = []
     beliefs: List[Dict[str, str]] = []
     tensions: List[Dict[str, str]] = []
 
-    for doc in documents:
-        for raw_insight in (doc.extracted_insights or []):
-            insight_type = _normalize_insight_type(raw_insight.get("type"))
-            segment = raw_insight.get("segment") or "General"
+    for raw_insight in insight_entries:
+        insight_type = _normalize_insight_type(raw_insight.get("type"))
+        segment = raw_insight.get("segment") or "General"
 
-            if not _insight_matches_segment(segment, target_segment):
-                continue
+        if not _insight_matches_segment(segment, target_segment):
+            continue
 
-            normalized = {
-                "type": insight_type,
-                "text": (raw_insight.get("text") or "").strip(),
-                "segment": segment,
-                "source_snippet": (raw_insight.get("source_snippet") or "").strip(),
-                "source_document": raw_insight.get("source_document") or doc.filename,
-            }
+        normalized = {
+            "type": insight_type,
+            "text": (raw_insight.get("text") or "").strip(),
+            "segment": segment,
+            "source_snippet": (raw_insight.get("source_snippet") or "").strip(),
+            "source_document": raw_insight.get("source_document")
+            or raw_insight.get("source_document_filename")
+            or "",
+        }
 
-            if insight_type == "Motivation":
-                motivations.append(normalized)
-            elif insight_type == "Belief":
-                beliefs.append(normalized)
-            else:
-                tensions.append(normalized)
+        if insight_type == "Motivation":
+            motivations.append(normalized)
+        elif insight_type == "Belief":
+            beliefs.append(normalized)
+        else:
+            tensions.append(normalized)
 
     return {
         "motivations": _dedupe_and_limit(motivations, limit_per_category),
         "beliefs": _dedupe_and_limit(beliefs, limit_per_category),
         "tensions": _dedupe_and_limit(tensions, limit_per_category),
     }
+
+
+def _aggregate_brand_insights(
+    documents: List[models.BrandDocument],
+    target_segment: Optional[str],
+    limit_per_category: int
+) -> Dict[str, List[Dict[str, str]]]:
+    insight_entries: List[Dict[str, str]] = []
+
+    for doc in documents:
+        for raw_insight in (doc.extracted_insights or []):
+            insight_entries.append(
+                {
+                    **raw_insight,
+                    "source_document_filename": getattr(doc, "filename", None),
+                }
+            )
+
+    return _aggregate_insight_entries(insight_entries, target_segment, limit_per_category)
+
+
+def _aggregate_with_vector_search(
+    brand_id: int,
+    documents: List[models.BrandDocument],
+    target_segment: Optional[str],
+    limit_per_category: int,
+) -> Dict[str, List[Dict[str, str]]]:
+    """Prefer vector-search snippets when available, fall back to full documents."""
+
+    vector_results = vector_search.search_brand_chunks(
+        brand_id=brand_id,
+        documents=documents,
+        target_segment=target_segment,
+        top_k=limit_per_category * 3,
+    )
+
+    if vector_results:
+        logger.info("Using vector search results for brand %s", brand_id)
+        return _aggregate_insight_entries(vector_results, target_segment, limit_per_category)
+
+    logger.info("Vector search unavailable; aggregating from documents for brand %s", brand_id)
+    return _aggregate_brand_insights(documents, target_segment, limit_per_category)
 
 
 def _flatten_insights(aggregated: Dict[str, List[Dict[str, str]]]) -> List[Dict[str, str]]:
@@ -1124,7 +1167,12 @@ async def get_brand_context(
 
     limit_per_category = max(1, min(limit_per_category, 15))
     documents = crud.get_brand_documents(db, brand_id)
-    aggregated = _aggregate_brand_insights(documents, target_segment, limit_per_category)
+    aggregated = _aggregate_with_vector_search(
+        brand_id=brand_id,
+        documents=documents,
+        target_segment=target_segment,
+        limit_per_category=limit_per_category,
+    )
 
     return schemas.BrandContextResponse(
         brand_id=brand.id,
@@ -1145,7 +1193,12 @@ async def get_brand_persona_suggestions(
 
     limit = max(1, min(request.limit_per_category, 10))
     documents = crud.get_brand_documents(db, brand_id)
-    aggregated = _aggregate_brand_insights(documents, request.target_segment, limit)
+    aggregated = _aggregate_with_vector_search(
+        brand_id=brand_id,
+        documents=documents,
+        target_segment=request.target_segment,
+        limit_per_category=limit,
+    )
     flattened = _flatten_insights(aggregated)
 
     suggestions = persona_engine.suggest_persona_attributes(
