@@ -1320,6 +1320,162 @@ def _fallback_persona_suggestions(brand_insights: List[Dict[str, str]]) -> Dict[
     }
 
 
+def enrich_existing_persona(persona_payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Enrich an existing persona to match the full schema depth.
+    
+    This function is designed to upgrade personas that were created with minimal
+    data (e.g., just demographics and basic MBT fields) to the full enriched schema
+    including core.mbt, decision_drivers, messaging, channel_behavior, etc.
+    
+    Args:
+        persona_payload: The existing persona dictionary (parsed from full_persona_json)
+        
+    Returns:
+        Enriched persona dictionary with all schema fields populated
+    """
+    # Extract existing values with fallbacks
+    demographics = persona_payload.get("demographics", {})
+    age = demographics.get("age") or persona_payload.get("age", 45)
+    gender = demographics.get("gender") or persona_payload.get("gender", "Unknown")
+    location = demographics.get("location") or persona_payload.get("location", "Unknown")
+    occupation = demographics.get("occupation") or persona_payload.get("occupation", "Professional")
+    
+    condition = persona_payload.get("condition") or (
+        persona_payload.get("meta", {}).get("indication") or
+        persona_payload.get("meta", {}).get("disease_area") or
+        "Health condition"
+    )
+    
+    name = persona_payload.get("name") or persona_payload.get("meta", {}).get("name", "Unknown Persona")
+    persona_type = persona_payload.get("persona_type", "patient")
+    
+    # Extract existing MBT fields
+    motivations = persona_payload.get("motivations") or []
+    beliefs = persona_payload.get("beliefs") or []
+    pain_points = persona_payload.get("pain_points") or []
+    
+    lifestyle = persona_payload.get("lifestyle_and_values") or ""
+    medical_background = persona_payload.get("medical_background") or ""
+    communication_preferences = persona_payload.get("communication_preferences", {})
+    concerns = pain_points[0] if pain_points else "Managing health condition effectively"
+    
+    # Check if OpenAI is available for enrichment
+    client = get_openai_client()
+    
+    if client is not None:
+        # Use LLM to generate richer content
+        enrichment_prompt = f"""
+You are enriching a healthcare persona with additional details. The persona has basic information but needs deeper insights for MBT (Motivation, Beliefs, Tension) framework analysis.
+
+**Existing Persona Data:**
+- Name: {name}
+- Age: {age}, Gender: {gender}
+- Condition: {condition}
+- Location: {location}
+- Occupation: {occupation}
+- Existing Motivations: {motivations}
+- Existing Beliefs: {beliefs}
+- Existing Pain Points: {pain_points}
+- Lifestyle: {lifestyle or 'Not specified'}
+- Medical Background: {medical_background or 'Not specified'}
+
+**Task:** Generate expanded details for the following fields (respond with a JSON object):
+
+{{
+    "motivations": ["list of 3-5 motivations, incorporating existing ones"],
+    "beliefs": ["list of 3-5 beliefs about healthcare and treatment"],
+    "pain_points": ["list of 3-5 pain points/tensions, incorporating existing ones"],
+    "lifestyle_and_values": "paragraph describing lifestyle, values, daily routines",
+    "medical_background": "paragraph describing medical history and current treatment",
+    "success_definition": "how this persona defines success in managing their condition",
+    "trust_anchors": ["list of 3 sources/people they trust for health information"],
+    "emotional_undercurrent": "underlying emotional state regarding their health",
+    "preferred_channels": "communication channels they prefer",
+    "what_lands": ["list of 3 message types that resonate with them"],
+    "what_fails": ["list of 3 message types that turn them off"]
+}}
+"""
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[{"role": "user", "content": enrichment_prompt}],
+                response_format={"type": "json_object"},
+                max_tokens=1000,
+            )
+            content = response.choices[0].message.content or "{}"
+            enrichment_data = json.loads(content)
+            
+            # Merge LLM-generated content with existing data
+            motivations = enrichment_data.get("motivations", motivations) or motivations
+            beliefs = enrichment_data.get("beliefs", beliefs) or beliefs
+            pain_points = enrichment_data.get("pain_points", pain_points) or pain_points
+            lifestyle = enrichment_data.get("lifestyle_and_values", lifestyle) or lifestyle
+            medical_background = enrichment_data.get("medical_background", medical_background) or medical_background
+            
+            # Store additional enrichment for schema building
+            extra_enrichment = {
+                "success_definition": enrichment_data.get("success_definition"),
+                "trust_anchors": enrichment_data.get("trust_anchors"),
+                "emotional_undercurrent": enrichment_data.get("emotional_undercurrent"),
+                "what_lands": enrichment_data.get("what_lands"),
+                "what_fails": enrichment_data.get("what_fails"),
+            }
+            print(f"✅ Enriched persona '{name}' via OpenAI API")
+        except Exception as e:
+            print(f"⚠️ LLM enrichment failed ({e}), using defaults")
+            extra_enrichment = {}
+    else:
+        print(f"ℹ️ OpenAI not available, enriching '{name}' with defaults")
+        extra_enrichment = {}
+    
+    # Build the full schema using _build_schema_persona
+    enriched = _build_schema_persona(
+        name=name,
+        age=age if isinstance(age, int) else int(age) if str(age).isdigit() else 45,
+        gender=gender,
+        condition=condition,
+        location=location,
+        concerns=concerns,
+        occupation=occupation,
+        motivations=motivations if isinstance(motivations, list) else [motivations] if motivations else [],
+        beliefs=beliefs if isinstance(beliefs, list) else [beliefs] if beliefs else [],
+        pain_points=pain_points if isinstance(pain_points, list) else [pain_points] if pain_points else [],
+        lifestyle=lifestyle,
+        medical_background=medical_background,
+        communication_preferences=communication_preferences,
+        persona_type=persona_type,
+        existing_persona=persona_payload,
+    )
+    
+    # Apply any extra enrichment from LLM
+    if extra_enrichment:
+        core = enriched.get("core", {})
+        mbt = core.get("mbt", {})
+        
+        if extra_enrichment.get("success_definition"):
+            mbt.setdefault("motivation", {})["success_definition"] = _enriched_text(
+                extra_enrichment["success_definition"], 0.75
+            )
+        
+        if extra_enrichment.get("trust_anchors"):
+            mbt.setdefault("beliefs", {})["trust_anchors"] = _enriched_list(
+                extra_enrichment["trust_anchors"], 0.72
+            )
+        
+        if extra_enrichment.get("emotional_undercurrent"):
+            mbt.setdefault("tension", {})["emotional_undercurrent"] = _enriched_text(
+                extra_enrichment["emotional_undercurrent"], 0.71
+            )
+        
+        messaging = core.get("messaging", {})
+        if extra_enrichment.get("what_lands"):
+            messaging["what_lands"] = _enriched_list(extra_enrichment["what_lands"], 0.7)
+        if extra_enrichment.get("what_fails"):
+            messaging["what_fails"] = _enriched_list(extra_enrichment["what_fails"], 0.68)
+    
+    return enriched
+
 def extract_persona_from_transcript(transcript_text: str) -> Dict[str, Any]:
     """Map transcript text into enriched persona schema suggestions using heuristics."""
 

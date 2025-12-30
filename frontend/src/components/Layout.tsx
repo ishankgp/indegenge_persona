@@ -35,6 +35,12 @@ const navigation = [
     icon: Users,
   },
   {
+    name: 'Persona Builder',
+    description: 'Deep-dive persona creation',
+    href: '/persona-builder',
+    icon: Sparkles,
+  },
+  {
     name: 'Persona Coverage',
     description: 'Quick view for marketers',
     href: '/coverage',
@@ -114,7 +120,7 @@ export function Layout() {
           <div className="space-y-1">
             {navigation.map((item) => {
               // For Dashboard (href="/"), use exact match; for others, use startsWith
-              const isActive = item.href === '/' 
+              const isActive = item.href === '/'
                 ? location.pathname === item.href
                 : location.pathname.startsWith(item.href);
               return (

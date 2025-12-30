@@ -89,6 +89,8 @@ interface PersonaFormData {
   decision_drivers: ListItem[]
   messaging_hooks: ListItem[]
   objections: ListItem[]
+  practical_barriers: ListItem[]
+  perceptual_barriers: ListItem[]
   channel_preferences: ListItem[]
 }
 
@@ -100,7 +102,7 @@ const FORM_SECTIONS: FormSection[] = [
   { id: "tensions", label: "Tensions", icon: Shield, fields: ["tensions"] },
   { id: "decision_drivers", label: "Decision Drivers", icon: Lightbulb, fields: ["decision_drivers"] },
   { id: "messaging", label: "Messaging Hooks", icon: MessageSquare, fields: ["messaging_hooks"] },
-  { id: "objections", label: "Objections", icon: AlertCircle, fields: ["objections"] },
+  { id: "barriers", label: "Barriers & Objections", icon: AlertCircle, fields: ["objections", "practical_barriers", "perceptual_barriers"] },
   { id: "channel", label: "Channel Behavior", icon: Radio, fields: ["channel_preferences"] },
 ]
 
@@ -128,6 +130,8 @@ const initialFormData: PersonaFormData = {
   decision_drivers: [{ ...EMPTY_LIST_ITEM }, { ...EMPTY_LIST_ITEM }],
   messaging_hooks: [{ ...EMPTY_LIST_ITEM }, { ...EMPTY_LIST_ITEM }],
   objections: [{ ...EMPTY_LIST_ITEM }, { ...EMPTY_LIST_ITEM }],
+  practical_barriers: [{ ...EMPTY_LIST_ITEM }, { ...EMPTY_LIST_ITEM }],
+  perceptual_barriers: [{ ...EMPTY_LIST_ITEM }, { ...EMPTY_LIST_ITEM }],
   channel_preferences: [{ ...EMPTY_LIST_ITEM }, { ...EMPTY_LIST_ITEM }],
 }
 
@@ -381,6 +385,8 @@ export function PersonaBuilder() {
             decision_drivers: [EMPTY_LIST_ITEM, EMPTY_LIST_ITEM],
             messaging_hooks: [EMPTY_LIST_ITEM, EMPTY_LIST_ITEM],
             objections: [EMPTY_LIST_ITEM, EMPTY_LIST_ITEM],
+            practical_barriers: [EMPTY_LIST_ITEM, EMPTY_LIST_ITEM],
+            perceptual_barriers: [EMPTY_LIST_ITEM, EMPTY_LIST_ITEM],
             channel_preferences: [EMPTY_LIST_ITEM, EMPTY_LIST_ITEM],
           })
           setStep("review")
@@ -497,6 +503,16 @@ export function PersonaBuilder() {
         core?.barriers_objections?.objections?.evidence,
         2
       ),
+      practical_barriers: createListItems(
+        core?.barriers_objections?.practical_barriers?.value || [],
+        core?.barriers_objections?.practical_barriers?.evidence,
+        2
+      ),
+      perceptual_barriers: createListItems(
+        core?.barriers_objections?.perceptual_barriers?.value || [],
+        core?.barriers_objections?.perceptual_barriers?.evidence,
+        2
+      ),
       channel_preferences: createListItems(
         core?.channel_behavior?.preferred_sources?.value || [],
         core?.channel_behavior?.preferred_sources?.evidence,
@@ -606,6 +622,16 @@ export function PersonaBuilder() {
                 value: formData.objections.filter(o => o.value.trim()).map(o => o.value),
                 status: "confirmed",
                 evidence: formData.objections.flatMap(o => o.evidence || []),
+              },
+              practical_barriers: {
+                value: formData.practical_barriers.filter(b => b.value.trim()).map(b => b.value),
+                status: "confirmed",
+                evidence: formData.practical_barriers.flatMap(b => b.evidence || []),
+              },
+              perceptual_barriers: {
+                value: formData.perceptual_barriers.filter(b => b.value.trim()).map(b => b.value),
+                status: "confirmed",
+                evidence: formData.perceptual_barriers.flatMap(b => b.evidence || []),
               },
             },
             channel_behavior: {
@@ -1147,7 +1173,25 @@ export function PersonaBuilder() {
                     items={formData.objections}
                     onChange={(i, v) => handleListItemChange("objections", i, v)}
                     onAdd={() => handleAddListItem("objections")}
-                    placeholder="What objections do they have?"
+                    placeholder="Direct objections or concerns?"
+                    maxItems={4}
+                  />
+                  <Separator />
+                  <ListFieldEditor
+                    label="Practical Barriers"
+                    items={formData.practical_barriers}
+                    onChange={(i, v) => handleListItemChange("practical_barriers", i, v)}
+                    onAdd={() => handleAddListItem("practical_barriers")}
+                    placeholder="Cost, access, time, insurance barriers?"
+                    maxItems={4}
+                  />
+                  <Separator />
+                  <ListFieldEditor
+                    label="Perceptual Barriers"
+                    items={formData.perceptual_barriers}
+                    onChange={(i, v) => handleListItemChange("perceptual_barriers", i, v)}
+                    onAdd={() => handleAddListItem("perceptual_barriers")}
+                    placeholder="Trust issues, skepticism, fears?"
                     maxItems={4}
                   />
                   <Separator />

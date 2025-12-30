@@ -448,6 +448,48 @@ async def enrich_persona_from_brand(
 
     return updated
 
+
+@app.post("/personas/{persona_id}/enrich", response_model=schemas.Persona)
+async def enrich_persona(
+    persona_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Enrich an existing persona to match the full schema depth using LLM.
+    
+    This endpoint takes an existing persona and fills in any missing schema fields 
+    such as core.mbt (motivations, beliefs, tensions), decision_drivers, messaging,
+    channel_behavior, etc. It uses LLM when available and falls back to sensible
+    defaults when OpenAI is unavailable.
+    
+    No brand_id is required - enrichment is based on existing persona data.
+    """
+    persona = crud.get_persona(db, persona_id)
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+
+    try:
+        persona_json = json.loads(persona.full_persona_json or "{}")
+    except json.JSONDecodeError:
+        persona_json = {}
+
+    # Enrich the persona using the new function
+    enriched = persona_engine.enrich_existing_persona(persona_json)
+
+    # Update the database with the enriched persona
+    updated = crud.update_persona(
+        db,
+        persona_id,
+        schemas.PersonaUpdate(full_persona_json=enriched)
+    )
+
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to persist enriched persona")
+
+    logger.info(f"✅ Enriched persona {persona_id} with full schema depth")
+    return updated
+
+
 @app.post("/personas/recruit", response_model=List[schemas.Persona])
 async def recruit_personas(request: schemas.PersonaSearchRequest, db: Session = Depends(get_db)):
     """
