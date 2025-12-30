@@ -1,7 +1,46 @@
-from pydantic import BaseModel
-from typing import Optional, Dict, Any, List, Union
+from pydantic import BaseModel, Field
+from typing import Optional, Dict, Any, List, Union, Literal
 from datetime import datetime
+from enum import Enum
 import json
+
+
+class FieldStatus(str, Enum):
+    """Status of a persona field."""
+    SUGGESTED = "suggested"
+    CONFIRMED = "confirmed"
+    EMPTY = "empty"
+
+
+class EnrichedFieldBase(BaseModel):
+    """Base schema for enriched persona fields with status tracking."""
+    value: Any
+    status: FieldStatus = FieldStatus.EMPTY
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    evidence: List[str] = Field(default_factory=list)
+
+
+class EnrichedString(EnrichedFieldBase):
+    """Enriched string field with status and evidence."""
+    value: str = ""
+
+
+class EnrichedText(EnrichedFieldBase):
+    """Enriched text field (longer content) with status and evidence."""
+    value: str = ""
+
+
+class EnrichedList(EnrichedFieldBase):
+    """Enriched list field with status and evidence."""
+    value: List[str] = Field(default_factory=list)
+
+
+class PersonaFieldUpdate(BaseModel):
+    """Schema for updating a single enriched field."""
+    value: Optional[Any] = None
+    status: Optional[FieldStatus] = None
+    confidence: Optional[float] = None
+    evidence: Optional[List[str]] = None
 
 class PersonaBase(BaseModel):
     name: str
@@ -53,6 +92,10 @@ class PersonaUpdate(BaseModel):
     decision_style: Optional[str] = None
     core_insight: Optional[str] = None
     full_persona_json: Optional[Union[str, Dict[str, Any]]] = None
+    # Field-level updates for partial persona JSON updates
+    field_updates: Optional[Dict[str, PersonaFieldUpdate]] = None
+    # Mark specific fields as confirmed (user edited/approved)
+    confirm_fields: Optional[List[str]] = None
 
 class Persona(PersonaBase):
     id: int

@@ -121,28 +121,159 @@ export async function checkHealth(): Promise<{ ok: boolean; personas?: number }>
 }
 
 // Helper wrappers
+// Field status types for enriched persona fields
+export type FieldStatus = 'suggested' | 'confirmed' | 'empty';
+
+export interface EnrichedField<T = string> {
+  value: T;
+  status: FieldStatus;
+  confidence: number;
+  evidence: string[];
+  evidence_verified?: number;
+}
+
+export interface PersonaFieldUpdate {
+  value?: any;
+  status?: FieldStatus;
+  confidence?: number;
+  evidence?: string[];
+}
+
+export interface PersonaUpdatePayload {
+  name?: string;
+  avatar_url?: string;
+  persona_type?: string;
+  age?: number;
+  gender?: string;
+  condition?: string;
+  location?: string;
+  full_persona_json?: string | Record<string, any>;
+  field_updates?: Record<string, PersonaFieldUpdate>;
+  confirm_fields?: string[];
+}
+
+export interface TranscriptExtractionOptions {
+  use_llm?: boolean;
+  verify_quotes?: boolean;
+}
+
+export interface ExtractionSummary {
+  motivations_count: number;
+  beliefs_count: number;
+  tensions_count: number;
+  extraction_method: string;
+}
+
+export interface TranscriptSuggestions {
+  schema_version: string;
+  extraction_method?: string;
+  summary: string;
+  source: {
+    character_count: number;
+    sentence_count: number;
+    excerpt: string;
+    filename?: string;
+    received_via?: string;
+  };
+  demographics: {
+    age: EnrichedField;
+    gender: EnrichedField;
+    location: EnrichedField;
+    condition?: EnrichedField;
+  };
+  legacy: {
+    motivations: string[];
+    beliefs: string[];
+    tensions: string[];
+  };
+  core: Record<string, any>;
+  extraction_summary?: ExtractionSummary;
+}
+
+export interface PersonaExport {
+  id: number;
+  name: string;
+  persona_type: string;
+  demographics: {
+    age: number;
+    gender: string;
+    condition: string;
+    location: string;
+  };
+  full_persona: Record<string, any>;
+  motivations: string[];
+  beliefs: string[];
+  pain_points: string[];
+  medical_background: string;
+  lifestyle_and_values: string;
+  communication_preferences: Record<string, any>;
+  mbt?: Record<string, any>;
+  decision_drivers?: Record<string, any>;
+  messaging?: Record<string, any>;
+  barriers_objections?: Record<string, any>;
+  channel_behavior?: Record<string, any>;
+  hcp_context?: Record<string, any>;
+  export_metadata: {
+    exported_at: string;
+    schema_version: string;
+    includes_evidence: boolean;
+  };
+}
+
 export const PersonasAPI = {
   list: (brandId?: number) => {
     const params = brandId !== undefined ? { brand_id: brandId } : {};
     return api.get('/personas/', { params }).then(r => r.data);
   },
+  get: (id: number) => api.get(`/personas/${id}`).then(r => r.data),
   generate: (payload: any) => api.post('/personas/generate', payload).then(r => r.data),
   createManual: (payload: any) => api.post('/personas/manual', payload).then(r => r.data),
   delete: (id: number) => api.delete(`/personas/${id}`),
   recruit: (prompt: string) => api.post('/personas/recruit', { prompt }).then(r => r.data),
-  update: (id: number, payload: any) => api.put(`/personas/${id}`, payload).then(r => r.data),
+  update: (id: number, payload: PersonaUpdatePayload) => 
+    api.put(`/personas/${id}`, payload).then(r => r.data),
+  
+  // Save with field confirmation - marks edited fields as confirmed
+  saveWithConfirmation: (id: number, payload: PersonaUpdatePayload, confirmedFields: string[]) => 
+    api.put(`/personas/${id}`, {
+      ...payload,
+      confirm_fields: confirmedFields,
+    }).then(r => r.data),
+  
+  // Update specific fields with status tracking
+  updateFields: (id: number, fieldUpdates: Record<string, PersonaFieldUpdate>, confirmFields?: string[]) =>
+    api.put(`/personas/${id}`, {
+      field_updates: fieldUpdates,
+      confirm_fields: confirmFields,
+    }).then(r => r.data),
+  
   enrichFromBrand: (id: number, payload: { brand_id: number; target_segment?: string; target_fields?: string[] }) =>
     api.post(`/personas/${id}/enrich-from-brand`, payload).then(r => r.data),
   regenerateAvatar: (id: number) => api.post(`/personas/${id}/regenerate-avatar`).then(r => r.data),
-  extractFromTranscript: (payload: FormData | { transcript_text: string }) => {
-    if (payload instanceof FormData) {
-      return api.post('/personas/from-transcript', payload).then(r => r.data)
+  
+  // Enhanced transcript extraction with LLM and quote verification
+  extractFromTranscript: (
+    payload: FormData | { transcript_text: string },
+    options: TranscriptExtractionOptions = { use_llm: true, verify_quotes: true }
+  ): Promise<TranscriptSuggestions> => {
+    const formData = payload instanceof FormData ? payload : new FormData();
+    
+    if (!(payload instanceof FormData)) {
+      formData.append('transcript_text', payload.transcript_text);
     }
-
-    const formData = new FormData();
-    formData.append('transcript_text', payload.transcript_text);
-    return api.post('/personas/from-transcript', formData).then(r => r.data)
+    
+    // Add extraction options
+    formData.append('use_llm', String(options.use_llm ?? true));
+    formData.append('verify_quotes', String(options.verify_quotes ?? true));
+    
+    return api.post('/personas/from-transcript', formData).then(r => r.data);
   },
+  
+  // Export persona for simulation
+  exportForSimulation: (id: number, includeEvidence: boolean = true): Promise<PersonaExport> =>
+    api.get(`/personas/${id}/export`, { 
+      params: { include_evidence: includeEvidence } 
+    }).then(r => r.data),
 };
 
 export interface BrandInsight {

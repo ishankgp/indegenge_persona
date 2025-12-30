@@ -474,8 +474,17 @@ async def recruit_personas(request: schemas.PersonaSearchRequest, db: Session = 
 async def extract_persona_from_transcript(
     file: Optional[UploadFile] = File(None),
     transcript_text: Optional[str] = Form(None),
+    use_llm: Optional[bool] = Form(True),
+    verify_quotes: Optional[bool] = Form(True),
 ):
-    """Accept a transcript file or raw text and return persona suggestions."""
+    """Accept a transcript file or raw text and return persona suggestions.
+    
+    Args:
+        file: Optional transcript file (PDF, TXT, MD, DOCX)
+        transcript_text: Optional raw transcript text
+        use_llm: If True, use LLM for comprehensive extraction (default True)
+        verify_quotes: If True, validate extracted quotes against source (default True)
+    """
 
     text_content = (transcript_text or "").strip()
 
@@ -490,7 +499,14 @@ async def extract_persona_from_transcript(
     if not text_content:
         raise HTTPException(status_code=400, detail="Transcript text is required")
 
-    suggestions = persona_engine.extract_persona_from_transcript(text_content)
+    # Use comprehensive LLM extraction if enabled, otherwise fall back to heuristics
+    if use_llm:
+        suggestions = persona_engine.extract_comprehensive_persona_from_transcript(
+            text_content,
+            verify_quotes=verify_quotes
+        )
+    else:
+        suggestions = persona_engine.extract_persona_from_transcript(text_content)
 
     if not suggestions:
         raise HTTPException(status_code=500, detail="Failed to extract suggestions from transcript")
@@ -500,8 +516,111 @@ async def extract_persona_from_transcript(
         "filename": getattr(file, "filename", None),
         "received_via": "file" if file else "text",
     })
+    
+    # Count extracted items for summary
+    legacy = suggestions.get("legacy", {})
+    extraction_summary = {
+        "motivations_count": len(legacy.get("motivations", [])),
+        "beliefs_count": len(legacy.get("beliefs", [])),
+        "tensions_count": len(legacy.get("tensions", [])),
+        "extraction_method": suggestions.get("extraction_method", "heuristics"),
+    }
+    suggestions["extraction_summary"] = extraction_summary
 
     return suggestions
+
+
+@app.get("/personas/{persona_id}/export")
+async def export_persona_for_simulation(
+    persona_id: int,
+    include_evidence: bool = True,
+    db: Session = Depends(get_db)
+):
+    """Export a persona in a format ready for simulation.
+    
+    Returns the enriched persona JSON structured for the cohort analysis engine.
+    This endpoint provides the same data as the standard GET but in a format
+    optimized for simulation payloads.
+    
+    Args:
+        persona_id: The ID of the persona to export
+        include_evidence: Whether to include evidence metadata (default True)
+    """
+    persona = crud.get_persona(db, persona_id)
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    
+    try:
+        persona_json = json.loads(persona.full_persona_json or "{}")
+    except json.JSONDecodeError:
+        persona_json = {}
+    
+    # Build simulation-ready export
+    export_data = {
+        "id": persona.id,
+        "name": persona.name,
+        "persona_type": persona.persona_type or "Patient",
+        "demographics": {
+            "age": persona.age,
+            "gender": persona.gender,
+            "condition": persona.condition,
+            "location": persona.location,
+        },
+        # Include full persona data for rich simulation context
+        "full_persona": persona_json,
+        # Extract key fields for quick access
+        "motivations": persona_json.get("motivations", []),
+        "beliefs": persona_json.get("beliefs", []),
+        "pain_points": persona_json.get("pain_points", []),
+        "medical_background": persona_json.get("medical_background", ""),
+        "lifestyle_and_values": persona_json.get("lifestyle_and_values", ""),
+        "communication_preferences": persona_json.get("communication_preferences", {}),
+    }
+    
+    # Include HCP-specific fields if applicable
+    if persona.persona_type and persona.persona_type.lower() == "hcp":
+        export_data["hcp_context"] = {
+            "specialty": persona.specialty,
+            "practice_setup": persona.practice_setup,
+            "decision_influencers": persona.decision_influencers,
+            "adherence_to_protocols": persona.adherence_to_protocols,
+            "decision_style": persona.decision_style,
+        }
+    
+    # Include enriched schema fields if available
+    core = persona_json.get("core", {})
+    if core:
+        export_data["mbt"] = core.get("mbt", {})
+        export_data["decision_drivers"] = core.get("decision_drivers", {})
+        export_data["messaging"] = core.get("messaging", {})
+        export_data["barriers_objections"] = core.get("barriers_objections", {})
+        export_data["channel_behavior"] = core.get("channel_behavior", {})
+    
+    # Strip evidence if not requested (for smaller payloads)
+    if not include_evidence:
+        export_data = _strip_evidence_from_export(export_data)
+    
+    export_data["export_metadata"] = {
+        "exported_at": datetime.now().isoformat(),
+        "schema_version": persona_json.get("schema_version", "1.0.0"),
+        "includes_evidence": include_evidence,
+    }
+    
+    return export_data
+
+
+def _strip_evidence_from_export(data: dict) -> dict:
+    """Remove evidence arrays from export data to reduce payload size."""
+    if isinstance(data, dict):
+        result = {}
+        for key, value in data.items():
+            if key == "evidence":
+                continue  # Skip evidence arrays
+            result[key] = _strip_evidence_from_export(value)
+        return result
+    elif isinstance(data, list):
+        return [_strip_evidence_from_export(item) for item in data]
+    return data
 
 @app.head("/personas/")
 async def head_personas(db: Session = Depends(get_db)):

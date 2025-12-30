@@ -1,12 +1,187 @@
 import json
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any, List
 
 from sqlalchemy.orm import Session
 
 from . import models, schemas, persona_engine
 
 logger = logging.getLogger(__name__)
+
+
+def _is_enriched_field(field_data: Any) -> bool:
+    """Check if a field follows the enriched field structure."""
+    if not isinstance(field_data, dict):
+        return False
+    return "value" in field_data and "status" in field_data
+
+
+def _merge_enriched_field(
+    existing: Dict[str, Any],
+    update: Dict[str, Any],
+    confirm: bool = False
+) -> Dict[str, Any]:
+    """Merge an enriched field update while preserving evidence.
+    
+    Args:
+        existing: The existing field data
+        update: The update to apply
+        confirm: If True, mark the field as confirmed
+    
+    Returns:
+        Merged field data with preserved evidence
+    """
+    result = {**existing}
+    
+    # Update value if provided
+    if "value" in update:
+        result["value"] = update["value"]
+    
+    # Update confidence if provided
+    if "confidence" in update:
+        result["confidence"] = update["confidence"]
+    
+    # Preserve or extend evidence - never lose it
+    existing_evidence = existing.get("evidence", [])
+    new_evidence = update.get("evidence", [])
+    if new_evidence:
+        # Combine and deduplicate evidence
+        combined_evidence = list(existing_evidence)
+        for ev in new_evidence:
+            if ev not in combined_evidence:
+                combined_evidence.append(ev)
+        result["evidence"] = combined_evidence
+    else:
+        result["evidence"] = existing_evidence
+    
+    # Update status
+    if confirm:
+        result["status"] = "confirmed"
+    elif "status" in update:
+        result["status"] = update["status"]
+    
+    return result
+
+
+def _deep_merge_persona_json(
+    existing: Dict[str, Any],
+    updates: Dict[str, Any],
+    confirm_fields: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """Deep merge persona JSON with field-level status tracking.
+    
+    Args:
+        existing: The existing persona JSON
+        updates: Updates to apply
+        confirm_fields: List of field paths to mark as confirmed
+    
+    Returns:
+        Merged persona JSON with preserved evidence and updated statuses
+    """
+    confirm_fields = confirm_fields or []
+    result = json.loads(json.dumps(existing))  # Deep copy
+    
+    def merge_recursive(target: Dict, source: Dict, path: str = ""):
+        for key, value in source.items():
+            current_path = f"{path}.{key}" if path else key
+            should_confirm = current_path in confirm_fields
+            
+            if key not in target:
+                # New field - add it
+                if _is_enriched_field(value) and should_confirm:
+                    value = {**value, "status": "confirmed"}
+                target[key] = value
+            elif _is_enriched_field(target[key]) and isinstance(value, dict):
+                # Both are enriched fields - merge them
+                target[key] = _merge_enriched_field(
+                    target[key],
+                    value,
+                    confirm=should_confirm
+                )
+            elif isinstance(target[key], dict) and isinstance(value, dict):
+                # Both are dicts but not enriched fields - recurse
+                merge_recursive(target[key], value, current_path)
+            else:
+                # Simple replacement
+                target[key] = value
+                
+        # Also mark fields as confirmed even if not in updates
+        for field_path in confirm_fields:
+            if field_path.startswith(path + ".") if path else not "." in field_path:
+                parts = field_path.split(".")
+                current_key = parts[-1] if path else parts[0]
+                if current_key in target and _is_enriched_field(target[current_key]):
+                    target[current_key]["status"] = "confirmed"
+    
+    merge_recursive(result, updates)
+    return result
+
+
+def apply_field_updates(
+    persona_json: Dict[str, Any],
+    field_updates: Dict[str, schemas.PersonaFieldUpdate],
+    confirm_fields: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """Apply field-level updates to persona JSON.
+    
+    Args:
+        persona_json: The existing persona JSON
+        field_updates: Dict mapping field paths to updates
+        confirm_fields: List of field paths to mark as confirmed
+    
+    Returns:
+        Updated persona JSON
+    """
+    result = json.loads(json.dumps(persona_json))  # Deep copy
+    confirm_fields = confirm_fields or []
+    
+    for field_path, update in field_updates.items():
+        # Navigate to the field
+        parts = field_path.split(".")
+        target = result
+        
+        for i, part in enumerate(parts[:-1]):
+            if part not in target:
+                target[part] = {}
+            target = target[part]
+        
+        final_key = parts[-1]
+        existing = target.get(final_key, {
+            "value": "",
+            "status": "empty",
+            "confidence": 0.5,
+            "evidence": []
+        })
+        
+        # Build update dict from PersonaFieldUpdate
+        update_dict = {}
+        if update.value is not None:
+            update_dict["value"] = update.value
+        if update.status is not None:
+            update_dict["status"] = update.status.value
+        if update.confidence is not None:
+            update_dict["confidence"] = update.confidence
+        if update.evidence is not None:
+            update_dict["evidence"] = update.evidence
+        
+        should_confirm = field_path in confirm_fields
+        
+        if _is_enriched_field(existing):
+            target[final_key] = _merge_enriched_field(
+                existing,
+                update_dict,
+                confirm=should_confirm
+            )
+        else:
+            # Create new enriched field
+            target[final_key] = {
+                "value": update_dict.get("value", existing),
+                "status": "confirmed" if should_confirm else update_dict.get("status", "suggested"),
+                "confidence": update_dict.get("confidence", 0.7),
+                "evidence": update_dict.get("evidence", [])
+            }
+    
+    return result
 
 def get_personas(db: Session, skip: int = 0, limit: int = 100):
     """Retrieve all personas from the database."""
@@ -80,16 +255,81 @@ def get_personas_count_by_brand(db: Session, brand_id: int) -> int:
     ).count()
 
 def update_persona(db: Session, persona_id: int, persona: schemas.PersonaUpdate):
+    """Update persona with support for field-level updates and confirmation.
+    
+    Supports three update modes:
+    1. Direct full_persona_json replacement
+    2. Field-level updates via field_updates dict
+    3. Confirming fields via confirm_fields list
+    """
     db_persona = db.query(models.Persona).filter(models.Persona.id == persona_id).first()
-    if db_persona:
-        update_data = persona.dict(exclude_unset=True)
-        full_payload = update_data.get("full_persona_json")
-        if isinstance(full_payload, dict):
-            update_data["full_persona_json"] = json.dumps(full_payload)
-        for key, value in update_data.items():
-            setattr(db_persona, key, value)
-        db.commit()
-        db.refresh(db_persona)
+    if not db_persona:
+        return None
+    
+    update_data = persona.dict(exclude_unset=True)
+    
+    # Extract special fields
+    field_updates = update_data.pop("field_updates", None)
+    confirm_fields = update_data.pop("confirm_fields", None)
+    full_payload = update_data.get("full_persona_json")
+    
+    # Parse existing persona JSON
+    try:
+        existing_json = json.loads(db_persona.full_persona_json or "{}")
+    except json.JSONDecodeError:
+        existing_json = {}
+    
+    # Handle full_persona_json update with merge
+    if isinstance(full_payload, dict):
+        # Merge with existing, preserving evidence
+        merged_json = _deep_merge_persona_json(
+            existing_json,
+            full_payload,
+            confirm_fields=confirm_fields
+        )
+        update_data["full_persona_json"] = json.dumps(merged_json, ensure_ascii=False)
+    elif isinstance(full_payload, str):
+        try:
+            payload_dict = json.loads(full_payload)
+            merged_json = _deep_merge_persona_json(
+                existing_json,
+                payload_dict,
+                confirm_fields=confirm_fields
+            )
+            update_data["full_persona_json"] = json.dumps(merged_json, ensure_ascii=False)
+        except json.JSONDecodeError:
+            # If parsing fails, use as-is
+            pass
+    
+    # Apply field-level updates if provided
+    if field_updates:
+        try:
+            current_json = json.loads(update_data.get("full_persona_json", db_persona.full_persona_json or "{}"))
+        except json.JSONDecodeError:
+            current_json = existing_json
+        
+        updated_json = apply_field_updates(
+            current_json,
+            field_updates,
+            confirm_fields=confirm_fields
+        )
+        update_data["full_persona_json"] = json.dumps(updated_json, ensure_ascii=False)
+    
+    # Apply confirm_fields even without other updates
+    if confirm_fields and not full_payload and not field_updates:
+        merged_json = _deep_merge_persona_json(
+            existing_json,
+            {},
+            confirm_fields=confirm_fields
+        )
+        update_data["full_persona_json"] = json.dumps(merged_json, ensure_ascii=False)
+    
+    # Apply all updates to the model
+    for key, value in update_data.items():
+        setattr(db_persona, key, value)
+    
+    db.commit()
+    db.refresh(db_persona)
     return db_persona
 
 def delete_persona(db: Session, persona_id: int):

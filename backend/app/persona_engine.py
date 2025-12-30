@@ -1561,3 +1561,751 @@ def generate_persona_from_archetype(archetype: Dict[str, Any], brand_insights: O
     except Exception as e:
         print(f"⚠️ Persona generation from archetype failed: {e}")
         return "{}"
+
+
+# =============================================================================
+# Quote Verification & Alignment
+# =============================================================================
+
+def verify_quote_in_transcript(quote: str, transcript: str, threshold: float = 0.6) -> Dict[str, Any]:
+    """
+    Verify that an extracted quote exists in the source transcript.
+    
+    Uses fuzzy matching to handle minor LLM paraphrasing while ensuring traceability.
+    
+    Args:
+        quote: The quote to verify
+        transcript: The source transcript text
+        threshold: Minimum similarity score (0-1) to consider a match
+    
+    Returns:
+        Dict with:
+        - found: bool indicating if quote was found
+        - confidence: float score (0-1)
+        - exact_match: bool if quote is exactly in transcript
+        - best_match: str of the best matching segment if found
+        - position: int character position in transcript if found
+    """
+    if not quote or not transcript:
+        return {
+            "found": False,
+            "confidence": 0.0,
+            "exact_match": False,
+            "best_match": None,
+            "position": None
+        }
+    
+    quote_clean = quote.strip().lower()
+    transcript_clean = transcript.lower()
+    
+    # Check for exact match first
+    if quote_clean in transcript_clean:
+        position = transcript_clean.find(quote_clean)
+        return {
+            "found": True,
+            "confidence": 1.0,
+            "exact_match": True,
+            "best_match": transcript[position:position + len(quote)],
+            "position": position
+        }
+    
+    # Try subsequence matching for quotes with "..."
+    if "..." in quote:
+        parts = [p.strip() for p in quote.split("...") if p.strip()]
+        if all(p.lower() in transcript_clean for p in parts):
+            # Find position of first part
+            position = transcript_clean.find(parts[0].lower())
+            return {
+                "found": True,
+                "confidence": 0.9,
+                "exact_match": False,
+                "best_match": quote,
+                "position": position
+            }
+    
+    # Sliding window fuzzy match
+    quote_words = quote_clean.split()
+    if len(quote_words) < 3:
+        # Short quotes - look for exact word sequence
+        return {
+            "found": False,
+            "confidence": 0.3,
+            "exact_match": False,
+            "best_match": None,
+            "position": None
+        }
+    
+    # Split transcript into sentences for comparison
+    sentences = re.split(r'[.!?]+', transcript)
+    best_score = 0.0
+    best_match = None
+    best_position = None
+    
+    for sentence in sentences:
+        sentence_clean = sentence.strip().lower()
+        if not sentence_clean:
+            continue
+        
+        # Calculate word overlap score
+        sentence_words = set(sentence_clean.split())
+        quote_word_set = set(quote_words)
+        
+        if not quote_word_set:
+            continue
+            
+        overlap = len(quote_word_set & sentence_words)
+        score = overlap / len(quote_word_set)
+        
+        if score > best_score:
+            best_score = score
+            best_match = sentence.strip()
+            best_position = transcript.lower().find(sentence_clean)
+    
+    return {
+        "found": best_score >= threshold,
+        "confidence": round(best_score, 2),
+        "exact_match": False,
+        "best_match": best_match if best_score >= threshold else None,
+        "position": best_position if best_score >= threshold else None
+    }
+
+
+def validate_and_align_quotes(
+    extracted_data: Dict[str, Any],
+    transcript: str,
+    threshold: float = 0.5
+) -> Dict[str, Any]:
+    """
+    Validate all quotes in extracted persona data against the source transcript.
+    
+    Args:
+        extracted_data: The extracted persona data with quotes
+        transcript: The source transcript
+        threshold: Minimum confidence threshold
+    
+    Returns:
+        The extracted data with validation metadata added to each quote
+    """
+    result = json.loads(json.dumps(extracted_data))  # Deep copy
+    
+    def validate_items_with_quotes(items: List[Dict], quote_key: str = "quote") -> List[Dict]:
+        """Validate quotes in a list of items."""
+        validated = []
+        for item in items:
+            quote = item.get(quote_key, "")
+            if quote:
+                verification = verify_quote_in_transcript(quote, transcript, threshold)
+                item["quote_verified"] = verification["found"]
+                item["quote_confidence"] = verification["confidence"]
+                if verification["best_match"] and not verification["exact_match"]:
+                    item["quote_aligned"] = verification["best_match"]
+            validated.append(item)
+        return validated
+    
+    # Validate MBT quotes
+    if "motivations" in result:
+        result["motivations"] = validate_items_with_quotes(result["motivations"])
+    if "beliefs" in result:
+        result["beliefs"] = validate_items_with_quotes(result["beliefs"])
+    if "tensions" in result:
+        result["tensions"] = validate_items_with_quotes(result["tensions"])
+    
+    # Validate decision drivers
+    if "decision_drivers" in result:
+        result["decision_drivers"] = validate_items_with_quotes(result["decision_drivers"])
+    if "tie_breakers" in result:
+        result["tie_breakers"] = validate_items_with_quotes(result["tie_breakers"])
+    
+    # Validate objections
+    if "objections" in result:
+        result["objections"] = validate_items_with_quotes(result["objections"])
+    if "practical_barriers" in result:
+        result["practical_barriers"] = validate_items_with_quotes(result["practical_barriers"])
+    if "perceptual_barriers" in result:
+        result["perceptual_barriers"] = validate_items_with_quotes(result["perceptual_barriers"])
+    
+    # Validate messaging
+    if "what_lands" in result:
+        result["what_lands"] = validate_items_with_quotes(result["what_lands"])
+    if "what_fails" in result:
+        result["what_fails"] = validate_items_with_quotes(result["what_fails"])
+    
+    # Validate channel behavior
+    if "preferred_sources" in result:
+        result["preferred_sources"] = validate_items_with_quotes(result["preferred_sources"])
+    
+    return result
+
+
+def filter_low_confidence_evidence(
+    persona_data: Dict[str, Any],
+    min_confidence: float = 0.4
+) -> Dict[str, Any]:
+    """
+    Remove or mark low-confidence evidence from persona data.
+    
+    Args:
+        persona_data: Persona data with evidence arrays
+        min_confidence: Minimum confidence to keep evidence
+    
+    Returns:
+        Persona data with filtered evidence
+    """
+    result = json.loads(json.dumps(persona_data))
+    
+    def filter_evidence_recursive(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            # Check if this is an enriched field with evidence
+            if "evidence" in obj and "confidence" in obj:
+                if obj["confidence"] < min_confidence:
+                    obj["evidence"] = []
+                    obj["status"] = "empty" if not obj.get("value") else "suggested"
+            
+            # Recurse into nested objects
+            for key, value in obj.items():
+                obj[key] = filter_evidence_recursive(value)
+        elif isinstance(obj, list):
+            return [filter_evidence_recursive(item) for item in obj]
+        
+        return obj
+    
+    return filter_evidence_recursive(result)
+
+
+# =============================================================================
+# Enhanced Transcript Extraction with Quote Traceability
+# =============================================================================
+
+def _create_mbt_extraction_prompt(transcript: str) -> str:
+    """Create prompt for extracting Motivations, Beliefs, and Tensions with quotes."""
+    return f"""You are an expert qualitative researcher analyzing a patient/HCP interview transcript.
+
+**Task:** Extract Motivations, Beliefs, and Tensions from this transcript. For EACH item, provide:
+1. A concise summary (1-2 sentences)
+2. An exact quote from the transcript that supports this insight (use the interviewee's actual words)
+
+**Transcript:**
+```
+{transcript[:8000]}
+```
+
+**Instructions:**
+- Extract 3-5 Motivations (what drives the person, their goals, desires)
+- Extract 3-5 Beliefs (core convictions, assumptions, attitudes about treatment/health)
+- Extract 3-5 Tensions (worries, concerns, pain points, frustrations)
+- Quotes MUST be exact phrases from the transcript
+- If a quote is too long, use "..." to truncate but keep key words
+
+**Output JSON format:**
+{{
+  "motivations": [
+    {{"summary": "...", "quote": "exact words from transcript"}},
+    ...
+  ],
+  "beliefs": [
+    {{"summary": "...", "quote": "exact words from transcript"}},
+    ...
+  ],
+  "tensions": [
+    {{"summary": "...", "quote": "exact words from transcript"}},
+    ...
+  ]
+}}"""
+
+
+def _create_decision_drivers_prompt(transcript: str) -> str:
+    """Create prompt for extracting decision drivers."""
+    return f"""You are analyzing a patient/HCP interview to understand their healthcare decision-making process.
+
+**Task:** Identify what influences this person's treatment and healthcare decisions.
+
+**Transcript:**
+```
+{transcript[:6000]}
+```
+
+**Extract:**
+- What factors do they consider when making treatment choices?
+- Who or what influences their decisions (doctors, family, cost, convenience)?
+- What would make them switch or stick with a treatment?
+
+For each driver, provide a summary and exact quote from the transcript.
+
+**Output JSON format:**
+{{
+  "decision_drivers": [
+    {{"rank": 1, "driver": "...", "detail": "...", "quote": "exact words"}},
+    {{"rank": 2, "driver": "...", "detail": "...", "quote": "exact words"}},
+    ...
+  ],
+  "tie_breakers": [
+    {{"factor": "...", "quote": "exact words"}},
+    ...
+  ]
+}}"""
+
+
+def _create_objections_prompt(transcript: str) -> str:
+    """Create prompt for extracting objections and barriers."""
+    return f"""You are analyzing a patient/HCP interview to understand their concerns and barriers.
+
+**Task:** Identify objections, concerns, and barriers expressed about treatments, healthcare, or medications.
+
+**Transcript:**
+```
+{transcript[:6000]}
+```
+
+**Extract:**
+- Direct objections or negative reactions to treatments/approaches
+- Practical barriers (cost, access, time, insurance)
+- Perceptual barriers (trust issues, skepticism, fear)
+
+For each item, provide a summary and exact quote.
+
+**Output JSON format:**
+{{
+  "objections": [
+    {{"objection": "...", "quote": "exact words"}},
+    ...
+  ],
+  "practical_barriers": [
+    {{"barrier": "...", "quote": "exact words"}},
+    ...
+  ],
+  "perceptual_barriers": [
+    {{"barrier": "...", "quote": "exact words"}},
+    ...
+  ]
+}}"""
+
+
+def _create_messaging_hooks_prompt(transcript: str) -> str:
+    """Create prompt for extracting messaging hooks and communication preferences."""
+    return f"""You are analyzing a patient/HCP interview to understand what messaging resonates with them.
+
+**Task:** Identify language, ideas, and approaches that would resonate positively or negatively.
+
+**Transcript:**
+```
+{transcript[:6000]}
+```
+
+**Extract:**
+- What language or phrases did they respond positively to?
+- What types of proof or evidence would convince them?
+- What messaging approaches would fail or backfire?
+- Their preferred communication voice/tone
+
+For each insight, provide a summary and supporting quote.
+
+**Output JSON format:**
+{{
+  "what_lands": [
+    {{"message_type": "...", "why_it_works": "...", "quote": "exact words"}},
+    ...
+  ],
+  "what_fails": [
+    {{"message_type": "...", "why_it_fails": "...", "quote": "exact words if available"}},
+    ...
+  ],
+  "preferred_voice": {{"description": "...", "quote": "exact words if available"}},
+  "preferred_proof_format": ["...", "..."]
+}}"""
+
+
+def _create_channel_behavior_prompt(transcript: str) -> str:
+    """Create prompt for extracting channel and information-seeking behavior."""
+    return f"""You are analyzing a patient/HCP interview to understand their information and communication preferences.
+
+**Task:** Identify how this person prefers to get health information and communicate with healthcare providers.
+
+**Transcript:**
+```
+{transcript[:6000]}
+```
+
+**Extract:**
+- Preferred information sources (online, doctor, peers, etc.)
+- How deeply they engage with health content
+- How they prepare for and behave during doctor visits
+- Digital habits related to health
+
+For each insight, provide details and supporting quotes.
+
+**Output JSON format:**
+{{
+  "preferred_sources": [
+    {{"source": "...", "quote": "exact words if available"}},
+    ...
+  ],
+  "engagement_depth": {{"description": "...", "quote": "exact words if available"}},
+  "visit_behavior": {{"description": "...", "quote": "exact words if available"}},
+  "digital_habits": {{"description": "...", "quote": "exact words if available"}}
+}}"""
+
+
+def extract_mbt_from_transcript_llm(transcript: str) -> Dict[str, Any]:
+    """Extract Motivations, Beliefs, and Tensions using LLM with quote evidence."""
+    client = get_openai_client()
+    if client is None:
+        return _fallback_mbt_transcript_extraction(transcript)
+    
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "user", "content": _create_mbt_extraction_prompt(transcript)}
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=1500,
+        )
+        content = response.choices[0].message.content or "{}"
+        return json.loads(content)
+    except Exception as e:
+        print(f"⚠️ MBT extraction failed: {e}")
+        return _fallback_mbt_transcript_extraction(transcript)
+
+
+def extract_decision_drivers_from_transcript(transcript: str) -> Dict[str, Any]:
+    """Extract decision drivers using LLM with quote evidence."""
+    client = get_openai_client()
+    if client is None:
+        return {"decision_drivers": [], "tie_breakers": []}
+    
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "user", "content": _create_decision_drivers_prompt(transcript)}
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=1000,
+        )
+        content = response.choices[0].message.content or "{}"
+        return json.loads(content)
+    except Exception as e:
+        print(f"⚠️ Decision drivers extraction failed: {e}")
+        return {"decision_drivers": [], "tie_breakers": []}
+
+
+def extract_objections_from_transcript(transcript: str) -> Dict[str, Any]:
+    """Extract objections and barriers using LLM with quote evidence."""
+    client = get_openai_client()
+    if client is None:
+        return {"objections": [], "practical_barriers": [], "perceptual_barriers": []}
+    
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "user", "content": _create_objections_prompt(transcript)}
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=1000,
+        )
+        content = response.choices[0].message.content or "{}"
+        return json.loads(content)
+    except Exception as e:
+        print(f"⚠️ Objections extraction failed: {e}")
+        return {"objections": [], "practical_barriers": [], "perceptual_barriers": []}
+
+
+def extract_messaging_hooks_from_transcript(transcript: str) -> Dict[str, Any]:
+    """Extract messaging hooks using LLM with quote evidence."""
+    client = get_openai_client()
+    if client is None:
+        return {"what_lands": [], "what_fails": [], "preferred_voice": {}, "preferred_proof_format": []}
+    
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "user", "content": _create_messaging_hooks_prompt(transcript)}
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=1000,
+        )
+        content = response.choices[0].message.content or "{}"
+        return json.loads(content)
+    except Exception as e:
+        print(f"⚠️ Messaging hooks extraction failed: {e}")
+        return {"what_lands": [], "what_fails": [], "preferred_voice": {}, "preferred_proof_format": []}
+
+
+def extract_channel_behavior_from_transcript(transcript: str) -> Dict[str, Any]:
+    """Extract channel behavior using LLM with quote evidence."""
+    client = get_openai_client()
+    if client is None:
+        return {"preferred_sources": [], "engagement_depth": {}, "visit_behavior": {}, "digital_habits": {}}
+    
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "user", "content": _create_channel_behavior_prompt(transcript)}
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=1000,
+        )
+        content = response.choices[0].message.content or "{}"
+        return json.loads(content)
+    except Exception as e:
+        print(f"⚠️ Channel behavior extraction failed: {e}")
+        return {"preferred_sources": [], "engagement_depth": {}, "visit_behavior": {}, "digital_habits": {}}
+
+
+def _fallback_mbt_transcript_extraction(transcript: str) -> Dict[str, Any]:
+    """Fallback heuristic-based MBT extraction when LLM is unavailable."""
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", transcript) if s.strip()]
+    
+    def find_with_quotes(keywords: List[str], limit: int = 3) -> List[Dict[str, str]]:
+        results = []
+        for sentence in sentences:
+            lower = sentence.lower()
+            if any(k in lower for k in keywords):
+                results.append({
+                    "summary": sentence[:100] + ("..." if len(sentence) > 100 else ""),
+                    "quote": sentence
+                })
+            if len(results) >= limit:
+                break
+        return results
+    
+    return {
+        "motivations": find_with_quotes(["want", "goal", "hope", "need", "wish"], 4),
+        "beliefs": find_with_quotes(["believe", "think", "feel", "trust", "expect"], 4),
+        "tensions": find_with_quotes(["worry", "concern", "afraid", "frustrat", "difficult"], 4),
+    }
+
+
+def extract_comprehensive_persona_from_transcript(
+    transcript: str,
+    use_parallel: bool = False,
+    verify_quotes: bool = True,
+    min_quote_confidence: float = 0.4
+) -> Dict[str, Any]:
+    """
+    Extract comprehensive persona data from transcript using multiple LLM prompts.
+    
+    This combines MBT, decision drivers, objections, messaging hooks, and channel behavior
+    into a unified persona schema with quote-level evidence.
+    
+    Args:
+        transcript: The interview transcript text
+        use_parallel: If True, run extractions in parallel (requires threading)
+        verify_quotes: If True, validate extracted quotes against source text
+        min_quote_confidence: Minimum confidence threshold for quote validation
+    
+    Returns:
+        Complete persona suggestions with evidence for each field
+    """
+    cleaned = (transcript or "").strip()
+    if not cleaned:
+        return {}
+    
+    # Run extractions
+    mbt_data = extract_mbt_from_transcript_llm(cleaned)
+    decision_data = extract_decision_drivers_from_transcript(cleaned)
+    objections_data = extract_objections_from_transcript(cleaned)
+    messaging_data = extract_messaging_hooks_from_transcript(cleaned)
+    channel_data = extract_channel_behavior_from_transcript(cleaned)
+    
+    # Validate quotes if enabled
+    if verify_quotes:
+        mbt_data = validate_and_align_quotes(mbt_data, cleaned, min_quote_confidence)
+        decision_data = validate_and_align_quotes(decision_data, cleaned, min_quote_confidence)
+        objections_data = validate_and_align_quotes(objections_data, cleaned, min_quote_confidence)
+        messaging_data = validate_and_align_quotes(messaging_data, cleaned, min_quote_confidence)
+        channel_data = validate_and_align_quotes(channel_data, cleaned, min_quote_confidence)
+    
+    # Also run basic demographic extraction
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", cleaned) if s.strip()]
+    lower_text = cleaned.lower()
+    
+    # Demographics
+    age_match = re.search(r"(\d{2})\s*-?\s*year-old", lower_text)
+    age_value = age_match.group(1) if age_match else ""
+    
+    gender_value = ""
+    gender_evidence = []
+    if "she " in lower_text or "her " in lower_text or "female" in lower_text:
+        gender_value = "Female"
+        gender_evidence = [s for s in sentences if "she" in s.lower() or "her" in s.lower() or "female" in s.lower()][:1]
+    elif "he " in lower_text or "his " in lower_text or "male" in lower_text:
+        gender_value = "Male"
+        gender_evidence = [s for s in sentences if "he" in s.lower() or "his" in s.lower() or "male" in s.lower()][:1]
+    
+    location_match = re.search(r"(?:from|in|lives in)\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)", cleaned)
+    location_value = location_match.group(1) if location_match else ""
+    
+    condition_match = re.search(r"(?:diagnosed with|has|suffering from|managing)\s+([A-Za-z\s]+?)(?:\.|,|and)", cleaned)
+    condition_value = condition_match.group(1).strip() if condition_match else ""
+    
+    # Build enriched persona structure
+    def build_enriched_list(items: List[Dict], summary_key: str = "summary", quote_key: str = "quote") -> Dict[str, Any]:
+        values = [item.get(summary_key, "") for item in items if item.get(summary_key)]
+        evidence = []
+        verified_count = 0
+        for item in items:
+            quote = item.get(quote_key, "")
+            if quote:
+                # Include verification metadata if available
+                if item.get("quote_verified"):
+                    verified_count += 1
+                    # Use aligned quote if available, otherwise original
+                    evidence.append(item.get("quote_aligned", quote))
+                else:
+                    evidence.append(quote)
+        
+        # Adjust confidence based on quote verification
+        base_confidence = 0.75 if values else 0.4
+        if verify_quotes and items:
+            verification_bonus = (verified_count / len(items)) * 0.15
+            confidence = min(base_confidence + verification_bonus, 0.95)
+        else:
+            confidence = base_confidence
+        
+        status = "suggested" if values else "empty"
+        return {
+            "value": values,
+            "status": status,
+            "confidence": round(confidence, 2),
+            "evidence": evidence,
+            "evidence_verified": verified_count if verify_quotes else None
+        }
+    
+    def build_enriched_string(value: str, evidence: List[str] = None) -> Dict[str, Any]:
+        evidence = evidence or []
+        confidence = 0.7 if value else 0.4
+        status = "suggested" if value else "empty"
+        return {
+            "value": value,
+            "status": status,
+            "confidence": confidence,
+            "evidence": evidence
+        }
+    
+    def build_enriched_text(value: str, evidence: List[str] = None) -> Dict[str, Any]:
+        return build_enriched_string(value, evidence)
+    
+    # Construct the comprehensive persona
+    summary = " ".join(sentences[:3]) if sentences else cleaned[:300]
+    
+    # Extract primary values from MBT
+    motivations = mbt_data.get("motivations", [])
+    beliefs = mbt_data.get("beliefs", [])
+    tensions = mbt_data.get("tensions", [])
+    
+    primary_motivation = motivations[0].get("summary", "") if motivations else ""
+    primary_motivation_evidence = [motivations[0].get("quote", "")] if motivations else []
+    
+    main_worry = tensions[0].get("summary", "") if tensions else ""
+    main_worry_evidence = [tensions[0].get("quote", "")] if tensions else []
+    
+    # Decision drivers
+    drivers = decision_data.get("decision_drivers", [])
+    tie_breakers = decision_data.get("tie_breakers", [])
+    
+    # Objections
+    objections = objections_data.get("objections", [])
+    practical_barriers = objections_data.get("practical_barriers", [])
+    perceptual_barriers = objections_data.get("perceptual_barriers", [])
+    
+    # Messaging
+    what_lands = messaging_data.get("what_lands", [])
+    what_fails = messaging_data.get("what_fails", [])
+    preferred_voice = messaging_data.get("preferred_voice", {})
+    preferred_proof = messaging_data.get("preferred_proof_format", [])
+    
+    # Channel behavior
+    preferred_sources = channel_data.get("preferred_sources", [])
+    engagement_depth = channel_data.get("engagement_depth", {})
+    visit_behavior = channel_data.get("visit_behavior", {})
+    digital_habits = channel_data.get("digital_habits", {})
+    
+    return {
+        "schema_version": "1.0.0",
+        "extraction_method": "llm_comprehensive",
+        "summary": summary,
+        "source": {
+            "character_count": len(cleaned),
+            "sentence_count": len(sentences),
+            "excerpt": cleaned[:300],
+        },
+        "demographics": {
+            "age": build_enriched_string(age_value, [age_match.group(0)] if age_match else []),
+            "gender": build_enriched_string(gender_value, gender_evidence),
+            "location": build_enriched_string(location_value, [location_match.group(0)] if location_match else []),
+            "condition": build_enriched_string(condition_value, [condition_match.group(0)] if condition_match else []),
+        },
+        "legacy": {
+            "motivations": [m.get("summary", "") for m in motivations],
+            "beliefs": [b.get("summary", "") for b in beliefs],
+            "tensions": [t.get("summary", "") for t in tensions],
+        },
+        "core": {
+            "snapshot": {
+                "age_range": build_enriched_string(f"{int(age_value)-5}-{int(age_value)+5}" if age_value.isdigit() else ""),
+                "life_context": build_enriched_text(summary, sentences[:2]),
+            },
+            "mbt": {
+                "motivation": {
+                    "primary_motivation": build_enriched_string(primary_motivation, primary_motivation_evidence),
+                    "success_definition": build_enriched_text(""),
+                    "top_outcomes": build_enriched_list(motivations),
+                },
+                "beliefs": {
+                    "core_belief_statements": build_enriched_list(beliefs),
+                    "trust_anchors": build_enriched_list([]),
+                    "attitudes_toward_pharma_marketing": build_enriched_string(""),
+                    "locus_of_responsibility": build_enriched_string(""),
+                },
+                "tension": {
+                    "emotional_undercurrent": build_enriched_text(""),
+                    "main_worry": build_enriched_string(main_worry, main_worry_evidence),
+                    "sensitivity_points": build_enriched_list(tensions),
+                    "emotional_rewards": build_enriched_list([]),
+                },
+                "core_insight": build_enriched_text(
+                    f"{primary_motivation} | {main_worry}" if primary_motivation or main_worry else "",
+                    primary_motivation_evidence + main_worry_evidence
+                ),
+            },
+            "decision_drivers": {
+                "ranked_drivers": drivers,
+                "tie_breakers": build_enriched_list(tie_breakers, "factor", "quote"),
+            },
+            "messaging": {
+                "what_lands": build_enriched_list(what_lands, "message_type", "quote"),
+                "what_fails": build_enriched_list(what_fails, "message_type", "quote"),
+                "preferred_voice": build_enriched_string(
+                    preferred_voice.get("description", ""),
+                    [preferred_voice.get("quote", "")] if preferred_voice.get("quote") else []
+                ),
+                "preferred_proof_format": build_enriched_list(
+                    [{"summary": p} for p in preferred_proof] if isinstance(preferred_proof, list) else []
+                ),
+            },
+            "barriers_objections": {
+                "objections": build_enriched_list(objections, "objection", "quote"),
+                "practical_barriers": build_enriched_list(practical_barriers, "barrier", "quote"),
+                "perceptual_barriers": build_enriched_list(perceptual_barriers, "barrier", "quote"),
+            },
+            "channel_behavior": {
+                "preferred_sources": build_enriched_list(preferred_sources, "source", "quote"),
+                "engagement_depth": build_enriched_string(
+                    engagement_depth.get("description", ""),
+                    [engagement_depth.get("quote", "")] if engagement_depth.get("quote") else []
+                ),
+                "visit_behavior": build_enriched_text(
+                    visit_behavior.get("description", ""),
+                    [visit_behavior.get("quote", "")] if visit_behavior.get("quote") else []
+                ),
+                "digital_habits": build_enriched_text(
+                    digital_habits.get("description", ""),
+                    [digital_habits.get("quote", "")] if digital_habits.get("quote") else []
+                ),
+            },
+        },
+    }

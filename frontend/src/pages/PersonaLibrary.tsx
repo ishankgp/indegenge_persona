@@ -796,6 +796,15 @@ export function PersonaLibrary() {
                     className="pl-10 w-64 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm"
                   />
                 </div>
+
+                {/* Persona Builder Button */}
+                <Button
+                  onClick={() => navigate('/persona-builder')}
+                  className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white shadow-lg"
+                >
+                  <Brain className="h-4 w-4 mr-2" />
+                  Persona Builder
+                </Button>
               </div>
             )}
           </div>
