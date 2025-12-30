@@ -5,6 +5,7 @@ import json
 from typing import Optional, List, Dict, Any
 import re
 import uuid
+import random
 from datetime import datetime
 
 # Load environment variables from the project root
@@ -76,6 +77,72 @@ def _enriched_list(values: Optional[List[str]], confidence: float = 0.72, eviden
         "confidence": confidence,
         "evidence": evidence or [],
     }
+
+
+def _build_attribute_based_name(
+    age: int,
+    gender: str,
+    condition: str,
+    occupation: Optional[str] = None,
+) -> str:
+    """Construct a descriptive persona name based on provided attributes.
+
+    The output follows an "adjective + role" pattern such as "Methodical Manager"
+    so personas feel more like archetypes than real individuals.
+    """
+
+    normalized_condition = (condition or "").lower()
+    normalized_occupation = (occupation or "").strip()
+    seed = hash((age, gender.lower(), normalized_condition, normalized_occupation.lower()))
+    rng = random.Random(seed)
+
+    # Build a descriptor list that reflects persona context
+    base_descriptors = [
+        "Methodical",
+        "Resilient",
+        "Curious",
+        "Pragmatic",
+        "Insightful",
+        "Steady",
+        "Empathetic",
+        "Determined",
+        "Adaptive",
+        "Thoughtful",
+    ]
+
+    if age < 30:
+        base_descriptors.extend(["Energetic", "Exploratory"])
+    elif age > 55:
+        base_descriptors.extend(["Seasoned", "Measured"])
+
+    condition_descriptors = {
+        "diabetes": ["Disciplined", "Balanced"],
+        "hypertension": ["Calm", "Steady"],
+        "obesity": ["Motivated", "Committed"],
+        "cancer": ["Courageous", "Resilient"],
+        "asthma": ["Prepared", "Mindful"],
+    }
+
+    for keyword, descriptors in condition_descriptors.items():
+        if keyword in normalized_condition:
+            base_descriptors.extend(descriptors)
+            break
+
+    descriptor = rng.choice(base_descriptors)
+
+    # Role draws from occupation when available; otherwise, fall back to condition
+    if normalized_occupation:
+        role = normalized_occupation.title()
+    else:
+        condition_role_map = {
+            "diabetes": "Diabetes Navigator",
+            "hypertension": "Heart Health Planner",
+            "asthma": "Airway Advocate",
+            "cancer": "Care Journey Guide",
+        }
+        role = condition_role_map.get(normalized_condition, "Health Navigator")
+
+    return f"{descriptor} {role}"
 
 
 def _normalize_brand_insights(brand_insights: Optional[List[Dict[str, str]]]) -> Dict[str, List[str]]:
@@ -663,8 +730,10 @@ def generate_persona_from_attributes(
         pain_points = parsed_json.get("pain_points") or []
         persona_type = parsed_json.get("persona_type", "patient")
 
+        fallback_name = _build_attribute_based_name(age, gender, condition, occupation)
+
         schema_payload = _build_schema_persona(
-            name=parsed_json.get("name", "Patient Persona"),
+            name=parsed_json.get("name") or fallback_name,
             age=age,
             gender=gender,
             condition=condition,
@@ -691,8 +760,8 @@ def generate_persona_from_attributes(
 def generate_mock_persona(
     age: int, 
     gender: str, 
-    condition: str, 
-    location: str, 
+    condition: str,
+    location: str,
     concerns: str,
     brand_insights: Optional[List[Dict[str, str]]] = None
 ) -> str:
@@ -701,12 +770,6 @@ def generate_mock_persona(
     If brand_insights is provided, incorporate them into the persona.
     """
     import random
-    
-    # Mock names based on gender
-    male_names = ["James Wilson", "Michael Rodriguez", "David Chen", "Robert Johnson", "Christopher Lee"]
-    female_names = ["Sarah Johnson", "Emily Rodriguez", "Lisa Chen", "Maria Garcia", "Jennifer Wilson"]
-    
-    name = random.choice(female_names if gender.lower() == "female" else male_names)
     
     # Occupation based on age and condition
     occupations = {
@@ -718,6 +781,7 @@ def generate_mock_persona(
     
     condition_key = condition.lower() if any(c in condition.lower() for c in occupations.keys()) else "default"
     occupation = random.choice(occupations.get(condition_key, occupations["default"]))
+    name = _build_attribute_based_name(age, gender, condition, occupation)
     
     # Condition-specific attributes
     condition_data = {
