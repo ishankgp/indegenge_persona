@@ -466,8 +466,42 @@ async def recruit_personas(request: schemas.PersonaSearchRequest, db: Session = 
 
     # 3. Search the database
     personas = crud.search_personas(db, filters)
-    
+
     return personas
+
+
+@app.post("/personas/from-transcript")
+async def extract_persona_from_transcript(
+    file: Optional[UploadFile] = File(None),
+    transcript_text: Optional[str] = Form(None),
+):
+    """Accept a transcript file or raw text and return persona suggestions."""
+
+    text_content = (transcript_text or "").strip()
+
+    if file:
+        try:
+            raw_bytes = await file.read()
+            text_content = raw_bytes.decode("utf-8", errors="ignore")
+        except Exception as exc:
+            logger.error("Failed to read transcript file: %s", exc)
+            raise HTTPException(status_code=400, detail="Could not read transcript file")
+
+    if not text_content:
+        raise HTTPException(status_code=400, detail="Transcript text is required")
+
+    suggestions = persona_engine.extract_persona_from_transcript(text_content)
+
+    if not suggestions:
+        raise HTTPException(status_code=500, detail="Failed to extract suggestions from transcript")
+
+    suggestions["source"] = suggestions.get("source", {})
+    suggestions["source"].update({
+        "filename": getattr(file, "filename", None),
+        "received_via": "file" if file else "text",
+    })
+
+    return suggestions
 
 @app.head("/personas/")
 async def head_personas(db: Session = Depends(get_db)):

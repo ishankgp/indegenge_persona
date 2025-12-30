@@ -44,6 +44,18 @@ interface FieldStatus {
   message?: string
 }
 
+interface TranscriptSuggestions {
+  summary?: string
+  demographics?: Record<string, any>
+  legacy?: {
+    motivations?: string[]
+    beliefs?: string[]
+    tensions?: string[]
+  }
+  core?: any
+  source?: Record<string, any>
+}
+
 export function CreatePersona() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -91,6 +103,10 @@ export function CreatePersona() {
   const [manualBrandId, setManualBrandId] = useState<number | null>(urlBrandId ? parseInt(urlBrandId) : null)
   const [aiBrandId, setAiBrandId] = useState<number | null>(urlBrandId ? parseInt(urlBrandId) : null)
   const [aiTargetSegment, setAiTargetSegment] = useState("")
+  const [transcriptText, setTranscriptText] = useState("")
+  const [transcriptFile, setTranscriptFile] = useState<File | null>(null)
+  const [transcriptSuggestions, setTranscriptSuggestions] = useState<TranscriptSuggestions | null>(null)
+  const [transcriptLoading, setTranscriptLoading] = useState(false)
 
   const manualFieldStatuses = useMemo<FieldStatus[]>(() => {
     const ageValue = parseInt(manualFormData.age)
@@ -340,6 +356,72 @@ export function CreatePersona() {
       motivations: mergeValuesWithSlots(prev.motivations, manualSuggestions.motivations || []),
       beliefs: mergeValuesWithSlots(prev.beliefs, manualSuggestions.beliefs || []),
       pain_points: mergeValuesWithSlots(prev.pain_points, manualSuggestions.tensions || []),
+    }))
+  }
+
+  const handleTranscriptFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    setTranscriptFile(file || null)
+  }
+
+  const handleTranscriptAnalysis = async () => {
+    if (!transcriptFile && !transcriptText.trim()) {
+      setError("Provide transcript text or upload a transcript file.")
+      return
+    }
+
+    setTranscriptLoading(true)
+    setError(null)
+    try {
+      const formData = new FormData()
+      if (transcriptFile) {
+        formData.append('file', transcriptFile)
+      }
+      if (transcriptText.trim()) {
+        formData.append('transcript_text', transcriptText.trim())
+      }
+
+      const suggestions = await PersonasAPI.extractFromTranscript(formData)
+      setTranscriptSuggestions(suggestions)
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || "Failed to analyze transcript."
+      setError(detail)
+    } finally {
+      setTranscriptLoading(false)
+    }
+  }
+
+  const applyTranscriptSuggestionsToManualForm = () => {
+    const legacy = transcriptSuggestions?.legacy
+    if (!legacy) {
+      alert("Run transcript analysis to load AI suggestions.")
+      return
+    }
+
+    setManualFormData(prev => ({
+      ...prev,
+      motivations: mergeValuesWithSlots(prev.motivations, legacy.motivations || []),
+      beliefs: mergeValuesWithSlots(prev.beliefs, legacy.beliefs || []),
+      pain_points: mergeValuesWithSlots(prev.pain_points, legacy.tensions || []),
+    }))
+  }
+
+  const acceptTranscriptDemographic = (field: "age" | "gender" | "region") => {
+    const demographics = transcriptSuggestions?.demographics || {}
+    const valueMap: Record<string, string> = {
+      age: demographics?.age?.value ?? "",
+      gender: demographics?.gender?.value ?? "",
+      region: demographics?.location?.value ?? "",
+    }
+
+    const value = valueMap[field]
+    if (!value) return
+
+    setManualFormData(prev => ({
+      ...prev,
+      age: field === "age" ? String(value) : prev.age,
+      gender: field === "gender" ? value : prev.gender,
+      region: field === "region" ? value : prev.region,
     }))
   }
 
@@ -605,6 +687,131 @@ export function CreatePersona() {
                     <p className="text-sm text-gray-600 mt-1">
                       Create a detailed persona manually by filling in all attributes
                     </p>
+                  </div>
+
+                  <div className="rounded-lg border border-dashed border-blue-200 bg-blue-50/60 p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">Import from transcript</p>
+                        <p className="text-xs text-muted-foreground">Upload an interview transcript or paste notes to auto-suggest persona fields.</p>
+                      </div>
+                      <Badge variant="outline" className="border-blue-200 bg-white text-blue-700">
+                        AI
+                      </Badge>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <div className="space-y-3">
+                        <div>
+                          <Label htmlFor="transcript-file">Transcript file</Label>
+                          <Input
+                            id="transcript-file"
+                            type="file"
+                            accept=".txt,.md,.doc,.docx,.pdf"
+                            onChange={handleTranscriptFileChange}
+                            disabled={transcriptLoading || generating}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="transcript-text">Or paste transcript text</Label>
+                          <Textarea
+                            id="transcript-text"
+                            value={transcriptText}
+                            onChange={(e) => setTranscriptText(e.target.value)}
+                            placeholder="Paste interview transcript or notes to extract motivations, beliefs, tensions..."
+                            disabled={transcriptLoading || generating}
+                            className="mt-1"
+                            rows={6}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={handleTranscriptAnalysis}
+                          disabled={transcriptLoading || generating}
+                          className="gap-2"
+                        >
+                          {transcriptLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                          Analyze transcript
+                        </Button>
+                      </div>
+
+                      <div className="space-y-3 rounded-lg border bg-white p-3 shadow-inner">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-semibold">AI suggestions</p>
+                            <p className="text-xs text-muted-foreground">Mapped to the enriched persona schema.</p>
+                          </div>
+                          <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
+                            AI
+                          </Badge>
+                        </div>
+
+                        {transcriptSuggestions ? (
+                          <div className="space-y-3">
+                            <p className="text-sm text-muted-foreground">
+                              {transcriptSuggestions.summary || "We pulled a short summary of the transcript to ground the suggestions."}
+                            </p>
+
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              {[{ key: 'motivations', label: 'Motivations' }, { key: 'beliefs', label: 'Beliefs' }, { key: 'tensions', label: 'Tensions' }].map(({ key, label }) => (
+                                <div key={key} className="rounded-md border p-3">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">AI</Badge>
+                                    <p className="text-xs font-semibold text-gray-900">{label}</p>
+                                  </div>
+                                  <ul className="mt-2 space-y-1 text-xs text-gray-700">
+                                    {(transcriptSuggestions.legacy?.[key as keyof TranscriptSuggestions['legacy']] || []).length ? (
+                                      (transcriptSuggestions.legacy?.[key as keyof TranscriptSuggestions['legacy']] || []).map((item: string, idx: number) => (
+                                        <li key={idx} className="flex gap-2">
+                                          <span className="text-blue-500">•</span>
+                                          <span>{item}</span>
+                                        </li>
+                                      ))
+                                    ) : (
+                                      <li className="text-muted-foreground">No signals yet.</li>
+                                    )}
+                                  </ul>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              {[{ key: 'age', label: 'Age', field: 'age' }, { key: 'gender', label: 'Gender', field: 'gender' }, { key: 'location', label: 'Region', field: 'region' }].map(({ key, label, field }) => {
+                                const entry = transcriptSuggestions.demographics?.[key] || {}
+                                const confidenceText = entry.confidence ? `Confidence ${(entry.confidence * 100).toFixed(0)}%` : null
+                                return (
+                                  <div key={key} className="rounded-md border p-3 bg-slate-50">
+                                    <p className="text-xs uppercase text-muted-foreground">{label}</p>
+                                    <p className="mt-1 text-sm font-semibold">{entry.value || 'No signal yet'}</p>
+                                    {confidenceText && <p className="text-[11px] text-muted-foreground">{confidenceText}</p>}
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      className="mt-2 h-8 px-2"
+                                      onClick={() => acceptTranscriptDemographic(field as 'age' | 'gender' | 'region')}
+                                      disabled={!entry.value}
+                                    >
+                                      Use suggestion
+                                    </Button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              <Button type="button" size="sm" variant="outline" onClick={applyTranscriptSuggestionsToManualForm}>
+                                Apply AI suggestions to form
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex h-full items-center justify-center rounded-md border border-dashed border-gray-200 p-4 text-xs text-muted-foreground">
+                            AI will suggest motivations, beliefs, tensions, and demographics once you analyze a transcript.
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   <BrandInsightSelector
