@@ -1,6 +1,12 @@
-from sqlalchemy.orm import Session
-from . import models, schemas
 import json
+import logging
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
+from . import models, schemas, persona_engine
+
+logger = logging.getLogger(__name__)
 
 def get_personas(db: Session, skip: int = 0, limit: int = 100):
     """Retrieve all personas from the database."""
@@ -217,6 +223,76 @@ def create_brand_document(db: Session, document: schemas.BrandDocumentCreate):
     db.commit()
     db.refresh(db_document)
     return db_document
+
+
+def _delete_vector_store(vector_store_id: Optional[str]) -> None:
+    """Best-effort cleanup of remote vector stores.
+
+    The operation is intentionally idempotent and should never raise, to avoid
+    blocking local state changes when the remote store is already removed or
+    unavailable.
+    """
+
+    if not vector_store_id:
+        return
+
+    client = persona_engine.get_openai_client()
+    vector_api = getattr(client, "vector_stores", None) if client else None
+
+    if vector_api is None:
+        logger.info("Vector store cleanup skipped (no client/vector API available).")
+        return
+
+    try:
+        vector_api.delete(vector_store_id)
+        logger.info("Deleted vector store %s during brand document cleanup.", vector_store_id)
+    except Exception as exc:  # noqa: BLE001 - logging best-effort cleanup
+        logger.warning("Vector store cleanup failed for %s: %s", vector_store_id, exc)
+
+
+def upsert_brand_document(db: Session, document: schemas.BrandDocumentCreate):
+    """Create or replace a brand document while cleaning up stale vectors.
+
+    If a document with the same brand and filename exists, it will be updated
+    with the new payload. When a replacement includes a new vector store ID,
+    the previous vector store is removed on a best-effort basis.
+    """
+
+    existing = db.query(models.BrandDocument).filter(
+        models.BrandDocument.brand_id == document.brand_id,
+        models.BrandDocument.filename == document.filename,
+    ).first()
+
+    if existing:
+        previous_vector_store = existing.vector_store_id
+        for key, value in document.dict().items():
+            setattr(existing, key, value)
+
+        db.commit()
+        db.refresh(existing)
+
+        if previous_vector_store and previous_vector_store != existing.vector_store_id:
+            _delete_vector_store(previous_vector_store)
+
+        return existing
+
+    return create_brand_document(db, document)
+
+
+def delete_brand_document(db: Session, document_id: int, *, brand_id: Optional[int] = None) -> bool:
+    query = db.query(models.BrandDocument).filter(models.BrandDocument.id == document_id)
+    if brand_id is not None:
+        query = query.filter(models.BrandDocument.brand_id == brand_id)
+
+    db_document = query.first()
+    if db_document:
+        vector_store_id = db_document.vector_store_id
+        db.delete(db_document)
+        db.commit()
+        _delete_vector_store(vector_store_id)
+        return True
+
+    return False
 
 def get_brand_documents(db: Session, brand_id: int):
     return db.query(models.BrandDocument).filter(models.BrandDocument.brand_id == brand_id).all()
