@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { PersonasAPI, BrandsAPI, type TranscriptSuggestions, type FieldStatus, type EnrichedField } from "@/lib/api"
+import { PersonasAPI, BrandsAPI, type TranscriptSuggestions, type FieldStatus } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,7 +28,6 @@ import {
   Shield,
   Radio,
   Plus,
-  X,
   Search,
   ArrowRight,
   ArrowLeft,
@@ -444,11 +443,11 @@ export function PersonaBuilder() {
 
     // Helper to create list items from suggestions
     const createListItems = (
-      values: string[], 
+      values: string[],
       evidence?: string[],
       minItems: number = 3
     ): ListItem[] => {
-      const items = values.map((v, i) => ({
+      const items: ListItem[] = values.map((v, i) => ({
         value: v,
         status: "suggested" as FieldStatus,
         evidence: evidence && evidence[i] ? [evidence[i]] : [],
