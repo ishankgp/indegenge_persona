@@ -29,20 +29,20 @@ logger = logging.getLogger(__name__)
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
-# Run startup migration to add brand_id and avatar_url columns if missing
+# Run startup migration to add missing columns for personas and brand documents
 def run_startup_migration():
-    """Add brand_id and avatar_url columns to personas table if they don't exist."""
+    """Add new columns to existing tables if they don't exist."""
     try:
         from sqlalchemy import inspect, text
 
-        def add_column_if_missing(column_name: str, ddl_statement: str):
+        def add_column_if_missing(table_name: str, column_name: str, ddl_statement: str):
             inspector = inspect(engine)
-            columns = {c['name'] for c in inspector.get_columns('personas')}
+            columns = {c['name'] for c in inspector.get_columns(table_name)}
             if column_name in columns:
-                logger.info("✅ %s column already exists in personas table", column_name)
+                logger.info("✅ %s column already exists in %s table", column_name, table_name)
                 return False
 
-            logger.info("🔄 Running migration: Adding %s column to personas table...", column_name)
+            logger.info("🔄 Running migration: Adding %s column to %s table...", column_name, table_name)
             with engine.connect() as conn:
                 conn.execute(text(ddl_statement))
                 conn.commit()
@@ -53,12 +53,30 @@ def run_startup_migration():
             initial_count = conn.execute(text("SELECT COUNT(*) FROM personas")).scalar() or 0
 
         brand_added = add_column_if_missing(
+            'personas',
             'brand_id',
             "ALTER TABLE personas ADD COLUMN brand_id INTEGER REFERENCES brands(id)"
         )
         avatar_added = add_column_if_missing(
+            'personas',
             'avatar_url',
             "ALTER TABLE personas ADD COLUMN avatar_url VARCHAR"
+        )
+
+        vector_store_added = add_column_if_missing(
+            'brand_documents',
+            'vector_store_id',
+            "ALTER TABLE brand_documents ADD COLUMN vector_store_id VARCHAR"
+        )
+        chunk_size_added = add_column_if_missing(
+            'brand_documents',
+            'chunk_size',
+            "ALTER TABLE brand_documents ADD COLUMN chunk_size INTEGER"
+        )
+        chunk_ids_added = add_column_if_missing(
+            'brand_documents',
+            'chunk_ids',
+            "ALTER TABLE brand_documents ADD COLUMN chunk_ids JSON"
         )
 
         with engine.connect() as conn:
@@ -76,7 +94,7 @@ def run_startup_migration():
                 final_count
             )
 
-        if not (brand_added or avatar_added):
+        if not any([brand_added, avatar_added, vector_store_added, chunk_size_added, chunk_ids_added]):
             logger.info("ℹ️ No schema changes required during startup migration")
 
     except Exception as e:
@@ -1025,7 +1043,7 @@ async def upload_brand_document(
         
     # Extract text
     text = document_processor.extract_text(safe_file_location)
-    
+
     # Classify
     category = document_processor.classify_document(text)
 
@@ -1036,7 +1054,16 @@ async def upload_brand_document(
         }
         for insight in persona_engine.extract_mbt_from_text(text)
     ]
-    
+
+    chunk_size = 800
+    chunks = document_processor.chunk_text(text, chunk_size=chunk_size)
+    vector_store_id, chunk_ids = document_processor.generate_vector_embeddings(
+        chunks,
+        brand_id=brand_id,
+        filename=safe_filename,
+        chunk_size=chunk_size,
+    )
+
     # Create document record
     doc_create = schemas.BrandDocumentCreate(
         brand_id=brand_id,
@@ -1044,9 +1071,12 @@ async def upload_brand_document(
         filepath=safe_file_location,
         category=category,
         summary=text[:200] + "..." if text else "No text extracted",
-        extracted_insights=extracted_insights
+        extracted_insights=extracted_insights,
+        vector_store_id=vector_store_id,
+        chunk_size=chunk_size if chunks else None,
+        chunk_ids=chunk_ids or None,
     )
-    
+
     return crud.create_brand_document(db, doc_create)
 
 @app.get("/api/brands/{brand_id}/documents", response_model=List[schemas.BrandDocument])
