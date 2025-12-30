@@ -1105,9 +1105,12 @@ async def upload_brand_document(
         brand_id=brand_id,
         filename=safe_filename,
         chunk_size=chunk_size,
+        insights=extracted_insights,
     )
 
     # Create or replace document record while cleaning up any stale vectors
+    chunk_size_value = chunk_size if (chunks or vector_store_id) else None
+
     doc_create = schemas.BrandDocumentCreate(
         brand_id=brand_id,
         filename=safe_filename,
@@ -1116,7 +1119,7 @@ async def upload_brand_document(
         summary=text[:200] + "..." if text else "No text extracted",
         extracted_insights=extracted_insights,
         vector_store_id=vector_store_id,
-        chunk_size=chunk_size if chunks else None,
+        chunk_size=chunk_size_value,
         chunk_ids=chunk_ids or None,
     )
 
