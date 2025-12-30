@@ -281,7 +281,8 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
         specialty = persona_json_parsed.get("specialty")
         if not specialty and isinstance(persona_json_parsed.get("demographics"), dict):
             specialty = persona_json_parsed.get("demographics", {}).get("specialty")
-        persona_type = persona_json_parsed.get("persona_type", "Patient")
+        persona_type_raw = persona_json_parsed.get("persona_type", "Patient")
+        persona_type = "HCP" if str(persona_type_raw).lower() == "hcp" else "Patient"
         
         avatar_url = avatar_engine.generate_avatar(
             age=persona_data.age,
@@ -313,40 +314,62 @@ async def create_manual_persona(manual_data: dict, db: Session = Depends(get_db)
     try:
         # Extract brand_id if provided
         brand_id = manual_data.get("brand_id")
-        
+        brand_insights = None
+
         # Validate brand exists if provided
         if brand_id:
             brand = db.query(models.Brand).filter(models.Brand.id == brand_id).first()
             if not brand:
                 raise HTTPException(status_code=404, detail="Brand not found")
-        
-        # Build the persona JSON from the provided data
-        persona_json = {
-            "name": manual_data.get("name", ""),
-            "demographics": manual_data.get("demographics", {}),
-            "medical_background": manual_data.get("medical_background", ""),
-            "lifestyle_and_values": manual_data.get("lifestyle_and_values", ""),
-            "motivations": [motivation for motivation in manual_data.get("motivations", []) if motivation.strip()],
-            "beliefs": [belief for belief in manual_data.get("beliefs", []) if belief.strip()],
-            "pain_points": [point for point in manual_data.get("pain_points", []) if point.strip()],
-            "communication_preferences": manual_data.get("communication_preferences", {})
-        }
-        
+
+            documents = crud.get_brand_documents(db, brand_id)
+            aggregated = _aggregate_brand_insights(documents, target_segment=None, limit_per_category=5)
+            brand_insights = _flatten_insights(aggregated)
+
+        location = manual_data.get("location") or manual_data.get("region", "")
+        demographics = manual_data.get("demographics", {})
+        motivations = [motivation for motivation in manual_data.get("motivations", []) if str(motivation).strip()]
+        beliefs = [belief for belief in manual_data.get("beliefs", []) if str(belief).strip()]
+        pain_points = [point for point in manual_data.get("pain_points", []) if str(point).strip()]
+        communication_preferences = manual_data.get("communication_preferences", {})
+        medical_background = manual_data.get("medical_background", "") or f"Managing {manual_data.get('condition', '').lower()} with support from local clinicians."
+        lifestyle = manual_data.get("lifestyle_and_values") or manual_data.get("lifestyle") or f"Lives in {location} and balances health goals with daily responsibilities."
+        occupation = demographics.get("occupation") or manual_data.get("occupation") or "Professional"
+
+        schema_payload = persona_engine._build_schema_persona(
+            name=manual_data.get("name", ""),
+            age=manual_data.get("age", 0),
+            gender=manual_data.get("gender", ""),
+            condition=manual_data.get("condition", ""),
+            location=location,
+            concerns=manual_data.get("concerns", ""),
+            occupation=occupation,
+            motivations=motivations,
+            beliefs=beliefs,
+            pain_points=pain_points,
+            lifestyle=lifestyle,
+            medical_background=medical_background,
+            communication_preferences=communication_preferences,
+            persona_type=manual_data.get("persona_type", "patient"),
+            brand_insights=brand_insights,
+            existing_persona=manual_data,
+        )
+
         # Create a PersonaCreate object for database insertion
         persona_create_data = schemas.PersonaCreate(
             age=manual_data.get("age", 0),
             gender=manual_data.get("gender", ""),
             condition=manual_data.get("condition", ""),
-            location=manual_data.get("region", ""),  # Map region to location for database compatibility
+            location=location,  # Map region/location into database location field
             concerns="",  # Manual personas don't have concerns field
             brand_id=brand_id
         )
-        
+
         # Save to database
         new_persona = crud.create_persona(
             db=db,
             persona_data=persona_create_data,
-            persona_json=json.dumps(persona_json)
+            persona_json=json.dumps(schema_payload, ensure_ascii=False)
         )
         
         return new_persona

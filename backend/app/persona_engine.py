@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 import json
 from typing import Optional, List, Dict, Any
 import re
+import uuid
+from datetime import datetime
 
 # Load environment variables from the project root
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -35,6 +37,461 @@ def get_openai_client() -> Optional[OpenAI]:
             _openai_client = OpenAI(api_key=api_key)
 
     return _openai_client
+
+
+def _enriched_string(value: Optional[str], confidence: float = 0.72) -> Dict[str, Any]:
+    """Create an enriched string payload that matches the persona schema."""
+
+    value = value or ""
+    status = "suggested" if value else "empty"
+    return {
+        "value": value,
+        "status": status,
+        "confidence": confidence,
+        "evidence": [],
+    }
+
+
+def _enriched_text(value: Optional[str], confidence: float = 0.72) -> Dict[str, Any]:
+    """Create an enriched text payload that matches the persona schema."""
+
+    value = value or ""
+    status = "suggested" if value else "empty"
+    return {
+        "value": value,
+        "status": status,
+        "confidence": confidence,
+        "evidence": [],
+    }
+
+
+def _enriched_list(values: Optional[List[str]], confidence: float = 0.72) -> Dict[str, Any]:
+    """Create an enriched list payload that matches the persona schema."""
+
+    values = [v for v in values or [] if v]
+    status = "suggested" if values else "empty"
+    return {
+        "value": values,
+        "status": status,
+        "confidence": confidence,
+        "evidence": [],
+    }
+
+
+def _normalize_brand_insights(brand_insights: Optional[List[Dict[str, str]]]) -> Dict[str, List[str]]:
+    """Return brand motivations/beliefs/tensions as lists of text."""
+
+    insights = brand_insights or []
+    return {
+        "motivations": [i.get("text") for i in insights if i.get("type") == "Motivation" and i.get("text")],
+        "beliefs": [i.get("text") for i in insights if i.get("type") == "Belief" and i.get("text")],
+        "tensions": [i.get("text") for i in insights if i.get("type") == "Tension" and i.get("text")],
+    }
+
+
+def _build_schema_persona(
+    *,
+    name: str,
+    age: int,
+    gender: str,
+    condition: str,
+    location: str,
+    concerns: str,
+    occupation: str,
+    motivations: List[str],
+    beliefs: List[str],
+    pain_points: List[str],
+    lifestyle: str,
+    medical_background: str,
+    communication_preferences: Dict[str, Any],
+    persona_type: str = "patient",
+    brand_insights: Optional[List[Dict[str, str]]] = None,
+    existing_persona: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Upgrade or build a persona so it complies with the richer JSON schema while
+    preserving legacy top-level keys used by the UI.
+    """
+
+    persona_type_value = (persona_type or "patient").lower()
+    normalized_brand = _normalize_brand_insights(brand_insights)
+    now_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    persona_id = (existing_persona or {}).get("meta", {}).get("persona_id") or str(uuid.uuid4())
+
+    primary_motivation = motivations[0] if motivations else (normalized_brand["motivations"][0] if normalized_brand["motivations"] else "Manage condition confidently")
+    main_belief = beliefs[0] if beliefs else (normalized_brand["beliefs"][0] if normalized_brand["beliefs"] else "Good care is collaborative")
+    main_tension = pain_points[0] if pain_points else (normalized_brand["tensions"][0] if normalized_brand["tensions"] else concerns or "Balancing treatment with daily life")
+
+    # Compose snapshot details
+    age_range = f"{max(age - 5, 18)}-{age + 5}" if age else "Unknown"
+    life_context = (
+        f"Lives in {location}, works as a {occupation}. {lifestyle}"
+        if lifestyle
+        else f"Lives in {location} and works as a {occupation}."
+    )
+
+    # Schema compliant payload
+    schema_payload: Dict[str, Any] = {
+        "schema_version": "1.0.0",
+        "persona_type": persona_type_value,
+        "meta": {
+            "persona_id": persona_id,
+            "name": name,
+            "label": (existing_persona or {}).get("meta", {}).get("label")
+            or f"{condition.title()} {gender.title()} archetype",
+            "created_at": (existing_persona or {}).get("meta", {}).get("created_at") or now_iso,
+            "updated_at": now_iso,
+            "brand": (existing_persona or {}).get("meta", {}).get("brand"),
+            "indication": condition,
+            "disease_area": condition,
+            "journey_stage": (existing_persona or {}).get("meta", {}).get("journey_stage") or "Active management",
+            "market": location,
+            "language": (existing_persona or {}).get("meta", {}).get("language") or "en-US",
+            "status": (existing_persona or {}).get("meta", {}).get("status") or "draft",
+            "sources": (existing_persona or {}).get("meta", {}).get("sources") or [],
+        },
+        "core": {
+            "snapshot": {
+                "age_range": _enriched_string(
+                    (existing_persona or {}).get("core", {})
+                    .get("snapshot", {})
+                    .get("age_range", {})
+                    .get("value")
+                    or age_range
+                ),
+                "life_context": _enriched_text(
+                    (existing_persona or {}).get("core", {})
+                    .get("snapshot", {})
+                    .get("life_context", {})
+                    .get("value")
+                    or life_context
+                ),
+                "practice_context": (existing_persona or {}).get("core", {})
+                .get("snapshot", {})
+                .get("practice_context")
+                or _enriched_text(""),
+            },
+            "mbt": {
+                "motivation": {
+                    "primary_motivation": _enriched_string(primary_motivation, 0.84),
+                    "success_definition": _enriched_text(
+                        (existing_persona or {})
+                        .get("core", {})
+                        .get("mbt", {})
+                        .get("motivation", {})
+                        .get("success_definition", {})
+                        .get("value")
+                        or f"Feels successful when daily routines stay on track and {condition.lower()} is controlled without constant worry.",
+                        0.78,
+                    ),
+                    "top_outcomes": _enriched_list(
+                        (existing_persona or {})
+                        .get("core", {})
+                        .get("mbt", {})
+                        .get("motivation", {})
+                        .get("top_outcomes", {})
+                        .get("value")
+                        or motivations[:3]
+                        or [
+                            "Consistent symptom control",
+                            "Confidence in treatment plan",
+                            "Energy to participate in family or work",
+                        ],
+                        0.8,
+                    ),
+                },
+                "beliefs": {
+                    "core_belief_statements": _enriched_list(
+                        beliefs or main_belief,
+                        0.75,
+                    ),
+                    "trust_anchors": _enriched_list(
+                        (existing_persona or {})
+                        .get("core", {})
+                        .get("mbt", {})
+                        .get("beliefs", {})
+                        .get("trust_anchors", {})
+                        .get("value")
+                        or [
+                            "Treating clinician guidance",
+                            "Specialist recommendations",
+                            "Peer experiences from trusted communities",
+                        ],
+                        0.7,
+                    ),
+                    "attitudes_toward_pharma_marketing": _enriched_string(
+                        (existing_persona or {})
+                        .get("core", {})
+                        .get("mbt", {})
+                        .get("beliefs", {})
+                        .get("attitudes_toward_pharma_marketing", {})
+                        .get("value")
+                        or "Skeptical until evidence is clear and endorsed by clinicians.",
+                        0.68,
+                    ),
+                    "locus_of_responsibility": _enriched_string(
+                        (existing_persona or {})
+                        .get("core", {})
+                        .get("mbt", {})
+                        .get("beliefs", {})
+                        .get("locus_of_responsibility", {})
+                        .get("value")
+                        or "Shared between self-management and provider guidance.",
+                        0.69,
+                    ),
+                },
+                "tension": {
+                    "emotional_undercurrent": _enriched_text(
+                        (existing_persona or {})
+                        .get("core", {})
+                        .get("mbt", {})
+                        .get("tension", {})
+                        .get("emotional_undercurrent", {})
+                        .get("value")
+                        or f"Balances optimism about new therapies with worry about {condition.lower()} progressing.",
+                        0.77,
+                    ),
+                    "main_worry": _enriched_string(main_tension[0] if isinstance(main_tension, list) else main_tension, 0.73),
+                    "sensitivity_points": _enriched_list(pain_points[:3] or [concerns], 0.71),
+                    "emotional_rewards": _enriched_list(
+                        (existing_persona or {})
+                        .get("core", {})
+                        .get("mbt", {})
+                        .get("tension", {})
+                        .get("emotional_rewards", {})
+                        .get("value")
+                        or [
+                            "Feeling in control of daily routines",
+                            "Positive feedback from clinicians",
+                            "Visible progress markers like lab results",
+                        ],
+                        0.7,
+                    ),
+                },
+                "core_insight": _enriched_text(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("mbt", {})
+                    .get("core_insight", {})
+                    .get("value")
+                    or f"Confidence grows when treatment plans acknowledge the daily trade-offs of living with {condition.lower()} while offering clear milestones to celebrate progress.",
+                    0.79,
+                ),
+            },
+            "decision_drivers": {
+                "ranked_drivers": (
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("decision_drivers", {})
+                    .get("ranked_drivers")
+                    or [
+                        {"rank": 1, "driver": "Clinical effectiveness", "detail": "Prefers options with consistent real-world evidence."},
+                        {"rank": 2, "driver": "Ease of use", "detail": "Looks for simple dosing and minimal disruption to routines."},
+                        {"rank": 3, "driver": "Safety and tolerability", "detail": "Wants predictable side-effect management aligned to lifestyle."},
+                    ]
+                ),
+                "tie_breakers": _enriched_list(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("decision_drivers", {})
+                    .get("tie_breakers", {})
+                    .get("value")
+                    or ["Insurance coverage", "Physician endorsement", "Peer testimony"],
+                    0.65,
+                ),
+            },
+            "messaging": {
+                "what_lands": _enriched_list(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("messaging", {})
+                    .get("what_lands", {})
+                    .get("value")
+                    or [
+                        "Concrete data on outcomes people like them experience",
+                        "Visual trackers that show weekly progress",
+                        "Stories that acknowledge challenges then show a path forward",
+                    ],
+                    0.7,
+                ),
+                "what_fails": _enriched_list(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("messaging", {})
+                    .get("what_fails", {})
+                    .get("value")
+                    or [
+                        "Overly promotional claims",
+                        "Jargon-heavy materials without practical next steps",
+                        "Messaging that ignores cost or access hurdles",
+                    ],
+                    0.65,
+                ),
+                "preferred_voice": _enriched_string(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("messaging", {})
+                    .get("preferred_voice", {})
+                    .get("value")
+                    or "Calm, collaborative, and practical.",
+                    0.7,
+                ),
+                "preferred_proof_format": _enriched_list(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("messaging", {})
+                    .get("preferred_proof_format", {})
+                    .get("value")
+                    or ["Infographics with data", "Clinician walkthroughs", "Checklists"],
+                    0.66,
+                ),
+            },
+            "barriers_objections": {
+                "objections": _enriched_list(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("barriers_objections", {})
+                    .get("objections", {})
+                    .get("value")
+                    or pain_points[:3],
+                    0.71,
+                ),
+                "practical_barriers": _enriched_list(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("barriers_objections", {})
+                    .get("practical_barriers", {})
+                    .get("value")
+                    or ["Insurance approvals", "Scheduling follow-ups", "Coordinating labs or supplies"],
+                    0.68,
+                ),
+                "perceptual_barriers": _enriched_list(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("barriers_objections", {})
+                    .get("perceptual_barriers", {})
+                    .get("value")
+                    or ["Skepticism about promises", "Fear of side effects", "Distrust of marketing claims"],
+                    0.66,
+                ),
+            },
+            "channel_behavior": {
+                "preferred_sources": _enriched_list(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("channel_behavior", {})
+                    .get("preferred_sources", {})
+                    .get("value")
+                    or ["Clinician consults", "Condition-specific newsletters", "Trusted patient forums"],
+                    0.65,
+                ),
+                "engagement_depth": _enriched_string(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("channel_behavior", {})
+                    .get("engagement_depth", {})
+                    .get("value")
+                    or "Regular check-ins with bursts of research when symptoms change.",
+                    0.64,
+                ),
+                "visit_behavior": _enriched_text(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("channel_behavior", {})
+                    .get("visit_behavior", {})
+                    .get("value")
+                    or "Prepares questions before appointments and prefers seeing data summaries during visits.",
+                    0.63,
+                ),
+                "digital_habits": _enriched_text(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("channel_behavior", {})
+                    .get("digital_habits", {})
+                    .get("value")
+                    or "Uses patient portals and mobile trackers; subscribes to a few trusted newsletters.",
+                    0.62,
+                ),
+            },
+            "agent_testing_prompts": {
+                "paraphrase_test": _enriched_text(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("agent_testing_prompts", {})
+                    .get("paraphrase_test", {})
+                    .get("value")
+                    or "Explain why this treatment fits their routine in two sentences using plain language.",
+                    0.61,
+                ),
+                "proof_test": _enriched_text(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("agent_testing_prompts", {})
+                    .get("proof_test", {})
+                    .get("value")
+                    or "Share a proof point about sustained outcomes that would reassure them despite concerns about side effects.",
+                    0.61,
+                ),
+                "switch_scenario": _enriched_text(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("agent_testing_prompts", {})
+                    .get("switch_scenario", {})
+                    .get("value")
+                    or "Describe how they would react if costs increased mid-therapy and what support would keep them engaged.",
+                    0.6,
+                ),
+                "scoring_hooks": _enriched_list(
+                    (existing_persona or {})
+                    .get("core", {})
+                    .get("agent_testing_prompts", {})
+                    .get("scoring_hooks", {})
+                    .get("value")
+                    or [
+                        "Mentions balancing routine with therapy",
+                        "References credible data sources",
+                        "Acknowledges cost or access mitigation",
+                    ],
+                    0.6,
+                ),
+            },
+        },
+    }
+
+    if persona_type_value == "patient":
+        schema_payload["patient_specific"] = {
+            "condition_stage": _enriched_string(
+                concerns or f"Managing {condition.lower()} with stable routine."
+            ),
+            "current_regimen_experience": _enriched_string(
+                f"Currently balancing treatment plan with daily responsibilities in {location}.",
+                0.64,
+            ),
+        }
+    else:
+        schema_payload["hcp_specific"] = (existing_persona or {}).get("hcp_specific")
+
+    # Legacy compatibility fields for existing UI surfaces
+    schema_payload.update(
+        {
+            "name": name,
+            "persona_type": persona_type_value,
+            "demographics": {
+                "age": age,
+                "gender": gender,
+                "location": location,
+                "occupation": occupation,
+            },
+            "medical_background": medical_background,
+            "lifestyle_and_values": lifestyle,
+            "motivations": motivations,
+            "beliefs": beliefs,
+            "pain_points": pain_points,
+            "communication_preferences": communication_preferences,
+        }
+    )
+
+    return schema_payload
 
 def create_patient_persona_prompt(age, gender, condition, location, concerns, brand_insights: Optional[List[Dict[str, str]]] = None):
     """Creates the exact, detailed prompt for generating a patient persona."""
@@ -70,15 +527,92 @@ def create_patient_persona_prompt(age, gender, condition, location, concerns, br
     
     prompt += """
     **Output Format:**
-    Generate a response in a pure JSON format. Do not include any text, code block markers, or explanations before or after the JSON object. The JSON object must have the following keys:
-    - "name": A realistic first and last name.
-    - "demographics": An object with "age", "gender", "location", and "occupation".
-    - "medical_background": A brief, narrative summary of their diagnosis and treatment history for the specified condition.
-    - "lifestyle_and_values": A paragraph describing their daily life, hobbies, family situation, and what they value most.
-    - "motivations": An array of 3-5 goals or desires related to managing their health.
-    - "beliefs": An array of 3-5 core convictions or assumptions they hold about their condition, treatment, or healthcare system.
-    - "pain_points": An array of 3-5 specific challenges they face related to their condition.
-    - "communication_preferences": An object describing how they prefer to receive health information.
+    Return a pure JSON object (no code fences) that conforms to the persona schema below. Populate nested enriched fields with detailed strings and lists. Also include legacy compatibility fields at the top level (name, demographics, medical_background, motivations, beliefs, pain_points, lifestyle_and_values, communication_preferences).
+
+    {
+      "schema_version": "1.0.0",
+      "persona_type": "patient",
+      "meta": {
+        "persona_id": "unique string",
+        "name": "<full name>",
+        "label": "short archetype label",
+        "created_at": "<ISO timestamp>",
+        "updated_at": "<ISO timestamp>",
+        "brand": "",
+        "indication": "{condition}",
+        "disease_area": "{condition}",
+        "journey_stage": "",
+        "market": "{location}",
+        "language": "en-US",
+        "status": "draft",
+        "sources": []
+      },
+      "core": {
+        "snapshot": {
+          "age_range": {"value": "{age-5}-{age+5}", "status": "suggested", "confidence": 0.7, "evidence": []},
+          "life_context": {"value": "rich paragraph about daily life, routines, and responsibilities", "status": "suggested", "confidence": 0.72, "evidence": []}
+        },
+        "mbt": {
+          "motivation": {
+            "primary_motivation": {"value": "explicit primary motivation", "status": "suggested", "confidence": 0.8, "evidence": []},
+            "success_definition": {"value": "how they define success in their journey", "status": "suggested", "confidence": 0.75, "evidence": []},
+            "top_outcomes": {"value": ["list of top desired outcomes"], "status": "suggested", "confidence": 0.74, "evidence": []}
+          },
+          "beliefs": {
+            "core_belief_statements": {"value": ["beliefs about care, control, and responsibility"], "status": "suggested", "confidence": 0.73, "evidence": []},
+            "trust_anchors": {"value": ["who or what they trust"], "status": "suggested", "confidence": 0.7, "evidence": []},
+            "attitudes_toward_pharma_marketing": {"value": "explicit stance", "status": "suggested", "confidence": 0.68, "evidence": []},
+            "locus_of_responsibility": {"value": "self / shared / provider led", "status": "suggested", "confidence": 0.68, "evidence": []}
+          },
+          "tension": {
+            "emotional_undercurrent": {"value": "emotions underlying their behaviors", "status": "suggested", "confidence": 0.72, "evidence": []},
+            "main_worry": {"value": "central fear or concern", "status": "suggested", "confidence": 0.7, "evidence": []},
+            "sensitivity_points": {"value": ["triggers or topics to avoid"], "status": "suggested", "confidence": 0.69, "evidence": []},
+            "emotional_rewards": {"value": ["what makes them feel progress"], "status": "suggested", "confidence": 0.69, "evidence": []}
+          },
+          "core_insight": {"value": "tight insight that links motivation, belief, and tension", "status": "suggested", "confidence": 0.74, "evidence": []}
+        },
+        "decision_drivers": {
+          "ranked_drivers": [{"rank": 1, "driver": "", "detail": ""}],
+          "tie_breakers": {"value": [""], "status": "suggested", "confidence": 0.65, "evidence": []}
+        },
+        "messaging": {
+          "what_lands": {"value": [""], "status": "suggested", "confidence": 0.65, "evidence": []},
+          "what_fails": {"value": [""], "status": "suggested", "confidence": 0.65, "evidence": []},
+          "preferred_voice": {"value": "", "status": "suggested", "confidence": 0.65, "evidence": []},
+          "preferred_proof_format": {"value": [""], "status": "suggested", "confidence": 0.65, "evidence": []}
+        },
+        "barriers_objections": {
+          "objections": {"value": [""], "status": "suggested", "confidence": 0.65, "evidence": []},
+          "practical_barriers": {"value": [""], "status": "suggested", "confidence": 0.65, "evidence": []},
+          "perceptual_barriers": {"value": [""], "status": "suggested", "confidence": 0.65, "evidence": []}
+        },
+        "channel_behavior": {
+          "preferred_sources": {"value": [""], "status": "suggested", "confidence": 0.64, "evidence": []},
+          "engagement_depth": {"value": "", "status": "suggested", "confidence": 0.64, "evidence": []},
+          "visit_behavior": {"value": "", "status": "suggested", "confidence": 0.64, "evidence": []},
+          "digital_habits": {"value": "", "status": "suggested", "confidence": 0.64, "evidence": []}
+        },
+        "agent_testing_prompts": {
+          "paraphrase_test": {"value": "", "status": "suggested", "confidence": 0.6, "evidence": []},
+          "proof_test": {"value": "", "status": "suggested", "confidence": 0.6, "evidence": []},
+          "switch_scenario": {"value": "", "status": "suggested", "confidence": 0.6, "evidence": []},
+          "scoring_hooks": {"value": [""], "status": "suggested", "confidence": 0.6, "evidence": []}
+        }
+      },
+      "patient_specific": {
+        "condition_stage": {"value": "stage description", "status": "suggested", "confidence": 0.64, "evidence": []},
+        "current_regimen_experience": {"value": "how they experience their current regimen", "status": "suggested", "confidence": 0.64, "evidence": []}
+      },
+      "name": "duplicate for compatibility",
+      "demographics": {"age": {age}, "gender": "{gender}", "location": "{location}", "occupation": ""},
+      "medical_background": "rich summary",
+      "lifestyle_and_values": "rich lifestyle narrative",
+      "motivations": [""],
+      "beliefs": [""],
+      "pain_points": [""],
+      "communication_preferences": {"preferred_channels": "", "information_style": "", "frequency": ""}
+    }
     """
     return prompt
 
@@ -109,22 +643,47 @@ def generate_persona_from_attributes(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
-            max_tokens=1200,
+            max_tokens=1600,
         )
-        
+
         content = response.choices[0].message.content or "{}"
-        
-        # Validate that we got a proper JSON response
+
         try:
             parsed_json = json.loads(content)
-            if not parsed_json.get("name") or not parsed_json.get("demographics"):
-                raise ValueError("Incomplete persona structure from OpenAI")
-            print(f"✅ Generated persona via OpenAI API: {parsed_json.get('name')}")
-            return content
-        except (json.JSONDecodeError, ValueError) as e:
+        except json.JSONDecodeError as e:
             print(f"Invalid JSON from OpenAI API, using mock: {e}")
             return generate_mock_persona(age, gender, condition, location, concerns, brand_insights)
-        
+
+        demographics = parsed_json.get("demographics", {}) if isinstance(parsed_json, dict) else {}
+        occupation = demographics.get("occupation") or "Professional"
+        lifestyle = parsed_json.get("lifestyle_and_values") or f"Lives in {location} and values staying active and connected."
+        medical_background = parsed_json.get("medical_background") or f"Managing {condition} with support from local clinicians."
+        motivations = parsed_json.get("motivations") or []
+        beliefs = parsed_json.get("beliefs") or []
+        pain_points = parsed_json.get("pain_points") or []
+        persona_type = parsed_json.get("persona_type", "patient")
+
+        schema_payload = _build_schema_persona(
+            name=parsed_json.get("name", "Patient Persona"),
+            age=age,
+            gender=gender,
+            condition=condition,
+            location=location,
+            concerns=concerns,
+            occupation=occupation,
+            motivations=motivations,
+            beliefs=beliefs,
+            pain_points=pain_points,
+            lifestyle=lifestyle,
+            medical_background=medical_background,
+            communication_preferences=parsed_json.get("communication_preferences", {}),
+            persona_type=persona_type,
+            brand_insights=brand_insights,
+            existing_persona=parsed_json,
+        )
+        print(f"✅ Generated persona via OpenAI API: {schema_payload.get('name')}")
+        return json.dumps(schema_payload, ensure_ascii=False, indent=2)
+
     except Exception as e:
         print(f"OpenAI API error, falling back to mock persona: {e}")
         return generate_mock_persona(age, gender, condition, location, concerns, brand_insights)
@@ -251,27 +810,35 @@ def generate_mock_persona(
         if brand_tensions:
             pain_points = brand_tensions[:3] + pain_points[:2]
     
-    persona = {
-        "name": name,
-        "demographics": {
-            "age": age,
-            "gender": gender,
-            "location": location,
-            "occupation": occupation
-        },
-        "medical_background": data["medical_bg"],
-        "lifestyle_and_values": f"Lives in {location} and works as a {occupation}. Values family time and maintaining good health. Enjoys staying active and informed about health topics. Prioritizes open communication with healthcare providers and appreciates evidence-based treatment approaches.",
-        "motivations": motivations,
-        "beliefs": beliefs,
-        "pain_points": pain_points,
-        "communication_preferences": {
-            "preferred_channels": "Healthcare provider discussions, reputable medical websites, patient education materials",
-            "information_style": "Clear, factual explanations with practical applications",
-            "frequency": "Regular updates during appointments, immediate access to emergency information"
-        }
+    lifestyle = (
+        f"Lives in {location} and works as a {occupation}. Values family time and maintaining good health. "
+        "Enjoys staying active and informed about health topics. Prioritizes open communication with healthcare providers and appreciates evidence-based treatment approaches."
+    )
+    communication_preferences = {
+        "preferred_channels": "Healthcare provider discussions, reputable medical websites, patient education materials",
+        "information_style": "Clear, factual explanations with practical applications",
+        "frequency": "Regular updates during appointments, immediate access to emergency information",
     }
-    
-    return json.dumps(persona, indent=2)
+
+    schema_payload = _build_schema_persona(
+        name=name,
+        age=age,
+        gender=gender,
+        condition=condition,
+        location=location,
+        concerns=concerns,
+        occupation=occupation,
+        motivations=motivations,
+        beliefs=beliefs,
+        pain_points=pain_points,
+        lifestyle=lifestyle,
+        medical_background=data["medical_bg"],
+        communication_preferences=communication_preferences,
+        persona_type="patient",
+        brand_insights=brand_insights,
+    )
+
+    return json.dumps(schema_payload, ensure_ascii=False, indent=2)
 
 def parse_recruitment_prompt(prompt: str) -> dict:
     """
