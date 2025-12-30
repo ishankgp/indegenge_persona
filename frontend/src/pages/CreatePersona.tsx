@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { PersonasAPI, BrandsAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { VeevaCRMImporter } from "../components/VeevaCRMImporter"
 import BrandInsightSelector from "@/components/BrandInsightSelector"
 import type { BrandInsight, SuggestionResponse } from "@/components/BrandInsightSelector"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip"
 import {
   User,
   MapPin,
@@ -34,6 +35,13 @@ import {
 interface BrandOption {
   id: number
   name: string
+}
+
+interface FieldStatus {
+  key: string
+  label: string
+  complete: boolean
+  message?: string
 }
 
 export function CreatePersona() {
@@ -83,6 +91,147 @@ export function CreatePersona() {
   const [manualBrandId, setManualBrandId] = useState<number | null>(urlBrandId ? parseInt(urlBrandId) : null)
   const [aiBrandId, setAiBrandId] = useState<number | null>(urlBrandId ? parseInt(urlBrandId) : null)
   const [aiTargetSegment, setAiTargetSegment] = useState("")
+
+  const manualFieldStatuses = useMemo<FieldStatus[]>(() => {
+    const ageValue = parseInt(manualFormData.age)
+    const ageValid = !isNaN(ageValue) && ageValue >= 1 && ageValue <= 120
+
+    return [
+      {
+        key: "name",
+        label: "Name",
+        complete: manualFormData.name.trim().length > 0,
+        message: "Add a persona name to identify this profile."
+      },
+      {
+        key: "age",
+        label: "Age",
+        complete: manualFormData.age.trim().length === 0 ? false : ageValid,
+        message: "Use a realistic age between 1 and 120."
+      },
+      {
+        key: "gender",
+        label: "Gender",
+        complete: manualFormData.gender.trim().length > 0,
+        message: "Capture gender to enrich demographics."
+      },
+      {
+        key: "condition",
+        label: "Primary Medical Condition",
+        complete: manualFormData.condition.trim().length > 0,
+        message: "Specify at least one condition for better grounding."
+      },
+      {
+        key: "region",
+        label: "Country",
+        complete: manualFormData.region.trim().length > 0,
+        message: "Add a country or region to localize insights."
+      },
+    ]
+  }, [manualFormData])
+
+  const aiFieldStatuses = useMemo<FieldStatus[]>(() => {
+    const ageValue = parseInt(aiFormData.age)
+    const ageValid = !isNaN(ageValue) && ageValue >= 1 && ageValue <= 120
+
+    return [
+      {
+        key: "age",
+        label: "Age",
+        complete: aiFormData.age.trim().length === 0 ? false : ageValid,
+        message: "Use a realistic age between 1 and 120."
+      },
+      {
+        key: "gender",
+        label: "Gender",
+        complete: aiFormData.gender.trim().length > 0,
+        message: "Gender helps tailor generated personas."
+      },
+      {
+        key: "condition",
+        label: "Primary Medical Condition",
+        complete: aiFormData.condition.trim().length > 0,
+        message: "Condition improves medical relevance."
+      },
+      {
+        key: "region",
+        label: "Country",
+        complete: aiFormData.region.trim().length > 0,
+        message: "Region informs cultural context."
+      },
+    ]
+  }, [aiFormData])
+
+  const renderCompletenessMeter = (fieldStatuses: FieldStatus[], title: string) => {
+    const completeCount = fieldStatuses.filter((f) => f.complete).length
+    const percent = Math.round((completeCount / Math.max(fieldStatuses.length, 1)) * 100)
+    const missing = fieldStatuses.filter((f) => !f.complete)
+
+    return (
+      <div className="rounded-lg border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-gray-900/40">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{title}</p>
+            <p className="text-xs text-muted-foreground">Track how complete this persona setup is.</p>
+          </div>
+          <Badge variant="secondary" className="text-xs">
+            {percent}% complete
+          </Badge>
+        </div>
+        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
+          <div
+            className="h-2 rounded-full bg-gradient-to-r from-primary to-secondary transition-all"
+            style={{ width: `${percent}%` }}
+          ></div>
+        </div>
+        {missing.length > 0 && (
+          <div className="mt-3 text-xs text-amber-700 dark:text-amber-300">
+            <p className="font-semibold">Suggested additions:</p>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {missing.map((item) => (
+                <Badge
+                  key={item.key}
+                  variant="outline"
+                  className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/50"
+                >
+                  {item.label}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderLabelWithStatus = (id: string, label: string, fieldStatuses: FieldStatus[], key: string) => {
+    const status = fieldStatuses.find((f) => f.key === key)
+
+    if (!status) return <Label htmlFor={id}>{label}</Label>
+
+    return (
+      <div className="flex items-center gap-2">
+        <Label htmlFor={id}>{label}</Label>
+        {!status.complete && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge
+                  variant="outline"
+                  className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/50"
+                >
+                  Incomplete
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs text-sm">
+                {status.message || "Adding this field will make the persona richer."}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
+    )
+  }
 
   useEffect(() => {
     const fetchBrands = async () => {
@@ -199,19 +348,8 @@ export function CreatePersona() {
     setError(null)
 
     const age = parseInt(manualFormData.age)
-    if (isNaN(age) || age < 1 || age > 120) {
-      const errorMessage = "Please enter a valid age between 1 and 120."
-      setError(errorMessage)
-      alert(errorMessage)
-      return
-    }
-
-    // Validate required fields
-    if (!manualFormData.name || !manualFormData.gender || !manualFormData.condition || !manualFormData.region) {
-      setError("Please fill in all required fields.")
-      alert("Please fill in all required fields.")
-      return
-    }
+    const ageValid = !isNaN(age) && age >= 1 && age <= 120
+    const safeAge = ageValid ? age : undefined
 
     setGenerating(true)
     try {
@@ -219,13 +357,13 @@ export function CreatePersona() {
       // Include brand_id directly - the backend now handles automatic grounding
       const personaData = {
         name: manualFormData.name,
-        age: age,
+        age: safeAge,
         gender: manualFormData.gender,
         condition: manualFormData.condition,
         region: manualFormData.region,
         brand_id: manualBrandId || undefined,
         demographics: {
-          age: age,
+          age: safeAge,
           gender: manualFormData.gender,
           location: manualFormData.region,
           occupation: manualFormData.occupation
@@ -283,12 +421,8 @@ export function CreatePersona() {
     setError(null)
 
     const age = parseInt(aiFormData.age)
-    if (isNaN(age) || age < 1 || age > 120) {
-      const errorMessage = "Please enter a valid age between 1 and 120."
-      setError(errorMessage)
-      alert(errorMessage)
-      return
-    }
+    const ageValid = !isNaN(age) && age >= 1 && age <= 120
+    const safeAge = ageValid ? age : undefined
 
     setGenerating(true)
     try {
@@ -297,7 +431,7 @@ export function CreatePersona() {
 
       // Include brand_id in base data - backend now handles automatic MBT grounding
       const basePersonaData = {
-        age: age,
+        age: safeAge,
         gender: aiFormData.gender,
         condition: aiFormData.condition,
         location: aiFormData.region,
@@ -509,23 +643,24 @@ export function CreatePersona() {
                     </div>
                   )}
 
+                  {renderCompletenessMeter(manualFieldStatuses, "Manual persona completeness")}
+
                   <form onSubmit={handleManualSubmit} className="space-y-6">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="name">Name *</Label>
+                        {renderLabelWithStatus("name", "Name", manualFieldStatuses, "name")}
                         <Input
                           id="name"
                           name="name"
                           value={manualFormData.name}
                           onChange={handleManualInputChange}
-                          required
                           className="mt-1"
                           placeholder="Enter persona name"
                         />
                       </div>
 
                       <div>
-                        <Label htmlFor="age">Age *</Label>
+                        {renderLabelWithStatus("age", "Age", manualFieldStatuses, "age")}
                         <Input
                           id="age"
                           name="age"
@@ -534,7 +669,6 @@ export function CreatePersona() {
                           max="120"
                           value={manualFormData.age}
                           onChange={handleManualInputChange}
-                          required
                           className="mt-1"
                           placeholder="Enter age"
                         />
@@ -543,7 +677,7 @@ export function CreatePersona() {
 
                     <div className="grid grid-cols-3 gap-4">
                       <div>
-                        <Label htmlFor="gender">Gender *</Label>
+                        {renderLabelWithStatus("gender", "Gender", manualFieldStatuses, "gender")}
                         <Select name="gender" value={manualFormData.gender} onValueChange={(value) => handleManualSelectChange('gender', value)}>
                           <SelectTrigger className="mt-1">
                             <SelectValue placeholder="Select gender" />
@@ -557,26 +691,24 @@ export function CreatePersona() {
                       </div>
 
                       <div>
-                        <Label htmlFor="condition">Medical Condition *</Label>
+                        {renderLabelWithStatus("condition", "Medical Condition", manualFieldStatuses, "condition")}
                         <Input
                           id="condition"
                           name="condition"
                           value={manualFormData.condition}
                           onChange={handleManualInputChange}
-                          required
                           className="mt-1"
                           placeholder="Enter medical condition"
                         />
                       </div>
 
                       <div>
-                        <Label htmlFor="region">Country *</Label>
+                        {renderLabelWithStatus("region", "Country", manualFieldStatuses, "region")}
                         <Input
                           id="region"
                           name="region"
                           value={manualFormData.region}
                           onChange={handleManualInputChange}
-                          required
                           className="mt-1"
                           placeholder="e.g., United States, UK"
                         />
@@ -734,13 +866,15 @@ export function CreatePersona() {
                 </div>
               </CardHeader>
               <CardContent className="pt-8">
+                {renderCompletenessMeter(aiFieldStatuses, "AI persona completeness")}
+
                 <form onSubmit={handleAiSubmit} className="space-y-6">
                   <div className="grid gap-6 md:grid-cols-3">
                     <div className="space-y-2">
-                      <Label htmlFor="ai-age" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
                         <Calendar className="h-4 w-4 text-gray-500" />
-                        Age
-                      </Label>
+                        {renderLabelWithStatus("ai-age", "Age", aiFieldStatuses, "age")}
+                      </div>
                       <Input
                         id="ai-age"
                         name="age"
@@ -749,14 +883,13 @@ export function CreatePersona() {
                         value={aiFormData.age}
                         onChange={handleAiInputChange}
                         className="border-gray-300 focus:border-primary focus:ring-primary"
-                        required
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="ai-gender" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
                         <User className="h-4 w-4 text-gray-500" />
-                        Gender
-                      </Label>
+                        {renderLabelWithStatus("ai-gender", "Gender", aiFieldStatuses, "gender")}
+                      </div>
                       <Select name="gender" value={aiFormData.gender} onValueChange={(value) => handleAiSelectChange('gender', value)}>
                         <SelectTrigger className="border-gray-300 focus:border-primary focus:ring-primary">
                           <SelectValue placeholder="Select gender" />
@@ -769,10 +902,10 @@ export function CreatePersona() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="ai-condition" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
                         <Heart className="h-4 w-4 text-gray-500" />
-                        Primary Medical Condition
-                      </Label>
+                        {renderLabelWithStatus("ai-condition", "Primary Medical Condition", aiFieldStatuses, "condition")}
+                      </div>
                       <Input
                         id="ai-condition"
                         name="condition"
@@ -780,17 +913,16 @@ export function CreatePersona() {
                         value={aiFormData.condition}
                         onChange={handleAiInputChange}
                         className="border-gray-300 focus:border-primary focus:ring-primary"
-                        required
                       />
                     </div>
                   </div>
 
                   <div className="grid gap-6 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="ai-region" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
                         <MapPin className="h-4 w-4 text-gray-500" />
-                        Country
-                      </Label>
+                        {renderLabelWithStatus("ai-region", "Country", aiFieldStatuses, "region")}
+                      </div>
                       <Input
                         id="ai-region"
                         name="region"
@@ -798,7 +930,6 @@ export function CreatePersona() {
                         value={aiFormData.region}
                         onChange={handleAiInputChange}
                         className="border-gray-300 focus:border-primary focus:ring-primary"
-                        required
                       />
 
                     </div>
