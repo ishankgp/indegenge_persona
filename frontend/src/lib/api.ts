@@ -134,6 +134,15 @@ export const PersonasAPI = {
   enrichFromBrand: (id: number, payload: { brand_id: number; target_segment?: string; target_fields?: string[] }) =>
     api.post(`/personas/${id}/enrich-from-brand`, payload).then(r => r.data),
   regenerateAvatar: (id: number) => api.post(`/personas/${id}/regenerate-avatar`).then(r => r.data),
+  extractFromTranscript: (payload: FormData | { transcript_text: string }) => {
+    if (payload instanceof FormData) {
+      return api.post('/personas/from-transcript', payload).then(r => r.data)
+    }
+
+    const formData = new FormData();
+    formData.append('transcript_text', payload.transcript_text);
+    return api.post('/personas/from-transcript', formData).then(r => r.data)
+  },
 };
 
 export interface BrandInsight {

@@ -39,7 +39,7 @@ def get_openai_client() -> Optional[OpenAI]:
     return _openai_client
 
 
-def _enriched_string(value: Optional[str], confidence: float = 0.72) -> Dict[str, Any]:
+def _enriched_string(value: Optional[str], confidence: float = 0.72, evidence: Optional[List[str]] = None) -> Dict[str, Any]:
     """Create an enriched string payload that matches the persona schema."""
 
     value = value or ""
@@ -48,11 +48,11 @@ def _enriched_string(value: Optional[str], confidence: float = 0.72) -> Dict[str
         "value": value,
         "status": status,
         "confidence": confidence,
-        "evidence": [],
+        "evidence": evidence or [],
     }
 
 
-def _enriched_text(value: Optional[str], confidence: float = 0.72) -> Dict[str, Any]:
+def _enriched_text(value: Optional[str], confidence: float = 0.72, evidence: Optional[List[str]] = None) -> Dict[str, Any]:
     """Create an enriched text payload that matches the persona schema."""
 
     value = value or ""
@@ -61,11 +61,11 @@ def _enriched_text(value: Optional[str], confidence: float = 0.72) -> Dict[str, 
         "value": value,
         "status": status,
         "confidence": confidence,
-        "evidence": [],
+        "evidence": evidence or [],
     }
 
 
-def _enriched_list(values: Optional[List[str]], confidence: float = 0.72) -> Dict[str, Any]:
+def _enriched_list(values: Optional[List[str]], confidence: float = 0.72, evidence: Optional[List[str]] = None) -> Dict[str, Any]:
     """Create an enriched list payload that matches the persona schema."""
 
     values = [v for v in values or [] if v]
@@ -74,7 +74,7 @@ def _enriched_list(values: Optional[List[str]], confidence: float = 0.72) -> Dic
         "value": values,
         "status": status,
         "confidence": confidence,
-        "evidence": [],
+        "evidence": evidence or [],
     }
 
 
@@ -1253,6 +1253,109 @@ def _fallback_persona_suggestions(brand_insights: List[Dict[str, str]]) -> Dict[
         "motivations": texts[:3],
         "beliefs": texts[3:6] or texts[:2],
         "tensions": texts[6:9] or texts[:2],
+    }
+
+
+def extract_persona_from_transcript(transcript_text: str) -> Dict[str, Any]:
+    """Map transcript text into enriched persona schema suggestions using heuristics."""
+
+    cleaned = (transcript_text or "").strip()
+    if not cleaned:
+        return {}
+
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", cleaned) if s.strip()]
+    lower_sentences = [s.lower() for s in sentences]
+
+    def _find_sentences(keywords: List[str], limit: int = 3) -> List[str]:
+        matches = []
+        for original, lower in zip(sentences, lower_sentences):
+            if any(k in lower for k in keywords):
+                matches.append(original)
+            if len(matches) >= limit:
+                break
+        return matches
+
+    def _score(matches: List[str], base: float = 0.55) -> float:
+        if not matches:
+            return 0.45
+        bump = min(len(matches), 3) * 0.08
+        return round(min(base + bump, 0.9), 2)
+
+    motivations = _find_sentences(["motivat", "drive", "goal", "want to", "hoping"], limit=4)
+    beliefs = _find_sentences(["believe", "thinks", "feels", "assume", "expects"], limit=4)
+    tensions = _find_sentences(["worry", "concern", "pain", "struggle", "challenge", "frustrated"], limit=4)
+
+    # Demographic extraction heuristics
+    age_match = re.search(r"(\d{2})\s*-?\s*year-old", cleaned.lower())
+    age_value = age_match.group(1) if age_match else ""
+    gender_value = ""
+    gender_evidence: List[str] = []
+    if any(" she " in s or s.strip().startswith("she ") for s in lower_sentences) or "female" in cleaned.lower():
+        gender_value = "Female"
+        gender_evidence = [s for s in sentences if "she" in s.lower() or "female" in s.lower()][:1]
+    elif any(" he " in s or s.strip().startswith("he ") for s in lower_sentences) or "male" in cleaned.lower():
+        gender_value = "Male"
+        gender_evidence = [s for s in sentences if "he" in s.lower() or "male" in s.lower()][:1]
+
+    location_match = re.search(r"from ([A-Z][a-zA-Z]+(?: [A-Z][a-zA-Z]+)?)", cleaned)
+    location_value = location_match.group(1) if location_match else ""
+    location_evidence = [location_match.group(0)] if location_match else []
+
+    # Summaries and synthesized insights
+    summary = " ".join(sentences[:2]) if sentences else cleaned[:200]
+    core_insight_parts = [motivations[0] if motivations else "", tensions[0] if tensions else ""]
+    core_insight = " | ".join([p for p in core_insight_parts if p])
+
+    motivation_score = _score(motivations)
+    belief_score = _score(beliefs)
+    tension_score = _score(tensions)
+
+    demographics = {
+        "age": _enriched_string(age_value, 0.62 if age_value else 0.4, [age_match.group(0)] if age_match else []),
+        "gender": _enriched_string(gender_value, 0.61 if gender_value else 0.4, gender_evidence),
+        "location": _enriched_string(location_value, 0.58 if location_value else 0.4, location_evidence),
+    }
+
+    return {
+        "schema_version": "1.0.0",
+        "summary": summary,
+        "source": {
+            "character_count": len(cleaned),
+            "sentence_count": len(sentences),
+            "excerpt": cleaned[:240],
+        },
+        "demographics": demographics,
+        "legacy": {
+            "motivations": motivations,
+            "beliefs": beliefs,
+            "tensions": tensions,
+        },
+        "core": {
+            "snapshot": {
+                "age_range": _enriched_string("", 0.52),
+                "life_context": _enriched_text(summary, 0.64, sentences[:1]),
+            },
+            "mbt": {
+                "motivation": {
+                    "primary_motivation": _enriched_string(motivations[0] if motivations else "", motivation_score, motivations[:1]),
+                    "success_definition": _enriched_text("", 0.55),
+                    "top_outcomes": _enriched_list(motivations, motivation_score, motivations),
+                },
+                "beliefs": {
+                    "core_belief_statements": _enriched_list(beliefs, belief_score, beliefs),
+                    "trust_anchors": _enriched_list([], 0.5),
+                    "attitudes_toward_pharma_marketing": _enriched_string("", 0.48),
+                    "locus_of_responsibility": _enriched_string("", 0.48),
+                },
+                "tension": {
+                    "emotional_undercurrent": _enriched_text("", 0.5),
+                    "main_worry": _enriched_string(tensions[0] if tensions else "", tension_score, tensions[:1]),
+                    "sensitivity_points": _enriched_list(tensions, tension_score, tensions),
+                    "emotional_rewards": _enriched_list([], 0.5),
+                },
+                "core_insight": _enriched_text(core_insight, 0.6, [core_insight] if core_insight else []),
+            },
+        },
     }
 
 
