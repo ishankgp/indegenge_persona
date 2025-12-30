@@ -1,8 +1,11 @@
+import json
 import os
-from pypdf import PdfReader
-from openai import OpenAI
-from typing import List, Optional, Tuple
+import tempfile
 import logging
+from typing import List, Optional, Tuple
+
+from openai import OpenAI
+from pypdf import PdfReader
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -144,18 +147,68 @@ def generate_vector_embeddings(
     brand_id: int,
     filename: str,
     chunk_size: int,
+    insights: Optional[List[dict]] = None,
 ) -> Tuple[Optional[str], List[str]]:
-    """Generate embeddings for text chunks and create a vector store when possible."""
+    """Create a vector store populated with chunked insights when possible.
+
+    The function prefers structured ``insights`` (Motivation/Belief/Tension
+    entries) for metadata-rich retrieval. If insights are unavailable, it
+    falls back to embedding raw text chunks. Returns the vector store ID and a
+    list of locally generated chunk identifiers for bookkeeping.
+    """
+
     client = _get_openai_client()
     if client is None:
         logger.warning("OpenAI API key not configured; skipping embeddings and vector store creation.")
         return None, []
 
-    if not chunks:
+    payload_entries: List[dict] = []
+
+    if insights:
+        for idx, insight in enumerate(insights):
+            text = (insight.get("text") or "").strip()
+            if not text:
+                continue
+
+            payload_entries.append(
+                {
+                    "text": text,
+                    "metadata": {
+                        "type": insight.get("type"),
+                        "segment": insight.get("segment") or "General",
+                        "source_snippet": insight.get("source_snippet") or text,
+                        "source_document": filename,
+                        "brand_id": str(brand_id),
+                        "chunk_index": idx,
+                        "chunk_size": chunk_size,
+                    },
+                }
+            )
+
+    if not payload_entries and chunks:
+        for idx, chunk in enumerate(chunks):
+            text = chunk.strip()
+            if not text:
+                continue
+            payload_entries.append(
+                {
+                    "text": text,
+                    "metadata": {
+                        "segment": "General",
+                        "source_document": filename,
+                        "brand_id": str(brand_id),
+                        "chunk_index": idx,
+                        "chunk_size": chunk_size,
+                    },
+                }
+            )
+
+    if not payload_entries:
+        logger.info("No chunks or insights available for vectorization.")
         return None, []
 
     vector_store_id: Optional[str] = None
-    chunk_ids: List[str] = []
+    chunk_ids: List[str] = [f"chunk-{idx}" for idx in range(len(payload_entries))]
 
     try:
         vector_store = client.vector_stores.create(
@@ -163,19 +216,37 @@ def generate_vector_embeddings(
             metadata={"brand_id": brand_id, "filename": filename, "chunk_size": chunk_size},
         )
         vector_store_id = getattr(vector_store, "id", None)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - log and continue gracefully
         logger.error("Error creating vector store: %s", e)
+        return None, []
 
+    temp_path = None
     try:
-        response = client.embeddings.create(
-            model="text-embedding-3-small",
-            input=chunks,
+        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".jsonl") as temp_file:
+            temp_path = temp_file.name
+            for entry in payload_entries:
+                temp_file.write(json.dumps(entry) + "\n")
+
+        with open(temp_path, "rb") as file_obj:
+            uploaded_file = client.files.create(file=file_obj, purpose="assistants")
+
+        client.vector_stores.file_batches.upload_and_poll(
+            vector_store_id=vector_store_id,
+            file_ids=[uploaded_file.id],
         )
-        chunk_ids = [
-            f"{vector_store_id or 'chunk'}-{item.index}"
-            for item in response.data
-        ]
-    except Exception as e:
-        logger.error("Error generating embeddings: %s", e)
+        logger.info("Uploaded %s entries to vector store %s", len(payload_entries), vector_store_id)
+    except Exception as e:  # noqa: BLE001 - log and cleanup
+        logger.error("Error uploading chunks to vector store %s: %s", vector_store_id, e)
+        try:
+            client.vector_stores.delete(vector_store_id)
+        except Exception as cleanup_exc:  # noqa: BLE001 - best-effort cleanup
+            logger.warning("Cleanup failed for vector store %s: %s", vector_store_id, cleanup_exc)
+        return None, []
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                logger.warning("Failed to remove temporary chunk file at %s", temp_path)
 
     return vector_store_id, chunk_ids
