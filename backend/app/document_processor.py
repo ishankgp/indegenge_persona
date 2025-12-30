@@ -1,7 +1,7 @@
 import os
 from pypdf import PdfReader
 from openai import OpenAI
-from typing import Optional
+from typing import List, Optional, Tuple
 import logging
 
 # Configure logging
@@ -9,6 +9,29 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 _openai_client: Optional[OpenAI] = None
+
+
+def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[str]:
+    """Simple text chunker to break long passages into overlapping chunks."""
+    if not text:
+        return []
+
+    if chunk_size <= overlap:
+        logger.warning("Chunk size must be larger than overlap; using non-overlapping chunks.")
+        overlap = 0
+
+    chunks: List[str] = []
+    start = 0
+    text_length = len(text)
+
+    while start < text_length:
+        end = min(text_length, start + chunk_size)
+        chunk = text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+        start += chunk_size - overlap if chunk_size > overlap else chunk_size
+
+    return chunks
 
 
 def _get_openai_client() -> Optional[OpenAI]:
@@ -113,3 +136,46 @@ def classify_document(text: str) -> str:
     except Exception as e:
         logger.error(f"Error classifying document: {e}")
         return "Unclassified (Error)"
+
+
+def generate_vector_embeddings(
+    chunks: List[str],
+    *,
+    brand_id: int,
+    filename: str,
+    chunk_size: int,
+) -> Tuple[Optional[str], List[str]]:
+    """Generate embeddings for text chunks and create a vector store when possible."""
+    client = _get_openai_client()
+    if client is None:
+        logger.warning("OpenAI API key not configured; skipping embeddings and vector store creation.")
+        return None, []
+
+    if not chunks:
+        return None, []
+
+    vector_store_id: Optional[str] = None
+    chunk_ids: List[str] = []
+
+    try:
+        vector_store = client.vector_stores.create(
+            name=f"brand-{brand_id}-{filename}",
+            metadata={"brand_id": brand_id, "filename": filename, "chunk_size": chunk_size},
+        )
+        vector_store_id = getattr(vector_store, "id", None)
+    except Exception as e:
+        logger.error("Error creating vector store: %s", e)
+
+    try:
+        response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=chunks,
+        )
+        chunk_ids = [
+            f"{vector_store_id or 'chunk'}-{item.index}"
+            for item in response.data
+        ]
+    except Exception as e:
+        logger.error("Error generating embeddings: %s", e)
+
+    return vector_store_id, chunk_ids

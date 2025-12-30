@@ -172,6 +172,9 @@ class BrandDocumentBase(BaseModel):
     category: str
     summary: Optional[str] = None
     extracted_insights: Optional[List[BrandInsight]] = None
+    vector_store_id: Optional[str] = None
+    chunk_size: Optional[int] = None
+    chunk_ids: Optional[List[str]] = None
 
 class BrandDocumentCreate(BrandDocumentBase):
     filepath: str
