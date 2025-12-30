@@ -1107,7 +1107,7 @@ async def upload_brand_document(
         chunk_size=chunk_size,
     )
 
-    # Create document record
+    # Create or replace document record while cleaning up any stale vectors
     doc_create = schemas.BrandDocumentCreate(
         brand_id=brand_id,
         filename=safe_filename,
@@ -1120,12 +1120,26 @@ async def upload_brand_document(
         chunk_ids=chunk_ids or None,
     )
 
-    return crud.create_brand_document(db, doc_create)
+    return crud.upsert_brand_document(db, doc_create)
 
 @app.get("/api/brands/{brand_id}/documents", response_model=List[schemas.BrandDocument])
 async def get_brand_documents(brand_id: int, db: Session = Depends(get_db)):
     """List documents for a specific brand."""
     return crud.get_brand_documents(db, brand_id)
+
+
+@app.delete("/api/brands/{brand_id}/documents/{document_id}", status_code=204)
+async def delete_brand_document(brand_id: int, document_id: int, db: Session = Depends(get_db)):
+    """Delete a brand document and remove any associated vectors."""
+    brand = db.query(models.Brand).filter(models.Brand.id == brand_id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    deleted = crud.delete_brand_document(db, document_id=document_id, brand_id=brand_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return Response(status_code=204)
 
 @app.get("/api/brands/{brand_id}/personas", response_model=List[schemas.Persona])
 async def get_brand_personas(
@@ -1267,7 +1281,7 @@ async def seed_brand_documents(brand_id: int, db: Session = Depends(get_db)):
             ]
         )
         
-        new_doc = crud.create_brand_document(db, doc_create)
+        new_doc = crud.upsert_brand_document(db, doc_create)
         created_docs.append(new_doc)
         
     return created_docs
