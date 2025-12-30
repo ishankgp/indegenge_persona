@@ -28,8 +28,10 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
 
   const resetPersonaState = () => {
     if (!persona) return;
+    const rawData = persona.full_persona_json;
     try {
-      setEditablePersona(JSON.parse(persona.full_persona_json));
+      const parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+      setEditablePersona(parsed || {});
     } catch {
       setEditablePersona({});
     }
@@ -136,7 +138,10 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
         brand_id: selectedBrandId,
         target_segment: targetSegment || undefined
       })
-      setEditablePersona(JSON.parse(response.full_persona_json))
+      const enrichedData = typeof response.full_persona_json === 'string'
+        ? JSON.parse(response.full_persona_json)
+        : response.full_persona_json
+      setEditablePersona(enrichedData || {})
       alert("Persona enriched with brand insights.")
     } catch (err) {
       console.error("Brand enrichment failed", err)
