@@ -49,10 +49,14 @@ def create_persona(db: Session, persona_data: schemas.PersonaCreate, persona_jso
         brand_id=persona_data.brand_id,
         full_persona_json=persona_json
     )
-    db.add(db_persona)
-    db.commit()
-    db.refresh(db_persona)
-    return db_persona
+    try:
+        db.add(db_persona)
+        db.commit()
+        db.refresh(db_persona)
+        return db_persona
+    except Exception:
+        db.rollback()
+        raise
 
 def get_persona(db: Session, persona_id: int):
     return db.query(models.Persona).filter(models.Persona.id == persona_id).first()

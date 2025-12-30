@@ -78,7 +78,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-4o
 
 # Nano Banana Pro API Key (for image improvement feature)
-IMAGE_EDIT_API_KEY=AIzaSyCphVkbjgVxTriWqfizyEDesLi7b7HT8gk
+IMAGE_EDIT_API_KEY=your_google_api_key_here
 
 # Backend Configuration (optional)
 BACKEND_HOST=0.0.0.0

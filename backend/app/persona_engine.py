@@ -17,6 +17,10 @@ load_dotenv(env_path)
 _openai_client: Optional[OpenAI] = None
 MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
 
+import threading
+
+_openai_client: Optional[OpenAI] = None
+_client_lock = threading.Lock()
 
 def get_openai_client() -> Optional[OpenAI]:
     """Return a configured ``OpenAI`` client if an API key is available."""
@@ -26,8 +30,9 @@ def get_openai_client() -> Optional[OpenAI]:
         return None
 
     global _openai_client
-    if _openai_client is None:
-        _openai_client = OpenAI(api_key=api_key)
+    with _client_lock:
+        if _openai_client is None:
+            _openai_client = OpenAI(api_key=api_key)
 
     return _openai_client
 

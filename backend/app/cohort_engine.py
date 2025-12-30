@@ -17,7 +17,10 @@ env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
 # Initialize OpenAI client lazily to avoid requiring credentials at import time
+import threading
+
 _openai_client: Optional[OpenAI] = None
+_client_lock = threading.Lock()
 MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")  # Use gpt-4o for vision capabilities
 
 
@@ -29,8 +32,9 @@ def get_openai_client() -> Optional[OpenAI]:
         return None
 
     global _openai_client
-    if _openai_client is None:
-        _openai_client = OpenAI(api_key=api_key)
+    with _client_lock:
+        if _openai_client is None:
+            _openai_client = OpenAI(api_key=api_key)
 
     return _openai_client
 

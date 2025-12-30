@@ -166,8 +166,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         try:
             preview = body[:2000].decode('utf-8', errors='replace')
             logger.error("🔴 Request body preview (first 2000 chars): %s", preview)
-        except Exception:
-            logger.error("🔴 Request body preview unavailable (binary)")
+        except (UnicodeDecodeError, AttributeError) as e:
+            logger.error("🔴 Request body preview unavailable: %s", e)
     
     return JSONResponse(
         status_code=422, 
@@ -196,9 +196,10 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 # Add CORS middleware
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for production
+    allow_origins=allowed_origins,  # Configurable via ALLOWED_ORIGINS env var
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -259,7 +260,9 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
     try:
         # Parse the persona JSON to extract additional attributes
         persona_json_parsed = json.loads(full_persona_json)
-        specialty = persona_json_parsed.get("specialty") or persona_json_parsed.get("demographics", {}).get("specialty")
+        specialty = persona_json_parsed.get("specialty")
+        if not specialty and isinstance(persona_json_parsed.get("demographics"), dict):
+            specialty = persona_json_parsed.get("demographics", {}).get("specialty")
         persona_type = persona_json_parsed.get("persona_type", "Patient")
         
         avatar_url = avatar_engine.generate_avatar(
@@ -619,13 +622,22 @@ async def analyze_multimodal_cohort(
             try:
                 parsed_weights = json.loads(metric_weights)
                 if isinstance(parsed_weights, dict):
-                    metric_weights_dict = {
-                        str(k): float(v) for k, v in parsed_weights.items() if v is not None
-                    }
+                    metric_weights_dict = {}
+                    for k, v in parsed_weights.items():
+                        if v is None:
+                            continue
+                        try:
+                            metric_weights_dict[str(k)] = float(v)
+                        except (ValueError, TypeError) as ve:
+                            raise HTTPException(status_code=400, detail=f"Invalid weight value for '{k}': {v}. Must be numeric.")
                     logger.info("✅ Parsed metric_weights: %s", metric_weights_dict)
+                else:
+                    raise HTTPException(status_code=400, detail="metric_weights must be a JSON object/dict")
             except json.JSONDecodeError as e:
                 logger.error("❌ Failed to parse metric_weights JSON: %s", e)
                 raise HTTPException(status_code=400, detail=f"Invalid metric_weights JSON: {str(e)}")
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.error("❌ Failed to normalize metric_weights: %s", e)
                 raise HTTPException(status_code=400, detail=f"Invalid metric_weights payload: {str(e)}")
