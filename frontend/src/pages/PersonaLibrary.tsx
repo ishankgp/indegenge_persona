@@ -62,6 +62,15 @@ interface Persona {
   full_persona_json: string
   created_at: string
   brand_id?: number
+  // HCP specific fields
+  specialty?: string
+  practice_setup?: string
+  system_context?: string
+  decision_influencers?: string
+  adherence_to_protocols?: string
+  channel_use?: string
+  decision_style?: string
+  core_insight?: string
 }
 
 interface Brand {
@@ -520,9 +529,8 @@ export function PersonaLibrary() {
 
     return (
       <Card
-        className={`group relative overflow-hidden border-0 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm bg-white/90 dark:bg-gray-900/90 ${
-          isSelected ? "ring-2 ring-primary/30 dark:ring-primary/50" : ""
-        }`}
+        className={`group relative overflow-hidden border-0 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm bg-white/90 dark:bg-gray-900/90 ${isSelected ? "ring-2 ring-primary/30 dark:ring-primary/50" : ""
+          }`}
       >
         {/* Gradient Border Effect */}
         <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-secondary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>

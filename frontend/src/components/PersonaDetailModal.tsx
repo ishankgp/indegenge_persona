@@ -9,7 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import BrandInsightSelector from '@/components/BrandInsightSelector';
 import type { BrandInsight, SuggestionResponse } from '@/components/BrandInsightSelector';
 import { PersonasAPI } from '@/lib/api';
-import { User, Heart, MapPin, Activity, Brain, MessageSquare, Target, Users, Calendar } from 'lucide-react';
+import { User, Heart, MapPin, Activity, Brain, MessageSquare, Target, Users, Calendar, Lightbulb, Shield, Radio, Quote } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface PersonaDetailModalProps {
   isOpen: boolean;
@@ -52,11 +53,27 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
   const createdDate = new Date(persona.created_at).toLocaleDateString();
 
   const getMBTData = () => {
-    if (personaData?.mbt) {
+    if (personaData?.core?.mbt) {
+      // Handle the nested structure from persona_engine.py
+      const mbt = personaData.core.mbt;
       return {
-        motivations: personaData.mbt.goals_motivations,
+        // Extract from motivation.top_outcomes or motivation.primary_motivation
+        motivations: getEnrichedValue(mbt.motivation?.top_outcomes) ||
+          [getEnrichedValue(mbt.motivation?.primary_motivation)].filter(Boolean),
+
+        // Extract from beliefs.core_belief_statements
+        beliefs: getEnrichedValue(mbt.beliefs?.core_belief_statements),
+
+        // Extract from tension.sensitivity_points or tension.main_worry
+        pain_points: getEnrichedValue(mbt.tension?.sensitivity_points) ||
+          [getEnrichedValue(mbt.tension?.main_worry)].filter(Boolean),
+      }
+    } else if (personaData?.mbt) {
+      // Handle legacy/flat MBT structure if it exists
+      return {
+        motivations: personaData.mbt.goals_motivations || personaData.mbt.motivations,
         beliefs: personaData.mbt.beliefs,
-        pain_points: personaData.mbt.tensions_and_pain_points,
+        pain_points: personaData.mbt.tensions_and_pain_points || personaData.mbt.pain_points,
       }
     }
 
@@ -68,6 +85,75 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
   }
 
   const mbtData = getMBTData()
+
+  // Helper to extract value from enriched field structure
+  const getEnrichedValue = (field: any): string[] | string => {
+    if (!field) return [];
+    if (Array.isArray(field)) return field;
+    if (typeof field === 'object' && 'value' in field) {
+      return field.value;
+    }
+    if (typeof field === 'string') return field;
+    return [];
+  }
+
+  // Helper to extract evidence from enriched field
+  const getEvidence = (field: any): string[] => {
+    if (!field) return [];
+    if (typeof field === 'object' && 'evidence' in field) {
+      return Array.isArray(field.evidence) ? field.evidence : [];
+    }
+    return [];
+  }
+
+  // Get core enriched data
+  const getCoreData = () => {
+    const core = personaData?.core || {};
+    return {
+      decisionDrivers: core?.decision_drivers?.ranked_drivers || [],
+      tieBreakers: getEnrichedValue(core?.decision_drivers?.tie_breakers),
+      messagingWhatLands: getEnrichedValue(core?.messaging?.what_lands),
+      messagingWhatLandsEvidence: getEvidence(core?.messaging?.what_lands),
+      messagingWhatFails: getEnrichedValue(core?.messaging?.what_fails),
+      messagingWhatFailsEvidence: getEvidence(core?.messaging?.what_fails),
+      preferredVoice: getEnrichedValue(core?.messaging?.preferred_voice),
+      objections: getEnrichedValue(core?.barriers_objections?.objections),
+      objectionsEvidence: getEvidence(core?.barriers_objections?.objections),
+      practicalBarriers: getEnrichedValue(core?.barriers_objections?.practical_barriers),
+      practicalBarriersEvidence: getEvidence(core?.barriers_objections?.practical_barriers),
+      perceptualBarriers: getEnrichedValue(core?.barriers_objections?.perceptual_barriers),
+      perceptualBarriersEvidence: getEvidence(core?.barriers_objections?.perceptual_barriers),
+      preferredSources: getEnrichedValue(core?.channel_behavior?.preferred_sources),
+      preferredSourcesEvidence: getEvidence(core?.channel_behavior?.preferred_sources),
+      engagementDepth: getEnrichedValue(core?.channel_behavior?.engagement_depth),
+      visitBehavior: getEnrichedValue(core?.channel_behavior?.visit_behavior),
+      digitalHabits: getEnrichedValue(core?.channel_behavior?.digital_habits),
+    };
+  }
+
+  const coreData = getCoreData();
+
+  // Component to display a list item with optional evidence tooltip
+  const ListItemWithEvidence = ({ item, evidence, color = "bg-gray-500" }: { item: string; evidence?: string; color?: string }) => (
+    <div className="flex items-start gap-2">
+      <div className={`w-2 h-2 ${color} rounded-full mt-2 flex-shrink-0`}></div>
+      <p className="text-base flex-1">{item}</p>
+      {evidence && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button className="text-blue-500 hover:text-blue-700 flex-shrink-0">
+                <Quote className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm">
+              <p className="text-sm italic">"{evidence}"</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+    </div>
+  );
 
   const updateMbtField = (field: "motivations" | "beliefs" | "pain_points", value: string) => {
     const entries = value.split("\n").map(item => item.trim()).filter(Boolean)
@@ -486,6 +572,195 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                 </CardContent>
               </Card>
             )}
+
+            {/* Decision Drivers */}
+            {(coreData.decisionDrivers.length > 0 || (Array.isArray(coreData.tieBreakers) && coreData.tieBreakers.length > 0)) && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Lightbulb className="h-4 w-4 text-primary" />
+                    Decision Drivers
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {coreData.decisionDrivers.length > 0 && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-600">Ranked Factors</label>
+                      {coreData.decisionDrivers.map((driver: any, idx: number) => (
+                        <div key={idx} className="flex items-start gap-3 p-2 bg-gray-50 rounded-lg">
+                          <Badge variant="outline" className="flex-shrink-0">#{driver.rank || idx + 1}</Badge>
+                          <div>
+                            <p className="font-medium">{driver.driver}</p>
+                            {driver.detail && <p className="text-sm text-gray-600">{driver.detail}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {Array.isArray(coreData.tieBreakers) && coreData.tieBreakers.length > 0 && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-600">Tie Breakers</label>
+                      {coreData.tieBreakers.map((tb: string, idx: number) => (
+                        <ListItemWithEvidence key={idx} item={tb} color="bg-yellow-500" />
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Messaging Hooks */}
+            {((Array.isArray(coreData.messagingWhatLands) && coreData.messagingWhatLands.length > 0) ||
+              (Array.isArray(coreData.messagingWhatFails) && coreData.messagingWhatFails.length > 0) ||
+              coreData.preferredVoice) && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4 text-primary" />
+                      Messaging Hooks
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {Array.isArray(coreData.messagingWhatLands) && coreData.messagingWhatLands.length > 0 && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-green-700">✓ What Resonates</label>
+                        {coreData.messagingWhatLands.map((item: string, idx: number) => (
+                          <ListItemWithEvidence
+                            key={idx}
+                            item={item}
+                            evidence={coreData.messagingWhatLandsEvidence[idx]}
+                            color="bg-green-500"
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {Array.isArray(coreData.messagingWhatFails) && coreData.messagingWhatFails.length > 0 && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-red-700">✗ What Fails</label>
+                        {coreData.messagingWhatFails.map((item: string, idx: number) => (
+                          <ListItemWithEvidence
+                            key={idx}
+                            item={item}
+                            evidence={coreData.messagingWhatFailsEvidence[idx]}
+                            color="bg-red-500"
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {coreData.preferredVoice && (
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Preferred Voice/Tone</label>
+                        <p className="text-base mt-1">{coreData.preferredVoice}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+            {/* Barriers & Objections */}
+            {((Array.isArray(coreData.objections) && coreData.objections.length > 0) ||
+              (Array.isArray(coreData.practicalBarriers) && coreData.practicalBarriers.length > 0) ||
+              (Array.isArray(coreData.perceptualBarriers) && coreData.perceptualBarriers.length > 0)) && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-primary" />
+                      Barriers & Objections
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {Array.isArray(coreData.objections) && coreData.objections.length > 0 && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-600">Direct Objections</label>
+                        {coreData.objections.map((item: string, idx: number) => (
+                          <ListItemWithEvidence
+                            key={idx}
+                            item={item}
+                            evidence={coreData.objectionsEvidence[idx]}
+                            color="bg-orange-500"
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {Array.isArray(coreData.practicalBarriers) && coreData.practicalBarriers.length > 0 && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-600">Practical Barriers</label>
+                        <p className="text-xs text-gray-500 mb-1">Cost, access, time, insurance</p>
+                        {coreData.practicalBarriers.map((item: string, idx: number) => (
+                          <ListItemWithEvidence
+                            key={idx}
+                            item={item}
+                            evidence={coreData.practicalBarriersEvidence[idx]}
+                            color="bg-amber-500"
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {Array.isArray(coreData.perceptualBarriers) && coreData.perceptualBarriers.length > 0 && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-600">Perceptual Barriers</label>
+                        <p className="text-xs text-gray-500 mb-1">Trust issues, skepticism, fears</p>
+                        {coreData.perceptualBarriers.map((item: string, idx: number) => (
+                          <ListItemWithEvidence
+                            key={idx}
+                            item={item}
+                            evidence={coreData.perceptualBarriersEvidence[idx]}
+                            color="bg-red-400"
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+            {/* Channel Behavior */}
+            {((Array.isArray(coreData.preferredSources) && coreData.preferredSources.length > 0) ||
+              coreData.engagementDepth ||
+              coreData.visitBehavior ||
+              coreData.digitalHabits) && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Radio className="h-4 w-4 text-primary" />
+                      Channel Behavior
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {Array.isArray(coreData.preferredSources) && coreData.preferredSources.length > 0 && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-600">Preferred Information Sources</label>
+                        {coreData.preferredSources.map((item: string, idx: number) => (
+                          <ListItemWithEvidence
+                            key={idx}
+                            item={item}
+                            evidence={coreData.preferredSourcesEvidence[idx]}
+                            color="bg-blue-500"
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {coreData.engagementDepth && (
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Engagement Depth</label>
+                        <p className="text-base mt-1">{coreData.engagementDepth}</p>
+                      </div>
+                    )}
+                    {coreData.visitBehavior && (
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Visit Behavior</label>
+                        <p className="text-base mt-1">{coreData.visitBehavior}</p>
+                      </div>
+                    )}
+                    {coreData.digitalHabits && (
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Digital Habits</label>
+                        <p className="text-base mt-1">{coreData.digitalHabits}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
             {/* Communication Preferences */}
             {personaData.communication_preferences && (

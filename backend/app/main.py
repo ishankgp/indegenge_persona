@@ -18,7 +18,7 @@ from datetime import datetime
 
 # Note: dotenv loading removed - pass environment variables directly
 
-from . import crud, models, schemas, persona_engine, cohort_engine, document_processor, avatar_engine, image_improvement, image_improvement, vector_search
+from . import crud, models, schemas, persona_engine, cohort_engine, document_processor, avatar_engine, image_improvement, vector_search
 from .database import engine, get_db
 import shutil
 
