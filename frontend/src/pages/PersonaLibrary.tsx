@@ -55,6 +55,7 @@ interface Persona {
   name: string
   avatar_url?: string
   persona_type: string
+  persona_subtype?: string
   age: number
   gender: string
   condition: string
@@ -577,10 +578,13 @@ export function PersonaLibrary() {
                 )}
               </div>
               <div>
-                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-gray-100 group-hover:text-primary transition-colors">
-                  {persona.name}
+                <CardTitle className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-600 to-purple-600 dark:from-violet-400 dark:to-purple-400">
+                  {persona.persona_subtype || 'Patient'}
                 </CardTitle>
-                <CardDescription className="text-sm flex items-center gap-2 mt-1">
+                <CardDescription className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                  {persona.name}
+                </CardDescription>
+                <CardDescription className="text-xs flex items-center gap-2 mt-0.5 text-gray-500">
                   <span>{persona.age} years</span>
                   <Separator orientation="vertical" className="h-3" />
                   <span>{persona.gender}</span>

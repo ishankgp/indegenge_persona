@@ -50,7 +50,36 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
   if (!persona) return null;
 
   const personaData = editablePersona;
-  const createdDate = new Date(persona.created_at).toLocaleDateString();
+  const createdDate = persona.created_at 
+    ? (() => {
+        try {
+          const date = new Date(persona.created_at);
+          return isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString();
+        } catch {
+          return 'N/A';
+        }
+      })()
+    : 'N/A';
+
+  // Helper to extract value from enriched field structure
+  const getEnrichedValue = (field: any): string[] | string => {
+    if (!field) return [];
+    if (Array.isArray(field)) return field;
+    if (typeof field === 'object' && 'value' in field) {
+      return field.value;
+    }
+    if (typeof field === 'string') return field;
+    return [];
+  }
+
+  // Helper to extract evidence from enriched field
+  const getEvidence = (field: any): string[] => {
+    if (!field) return [];
+    if (typeof field === 'object' && 'evidence' in field) {
+      return Array.isArray(field.evidence) ? field.evidence : [];
+    }
+    return [];
+  }
 
   const getMBTData = () => {
     if (personaData?.core?.mbt) {
@@ -85,26 +114,6 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
   }
 
   const mbtData = getMBTData()
-
-  // Helper to extract value from enriched field structure
-  const getEnrichedValue = (field: any): string[] | string => {
-    if (!field) return [];
-    if (Array.isArray(field)) return field;
-    if (typeof field === 'object' && 'value' in field) {
-      return field.value;
-    }
-    if (typeof field === 'string') return field;
-    return [];
-  }
-
-  // Helper to extract evidence from enriched field
-  const getEvidence = (field: any): string[] => {
-    if (!field) return [];
-    if (typeof field === 'object' && 'evidence' in field) {
-      return Array.isArray(field.evidence) ? field.evidence : [];
-    }
-    return [];
-  }
 
   // Get core enriched data
   const getCoreData = () => {
@@ -246,7 +255,7 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
               <div className="p-2 bg-primary/10 rounded-lg">
                 <User className="h-6 w-6 text-primary" />
               </div>
-              {persona.name}
+              {persona.name || 'Unknown Persona'}
             </DialogTitle>
             <DialogDescription>
               Complete persona profile • Created on {createdDate}
@@ -305,24 +314,31 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
               <CardContent className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium text-gray-600">Age</label>
-                  <p className="text-base">{persona.age} years old</p>
+                  <p className="text-base">{persona.age || 'N/A'} years old</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-600">Gender</label>
-                  <p className="text-base">{persona.gender}</p>
+                  <p className="text-base">{persona.gender || 'N/A'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-600">Location</label>
                   <p className="text-base flex items-center gap-1">
                     <MapPin className="h-3 w-3 text-blue-600" />
-                    {persona.location}
+                    {persona.location || 'N/A'}
                   </p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-600">Condition</label>
                   <p className="text-base flex items-center gap-1">
                     <Heart className="h-3 w-3 text-red-600" />
-                    {persona.condition}
+                    {persona.condition || 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Archetype</label>
+                  <p className="text-base flex items-center gap-1">
+                    <Users className="h-3 w-3 text-violet-600" />
+                    {persona.persona_subtype || 'N/A'}
                   </p>
                 </div>
               </CardContent>
@@ -476,7 +492,15 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                             <p className="text-base">{motivation}</p>
                           </div>
                         ))
-                        : Object.entries(mbtData.motivations).map(([key, value]) => (
+                        : typeof mbtData.motivations === 'string'
+                        ? (
+                          <div className="flex items-start gap-2">
+                            <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+                            <p className="text-base">{mbtData.motivations}</p>
+                          </div>
+                        )
+                        : typeof mbtData.motivations === 'object' && mbtData.motivations !== null
+                        ? Object.entries(mbtData.motivations).map(([key, value]) => (
                           <div key={key}>
                             <label className="text-sm font-medium text-gray-600 capitalize">
                               {key.replace(/_/g, ' ')}
@@ -484,6 +508,7 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                             <p className="text-base">{value as string}</p>
                           </div>
                         ))
+                        : null
                       }
                     </div>
                   )}
@@ -517,7 +542,15 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                             <p className="text-base">{belief}</p>
                           </div>
                         ))
-                        : Object.entries(mbtData.beliefs).map(([key, value]) => (
+                        : typeof mbtData.beliefs === 'string'
+                        ? (
+                          <div className="flex items-start gap-2">
+                            <div className="w-2 h-2 bg-purple-500 rounded-full mt-2"></div>
+                            <p className="text-base">{mbtData.beliefs}</p>
+                          </div>
+                        )
+                        : typeof mbtData.beliefs === 'object' && mbtData.beliefs !== null
+                        ? Object.entries(mbtData.beliefs).map(([key, value]) => (
                           <div key={key}>
                             <label className="text-sm font-medium text-gray-600 capitalize">
                               {key.replace(/_/g, ' ')}
@@ -525,6 +558,7 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                             <p className="text-base">{value as string}</p>
                           </div>
                         ))
+                        : null
                       }
                     </div>
                   )}
@@ -558,7 +592,15 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                             <p className="text-base">{point}</p>
                           </div>
                         ))
-                        : Object.entries(mbtData.pain_points).map(([key, value]) => (
+                        : typeof mbtData.pain_points === 'string'
+                        ? (
+                          <div className="flex items-start gap-2">
+                            <div className="w-2 h-2 bg-red-500 rounded-full mt-2"></div>
+                            <p className="text-base">{mbtData.pain_points}</p>
+                          </div>
+                        )
+                        : typeof mbtData.pain_points === 'object' && mbtData.pain_points !== null
+                        ? Object.entries(mbtData.pain_points).map(([key, value]) => (
                           <div key={key}>
                             <label className="text-sm font-medium text-gray-600 capitalize">
                               {key.replace(/_/g, ' ')}
@@ -566,6 +608,7 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                             <p className="text-base">{value as string}</p>
                           </div>
                         ))
+                        : null
                       }
                     </div>
                   )}
@@ -855,7 +898,7 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-600">Type</label>
-                    <p className="text-base">{persona.persona_type}</p>
+                    <p className="text-base">{persona.persona_type || 'N/A'}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-600">Created</label>
