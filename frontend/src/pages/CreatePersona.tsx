@@ -2,7 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { PersonasAPI, BrandsAPI } from "@/lib/api"
+import { PersonasAPI, BrandsAPI, ArchetypesAPI, DiseasePacksAPI } from "@/lib/api"
+import type { Archetype, DiseasePack } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -94,10 +95,14 @@ export function CreatePersona() {
     condition: urlCondition || '',
     region: '',
     concerns: "",
-    count: '1'
+    count: '1',
+    archetype: '',
+    disease: ''
   })
 
   const [brands, setBrands] = useState<BrandOption[]>([])
+  const [archetypes, setArchetypes] = useState<Archetype[]>([])
+  const [diseasePacks, setDiseasePacks] = useState<DiseasePack[]>([])
   const [manualSelectedInsights, setManualSelectedInsights] = useState<BrandInsight[]>([])
   const [manualSuggestions, setManualSuggestions] = useState<SuggestionResponse | null>(null)
   const [manualBrandId, setManualBrandId] = useState<number | null>(urlBrandId ? parseInt(urlBrandId) : null)
@@ -256,15 +261,21 @@ export function CreatePersona() {
   }
 
   useEffect(() => {
-    const fetchBrands = async () => {
+    const fetchData = async () => {
       try {
-        const data = await BrandsAPI.list()
-        setBrands(data)
+        const [brandsData, archetypesData, diseasesData] = await Promise.all([
+          BrandsAPI.list(),
+          ArchetypesAPI.list(),
+          DiseasePacksAPI.list()
+        ])
+        setBrands(brandsData)
+        setArchetypes(archetypesData)
+        setDiseasePacks(diseasesData)
       } catch (err) {
-        console.error("Failed to load brands", err)
+        console.error("Failed to load initial data", err)
       }
     }
-    fetchBrands()
+    fetchData()
   }, [])
 
   const handleManualInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -303,9 +314,17 @@ export function CreatePersona() {
   }
 
   const handleAiSelectChange = (name: string, value: string) => {
-    setAiFormData({
-      ...aiFormData,
-      [name]: value
+    setAiFormData(prev => {
+      const updates: any = { [name]: value }
+
+      // Auto-fill logic for Disease Packs
+      if (name === 'disease') {
+        const pack = diseasePacks.find(d => d.name === value)
+        if (pack) {
+          updates.condition = pack.condition
+        }
+      }
+      return { ...prev, ...updates }
     })
   }
 
@@ -519,7 +538,9 @@ export function CreatePersona() {
         condition: aiFormData.condition,
         location: aiFormData.region,
         concerns: aiFormData.concerns,
-        brand_id: aiBrandId || undefined
+        brand_id: aiBrandId || undefined,
+        archetype: aiFormData.archetype || undefined,
+        disease: aiFormData.disease || undefined
       }
 
       const createdPersonas = []
@@ -551,7 +572,9 @@ export function CreatePersona() {
         condition: '',
         region: '',
         concerns: '',
-        count: '1'
+        count: '1',
+        archetype: '',
+        disease: ''
       })
       setGenerationProgress({ current: 0, total: 0 })
       setRecentlyCreated({
@@ -1116,6 +1139,60 @@ export function CreatePersona() {
                 {renderCompletenessMeter(aiFieldStatuses, "AI persona completeness")}
 
                 <form onSubmit={handleAiSubmit} className="space-y-6">
+                  {/* Layer Selection Section */}
+                  <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-6 dark:border-indigo-900/50 dark:bg-indigo-950/20">
+                    <h3 className="mb-4 text-base font-semibold text-indigo-900 dark:text-indigo-100 flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-indigo-500" />
+                      Persona Foundation Layers (Optional)
+                    </h3>
+                    <div className="grid gap-6 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="ai-archetype" className="text-sm font-medium">Archetype Base</Label>
+                        <Select name="archetype" value={aiFormData.archetype} onValueChange={(value) => handleAiSelectChange('archetype', value)}>
+                          <SelectTrigger className="bg-white dark:bg-gray-900 border-indigo-200 dark:border-indigo-800">
+                            <SelectValue placeholder="Select an archetype..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None (Standard Generation)</SelectItem>
+                            {archetypes.map((arch) => (
+                              <SelectItem key={arch.name} value={arch.name}>
+                                {arch.name} ({arch.persona_type})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {aiFormData.archetype && (
+                          <p className="text-xs text-indigo-700 dark:text-indigo-300">
+                            {archetypes.find(a => a.name === aiFormData.archetype)?.description}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="ai-disease" className="text-sm font-medium">Disease Context Pack</Label>
+                        <Select name="disease" value={aiFormData.disease} onValueChange={(value) => handleAiSelectChange('disease', value)}>
+                          <SelectTrigger className="bg-white dark:bg-gray-900 border-indigo-200 dark:border-indigo-800">
+                            <SelectValue placeholder="Select disease context..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {diseasePacks.map((pack) => (
+                              <SelectItem key={pack.name} value={pack.name}>
+                                {pack.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {aiFormData.disease && (
+                          <p className="text-xs text-indigo-700 dark:text-indigo-300">
+                            Auto-fills condition: {diseasePacks.find(d => d.name === aiFormData.disease)?.condition}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator className="my-6" />
                   <div className="grid gap-6 md:grid-cols-3">
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">

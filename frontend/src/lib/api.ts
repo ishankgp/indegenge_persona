@@ -230,49 +230,49 @@ export const PersonasAPI = {
   createManual: (payload: any) => api.post('/personas/manual', payload).then(r => r.data),
   delete: (id: number) => api.delete(`/personas/${id}`),
   recruit: (prompt: string) => api.post('/personas/recruit', { prompt }).then(r => r.data),
-  update: (id: number, payload: PersonaUpdatePayload) => 
+  update: (id: number, payload: PersonaUpdatePayload) =>
     api.put(`/personas/${id}`, payload).then(r => r.data),
-  
+
   // Save with field confirmation - marks edited fields as confirmed
-  saveWithConfirmation: (id: number, payload: PersonaUpdatePayload, confirmedFields: string[]) => 
+  saveWithConfirmation: (id: number, payload: PersonaUpdatePayload, confirmedFields: string[]) =>
     api.put(`/personas/${id}`, {
       ...payload,
       confirm_fields: confirmedFields,
     }).then(r => r.data),
-  
+
   // Update specific fields with status tracking
   updateFields: (id: number, fieldUpdates: Record<string, PersonaFieldUpdate>, confirmFields?: string[]) =>
     api.put(`/personas/${id}`, {
       field_updates: fieldUpdates,
       confirm_fields: confirmFields,
     }).then(r => r.data),
-  
+
   enrichFromBrand: (id: number, payload: { brand_id: number; target_segment?: string; target_fields?: string[] }) =>
     api.post(`/personas/${id}/enrich-from-brand`, payload).then(r => r.data),
   regenerateAvatar: (id: number) => api.post(`/personas/${id}/regenerate-avatar`).then(r => r.data),
-  
+
   // Enhanced transcript extraction with LLM and quote verification
   extractFromTranscript: (
     payload: FormData | { transcript_text: string },
     options: TranscriptExtractionOptions = { use_llm: true, verify_quotes: true }
   ): Promise<TranscriptSuggestions> => {
     const formData = payload instanceof FormData ? payload : new FormData();
-    
+
     if (!(payload instanceof FormData)) {
       formData.append('transcript_text', payload.transcript_text);
     }
-    
+
     // Add extraction options
     formData.append('use_llm', String(options.use_llm ?? true));
     formData.append('verify_quotes', String(options.verify_quotes ?? true));
-    
+
     return api.post('/personas/from-transcript', formData).then(r => r.data);
   },
-  
+
   // Export persona for simulation
   exportForSimulation: (id: number, includeEvidence: boolean = true): Promise<PersonaExport> =>
-    api.get(`/personas/${id}/export`, { 
-      params: { include_evidence: includeEvidence } 
+    api.get(`/personas/${id}/export`, {
+      params: { include_evidence: includeEvidence }
     }).then(r => r.data),
 };
 
@@ -321,6 +321,28 @@ export const BrandsAPI = {
     api.post<BrandSuggestionResponse>(`/api/brands/${brandId}/persona-suggestions`, payload).then(r => r.data),
   enrichPersona: (personaId: number, payload: { brand_id: number; target_segment?: string; target_fields?: string[] }) =>
     api.post(`/personas/${personaId}/enrich-from-brand`, payload).then(r => r.data)
+};
+
+export interface Archetype {
+  name: string;
+  persona_type: string;
+  description: string;
+  motivations: string[];
+  beliefs: string[];
+  pain_points: string[];
+}
+
+export interface DiseasePack {
+  name: string;
+  condition: string;
+}
+
+export const ArchetypesAPI = {
+  list: () => api.get<Archetype[]>('/api/archetypes').then(r => r.data)
+};
+
+export const DiseasePacksAPI = {
+  list: () => api.get<DiseasePack[]>('/api/disease-packs').then(r => r.data)
 };
 
 export const CohortAPI = {

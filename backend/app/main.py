@@ -19,6 +19,7 @@ from datetime import datetime
 # Note: dotenv loading removed - pass environment variables directly
 
 from . import crud, models, schemas, persona_engine, cohort_engine, document_processor, avatar_engine, image_improvement, vector_search
+from . import archetypes, disease_packs
 from .database import engine, get_db
 import shutil
 
@@ -253,7 +254,16 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
         aggregated = _aggregate_brand_insights(documents, target_segment=None, limit_per_category=5)
         brand_insights = _flatten_insights(aggregated)
     
-    # 1. Call the persona engine to generate the full persona JSON
+    # 1. Get Archetype and Disease Context if provided
+    archetype_data = None
+    if persona_data.archetype:
+        archetype_data = archetypes.get_archetype_by_name(persona_data.archetype)
+
+    disease_data = None
+    if persona_data.disease:
+        disease_data = disease_packs.get_disease_pack(persona_data.disease)
+
+    # 2. Call the persona engine to generate the full persona JSON
     # If brand insights exist, include them in generation
     full_persona_json = persona_engine.generate_persona_from_attributes(
         age=persona_data.age,
@@ -261,6 +271,8 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
         condition=persona_data.condition,
         location=persona_data.location,
         concerns=persona_data.concerns,
+        archetype=archetype_data,
+        disease_context=disease_data,
         brand_insights=brand_insights
     )
     
@@ -274,7 +286,17 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
         persona_json=full_persona_json
     )
     
-    # 3. Generate avatar using DALL-E 3
+    # 3. Post-creation updates (Archetype tagging and Avatar)
+    updates_needed = False
+    
+    if archetype_data:
+        new_persona.persona_subtype = archetype_data.get("name")
+        # Ensure correct type is set if archetype dictates it
+        if archetype_data.get("persona_type"):
+            new_persona.persona_type = archetype_data.get("persona_type")
+        updates_needed = True
+
+    # Generate avatar using DALL-E 3
     try:
         # Parse the persona JSON to extract additional attributes
         persona_json_parsed = json.loads(full_persona_json)
@@ -295,12 +317,16 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
         if avatar_url:
             # Update the persona with the avatar URL
             new_persona.avatar_url = avatar_url
-            db.commit()
-            db.refresh(new_persona)
+            updates_needed = True
             logger.info(f"✅ Avatar generated for persona {new_persona.id}: {avatar_url[:50]}...")
+            
     except Exception as avatar_error:
         logger.warning(f"⚠️ Avatar generation failed for persona {new_persona.id}: {avatar_error}")
         # Don't fail the request if avatar generation fails - persona is still created
+    
+    if updates_needed:
+        db.commit()
+        db.refresh(new_persona)
     
     return new_persona
 
