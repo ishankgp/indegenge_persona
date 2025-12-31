@@ -18,8 +18,9 @@ An enterprise-grade AI-powered pharmaceutical persona simulation platform that t
 
 ### 1. **AI-Powered Persona Generation**
 - Generate detailed HCP (Healthcare Professional) and patient personas using GPT-4
-- Rich psychological profiles including motivations, barriers, and decision-making patterns
-- Automatic segmentation by demographics, specialty, and treatment preferences
+- **Rich HCP Profiles**: Includes specialty, practice setup, patient volume, decision influencers, and adherence to protocols
+- **Deep Patient Profiles**: Includes medical history, lifestyle context, motivations, beliefs (MBT framework), and channel preferences
+- Automatic segmentation by demographics, condition, and behavioral attributes
 
 ### 2. **Brand Library & Knowledge Management**
 - Upload and organize brand documents across 7 knowledge pillars:
@@ -218,10 +219,12 @@ pharmapersonasim/
 - **FastAPI** 0.104.1: Modern, high-performance Python web framework
 - **SQLAlchemy** 2.0.23: SQL toolkit and Object-Relational Mapping
 - **OpenAI API** >=1.30.0: GPT-4 integration for persona generation and analysis
+- **Google GenAI** >=0.2.0: Gemini integration for additional AI capabilities
 - **Pydantic** 2.5.0: Data validation and settings management
 - **Uvicorn**: Lightning-fast ASGI server
 - **python-multipart**: File upload handling
-- **PyPDF2**: PDF document processing
+- **pypdf** 3.17.0: PDF document processing
+- **Pillow** >=10.0.0: Image processing support
 
 ### Frontend
 - **React** 19.1.1: Modern UI framework with hooks
