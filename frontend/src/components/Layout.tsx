@@ -81,7 +81,7 @@ const guidedFlow = [
     href: '/create-persona',
   },
   {
-    title: 'Review & Compare',
+    title: 'Persona Library',
     description: 'Manage and compare personas in the library.',
     href: '/personas',
   },
@@ -195,55 +195,55 @@ export function Layout() {
               );
             })}
           </div>
-        </nav>
 
-        {/* Guided user flow */}
-        <div className="px-3 pb-4">
-          <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-4 shadow-inner">
-            <button 
-              onClick={() => setIsGuidedFlowOpen(!isGuidedFlowOpen)}
-              className="w-full flex items-center justify-between gap-2 group cursor-pointer"
-            >
-              <div className="text-left">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-white/60 group-hover:text-white/80 transition-colors">Suggested flow</p>
-                {isGuidedFlowOpen && (
-                  <>
-                    <p className="text-sm font-medium text-white">Tell the persona story</p>
-                    <p className="text-xs text-white/60">Step-by-step guide</p>
-                  </>
+          <div className="mt-6 mb-2 px-2 border-t border-white/10 pt-4">
+            {/* Guided user flow */}
+            <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-4 shadow-inner">
+              <button
+                onClick={() => setIsGuidedFlowOpen(!isGuidedFlowOpen)}
+                className="w-full flex items-center justify-between gap-2 group cursor-pointer"
+              >
+                <div className="text-left">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-white/60 group-hover:text-white/80 transition-colors">Suggested flow</p>
+                  {isGuidedFlowOpen && (
+                    <>
+                      <p className="text-sm font-medium text-white">Tell the persona story</p>
+                      <p className="text-xs text-white/60">Step-by-step guide</p>
+                    </>
+                  )}
+                </div>
+                {isGuidedFlowOpen ? (
+                  <ChevronDown className="h-4 w-4 text-white/40" />
+                ) : (
+                  <ChevronUp className="h-4 w-4 text-white/40" />
                 )}
-              </div>
-              {isGuidedFlowOpen ? (
-                <ChevronDown className="h-4 w-4 text-white/40" />
-              ) : (
-                <ChevronUp className="h-4 w-4 text-white/40" />
-              )}
-            </button>
+              </button>
 
-            {isGuidedFlowOpen && (
-              <div className="mt-4 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                {guidedFlow.map((step, index) => (
-                  <Link
-                    to={step.href}
-                    key={step.title}
-                    className="group flex items-start gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/10"
-                  >
-                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] font-semibold text-white">
-                      {index + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-white truncate">{step.title}</p>
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300 opacity-0 transition-opacity group-hover:opacity-100" />
+              {isGuidedFlowOpen && (
+                <div className="mt-4 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                  {guidedFlow.map((step, index) => (
+                    <Link
+                      to={step.href}
+                      key={step.title}
+                      className="group flex items-start gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/10"
+                    >
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] font-semibold text-white">
+                        {index + 1}
                       </div>
-                      <p className="text-xs text-white/60 line-clamp-2">{step.description}</p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-white truncate">{step.title}</p>
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300 opacity-0 transition-opacity group-hover:opacity-100" />
+                        </div>
+                        <p className="text-xs text-white/60 line-clamp-2">{step.description}</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        </nav>
 
         {/* Sidebar Footer - API Status */}
         <div className="p-4 border-t border-white/10">

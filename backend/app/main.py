@@ -426,6 +426,14 @@ async def get_all_personas(
         personas = crud.get_personas(db, skip=skip, limit=limit)
     return personas
 
+@app.get("/api/personas/{persona_id}", response_model=schemas.Persona)
+def get_persona(persona_id: int, db: Session = Depends(get_db)):
+    """Get a single persona by ID"""
+    persona = db.query(models.Persona).filter(models.Persona.id == persona_id).first()
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    return persona
+
 @app.put("/api/personas/{persona_id}", response_model=schemas.Persona)
 async def update_persona_endpoint(
     persona_id: int,

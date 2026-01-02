@@ -4,7 +4,6 @@ import { PersonasAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Brain, Target, Shield, MessageSquare, Activity, AlertTriangle, AlertCircle } from 'lucide-react';
-import { Separator } from '@/components/ui/separator';
 
 interface ComparisonRowProps {
   label: string;
@@ -50,7 +49,7 @@ export function ComparePersonas() {
 
   useEffect(() => {
     console.log("ComparePersonas mounted. State:", location.state);
-    
+
     if (!personaIds || personaIds.length === 0) {
       console.warn("No persona IDs found in state, redirecting...");
       navigate('/personas');
@@ -61,15 +60,15 @@ export function ComparePersonas() {
       try {
         setLoading(true);
         console.log("Fetching personas:", personaIds);
-        
+
         // Use allSettled to prevent one failure from breaking everything
         const promises = personaIds.map(id => PersonasAPI.get(id));
         const results = await Promise.allSettled(promises);
-        
+
         const successfulPersonas = results
           .filter(r => r.status === 'fulfilled')
           .map(r => (r as PromiseFulfilledResult<any>).value);
-          
+
         const failures = results.filter(r => r.status === 'rejected');
         if (failures.length > 0) {
           console.error("Some personas failed to load:", failures);
@@ -118,10 +117,10 @@ export function ComparePersonas() {
   // Helper to extract nested data safely
   const getField = (persona: any, path: string) => {
     try {
-      const data = typeof persona.full_persona_json === 'string' 
-        ? JSON.parse(persona.full_persona_json) 
+      const data = typeof persona.full_persona_json === 'string'
+        ? JSON.parse(persona.full_persona_json)
         : persona.full_persona_json;
-        
+
       return path.split('.').reduce((obj, key) => obj?.[key], data);
     } catch {
       return null;
@@ -168,45 +167,45 @@ export function ComparePersonas() {
             </thead>
             <tbody>
               {/* Comparison Sections */}
-              <ComparisonRow 
-                label="Condition" 
+              <ComparisonRow
+                label="Condition"
                 icon={<Activity className="h-4 w-4" />}
-                data={personas.map(p => p.condition)} 
+                data={personas.map(p => p.condition)}
               />
-              <ComparisonRow 
-                label="Location" 
+              <ComparisonRow
+                label="Location"
                 icon={<Target className="h-4 w-4" />}
-                data={personas.map(p => p.location)} 
+                data={personas.map(p => p.location)}
               />
 
-              <ComparisonRow 
-                label="Primary Motivation" 
+              <ComparisonRow
+                label="Primary Motivation"
                 icon={<Brain className="h-4 w-4 text-green-500" />}
                 type="list"
-                data={personas.map(p => getField(p, 'motivations') || [])} 
+                data={personas.map(p => getField(p, 'motivations') || [])}
               />
-              
-              <ComparisonRow 
-                label="Key Beliefs" 
+
+              <ComparisonRow
+                label="Key Beliefs"
                 icon={<Shield className="h-4 w-4 text-blue-500" />}
                 type="list"
-                data={personas.map(p => getField(p, 'beliefs') || [])} 
+                data={personas.map(p => getField(p, 'beliefs') || [])}
               />
 
-              <ComparisonRow 
-                label="Pain Points" 
+              <ComparisonRow
+                label="Pain Points"
                 icon={<AlertTriangle className="h-4 w-4 text-red-500" />}
                 type="list"
-                data={personas.map(p => getField(p, 'pain_points') || [])} 
+                data={personas.map(p => getField(p, 'pain_points') || [])}
               />
 
-              <ComparisonRow 
-                label="Communication" 
+              <ComparisonRow
+                label="Communication"
                 icon={<MessageSquare className="h-4 w-4 text-purple-500" />}
                 data={personas.map(p => {
                   const prefs = getField(p, 'communication_preferences');
                   return prefs?.information_style || prefs?.preferred_channels || '-';
-                })} 
+                })}
               />
             </tbody>
           </table>
