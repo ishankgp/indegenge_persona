@@ -43,6 +43,7 @@ import {
   Database,
   Trash2,
   Library,
+  GitCompare,
 } from "lucide-react"
 import { PersonaDetailModal } from "../components/PersonaDetailModal"
 import { useToast } from "@/components/ui/use-toast"
@@ -56,6 +57,7 @@ interface Persona {
   avatar_url?: string
   persona_type: string
   persona_subtype?: string
+  disease_pack?: string
   age: number
   gender: string
   condition: string
@@ -169,6 +171,14 @@ export function PersonaLibrary() {
   const handleSimulatePersonas = (personaIds: number[]) => {
     if (personaIds.length === 0) return
     navigate('/simulation', { state: { preselectedPersonaIds: personaIds } })
+  }
+
+  const handleComparePersonas = (personaIds: number[]) => {
+    if (personaIds.length < 2) {
+      alert("Please select at least 2 personas to compare.");
+      return;
+    }
+    navigate('/compare', { state: { personaIds } });
   }
 
   const togglePersonaSelection = (id: number) => {
@@ -584,6 +594,11 @@ export function PersonaLibrary() {
                 <CardDescription className="text-sm text-gray-700 dark:text-gray-300 font-medium">
                   {persona.name}
                 </CardDescription>
+                {persona.disease_pack && (
+                  <Badge variant="outline" className="text-[10px] mt-1 mb-1 border-blue-200 text-blue-700 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800">
+                    {persona.disease_pack}
+                  </Badge>
+                )}
                 <CardDescription className="text-xs flex items-center gap-2 mt-0.5 text-gray-500">
                   <span>{persona.age} years</span>
                   <Separator orientation="vertical" className="h-3" />
@@ -881,6 +896,15 @@ export function PersonaLibrary() {
                       </div>
                     </div>
                     <div className="flex flex-col gap-2 md:flex-row">
+                      <Button
+                        variant="outline"
+                        className="border-violet-200 text-violet-700 hover:bg-violet-50"
+                        onClick={() => handleComparePersonas(Array.from(selectedPersonaIds))}
+                        disabled={selectedPersonaIds.size < 2}
+                      >
+                        <GitCompare className="mr-2 h-4 w-4" />
+                        Compare ({selectedPersonaIds.size})
+                      </Button>
                       <Button
                         className="bg-gradient-to-r from-primary to-secondary text-white"
                         onClick={() => handleSimulatePersonas(Array.from(selectedPersonaIds))}

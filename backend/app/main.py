@@ -234,7 +234,7 @@ async def root_redirect():
 
 # --- Persona Endpoints ---
 
-@app.post("/personas/generate", response_model=schemas.Persona)
+@app.post("/api/personas/generate", response_model=schemas.Persona)
 async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: Session = Depends(get_db)):
     """
     Receives user input, calls the persona_engine, saves the result to the database,
@@ -296,6 +296,10 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
             new_persona.persona_type = archetype_data.get("persona_type")
         updates_needed = True
 
+    if disease_data:
+        new_persona.disease_pack = disease_data.get("condition_name")
+        updates_needed = True
+
     # Generate avatar using DALL-E 3
     try:
         # Parse the persona JSON to extract additional attributes
@@ -330,7 +334,7 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
     
     return new_persona
 
-@app.post("/personas/manual", response_model=schemas.Persona)
+@app.post("/api/personas/manual", response_model=schemas.Persona)
 async def create_manual_persona(manual_data: dict, db: Session = Depends(get_db)):
     """
     Create a persona manually with detailed attributes provided by the user.
@@ -404,7 +408,7 @@ async def create_manual_persona(manual_data: dict, db: Session = Depends(get_db)
         logger.error(f"Error creating manual persona: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create manual persona: {str(e)}")
 
-@app.get("/personas/", response_model=List[schemas.Persona])
+@app.get("/api/personas/", response_model=List[schemas.Persona])
 async def get_all_personas(
     skip: int = 0, 
     limit: int = 100, 
@@ -422,7 +426,7 @@ async def get_all_personas(
         personas = crud.get_personas(db, skip=skip, limit=limit)
     return personas
 
-@app.put("/personas/{persona_id}", response_model=schemas.Persona)
+@app.put("/api/personas/{persona_id}", response_model=schemas.Persona)
 async def update_persona_endpoint(
     persona_id: int,
     persona_update: schemas.PersonaUpdate,
@@ -434,7 +438,7 @@ async def update_persona_endpoint(
         raise HTTPException(status_code=404, detail="Persona not found")
     return updated
 
-@app.post("/personas/{persona_id}/enrich-from-brand", response_model=schemas.Persona)
+@app.post("/api/personas/{persona_id}/enrich-from-brand", response_model=schemas.Persona)
 async def enrich_persona_from_brand(
     persona_id: int,
     request: schemas.PersonaBrandEnrichmentRequest,
@@ -475,7 +479,7 @@ async def enrich_persona_from_brand(
     return updated
 
 
-@app.post("/personas/{persona_id}/enrich", response_model=schemas.Persona)
+@app.post("/api/personas/{persona_id}/enrich", response_model=schemas.Persona)
 async def enrich_persona(
     persona_id: int,
     db: Session = Depends(get_db)
@@ -516,7 +520,7 @@ async def enrich_persona(
     return updated
 
 
-@app.post("/personas/recruit", response_model=List[schemas.Persona])
+@app.post("/api/personas/recruit", response_model=List[schemas.Persona])
 async def recruit_personas(request: schemas.PersonaSearchRequest, db: Session = Depends(get_db)):
     """
     Recruit personas based on a natural language prompt.
@@ -538,7 +542,7 @@ async def recruit_personas(request: schemas.PersonaSearchRequest, db: Session = 
     return personas
 
 
-@app.post("/personas/from-transcript")
+@app.post("/api/personas/from-transcript")
 async def extract_persona_from_transcript(
     file: Optional[UploadFile] = File(None),
     transcript_text: Optional[str] = Form(None),
@@ -598,7 +602,7 @@ async def extract_persona_from_transcript(
     return suggestions
 
 
-@app.get("/personas/{persona_id}/export")
+@app.get("/api/personas/{persona_id}/export")
 async def export_persona_for_simulation(
     persona_id: int,
     include_evidence: bool = True,
@@ -690,13 +694,13 @@ def _strip_evidence_from_export(data: dict) -> dict:
         return [_strip_evidence_from_export(item) for item in data]
     return data
 
-@app.head("/personas/")
+@app.head("/api/personas/")
 async def head_personas(db: Session = Depends(get_db)):
     """Lightweight HEAD endpoint to allow health probes without transferring payload."""
     count = db.query(models.Persona).count()
     return Response(status_code=200, headers={"X-Total-Personas": str(count)})
 
-@app.delete("/personas/{persona_id}", status_code=204)
+@app.delete("/api/personas/{persona_id}", status_code=204)
 async def delete_persona(persona_id: int, db: Session = Depends(get_db)):
     """Delete a persona by ID."""
     success = crud.delete_persona(db, persona_id=persona_id)
@@ -705,7 +709,7 @@ async def delete_persona(persona_id: int, db: Session = Depends(get_db)):
     return Response(status_code=204)
 
 
-@app.post("/personas/{persona_id}/regenerate-avatar", response_model=schemas.Persona)
+@app.post("/api/personas/{persona_id}/regenerate-avatar", response_model=schemas.Persona)
 async def regenerate_persona_avatar(persona_id: int, db: Session = Depends(get_db)):
     """
     Regenerate the avatar for an existing persona using DALL-E 3.

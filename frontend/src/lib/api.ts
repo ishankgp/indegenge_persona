@@ -223,33 +223,33 @@ export interface PersonaExport {
 export const PersonasAPI = {
   list: (brandId?: number) => {
     const params = brandId !== undefined ? { brand_id: brandId } : {};
-    return api.get('/personas/', { params }).then(r => r.data);
+    return api.get('/api/personas/', { params }).then(r => r.data);
   },
-  get: (id: number) => api.get(`/personas/${id}`).then(r => r.data),
-  generate: (payload: any) => api.post('/personas/generate', payload).then(r => r.data),
-  createManual: (payload: any) => api.post('/personas/manual', payload).then(r => r.data),
-  delete: (id: number) => api.delete(`/personas/${id}`),
-  recruit: (prompt: string) => api.post('/personas/recruit', { prompt }).then(r => r.data),
+  get: (id: number) => api.get(`/api/personas/${id}`).then(r => r.data),
+  generate: (payload: any) => api.post('/api/personas/generate', payload).then(r => r.data),
+  createManual: (payload: any) => api.post('/api/personas/manual', payload).then(r => r.data),
+  delete: (id: number) => api.delete(`/api/personas/${id}`),
+  recruit: (prompt: string) => api.post('/api/personas/recruit', { prompt }).then(r => r.data),
   update: (id: number, payload: PersonaUpdatePayload) =>
-    api.put(`/personas/${id}`, payload).then(r => r.data),
+    api.put(`/api/personas/${id}`, payload).then(r => r.data),
 
   // Save with field confirmation - marks edited fields as confirmed
   saveWithConfirmation: (id: number, payload: PersonaUpdatePayload, confirmedFields: string[]) =>
-    api.put(`/personas/${id}`, {
+    api.put(`/api/personas/${id}`, {
       ...payload,
       confirm_fields: confirmedFields,
     }).then(r => r.data),
 
   // Update specific fields with status tracking
   updateFields: (id: number, fieldUpdates: Record<string, PersonaFieldUpdate>, confirmFields?: string[]) =>
-    api.put(`/personas/${id}`, {
+    api.put(`/api/personas/${id}`, {
       field_updates: fieldUpdates,
       confirm_fields: confirmFields,
     }).then(r => r.data),
 
   enrichFromBrand: (id: number, payload: { brand_id: number; target_segment?: string; target_fields?: string[] }) =>
-    api.post(`/personas/${id}/enrich-from-brand`, payload).then(r => r.data),
-  regenerateAvatar: (id: number) => api.post(`/personas/${id}/regenerate-avatar`).then(r => r.data),
+    api.post(`/api/personas/${id}/enrich-from-brand`, payload).then(r => r.data),
+  regenerateAvatar: (id: number) => api.post(`/api/personas/${id}/regenerate-avatar`).then(r => r.data),
 
   // Enhanced transcript extraction with LLM and quote verification
   extractFromTranscript: (
@@ -266,12 +266,12 @@ export const PersonasAPI = {
     formData.append('use_llm', String(options.use_llm ?? true));
     formData.append('verify_quotes', String(options.verify_quotes ?? true));
 
-    return api.post('/personas/from-transcript', formData).then(r => r.data);
+    return api.post('/api/personas/from-transcript', formData).then(r => r.data);
   },
 
   // Export persona for simulation
   exportForSimulation: (id: number, includeEvidence: boolean = true): Promise<PersonaExport> =>
-    api.get(`/personas/${id}/export`, {
+    api.get(`/api/personas/${id}/export`, {
       params: { include_evidence: includeEvidence }
     }).then(r => r.data),
 };
@@ -320,7 +320,7 @@ export const BrandsAPI = {
   getSuggestions: (brandId: number, payload: { target_segment?: string; persona_type?: string; limit_per_category?: number }) =>
     api.post<BrandSuggestionResponse>(`/api/brands/${brandId}/persona-suggestions`, payload).then(r => r.data),
   enrichPersona: (personaId: number, payload: { brand_id: number; target_segment?: string; target_fields?: string[] }) =>
-    api.post(`/personas/${personaId}/enrich-from-brand`, payload).then(r => r.data)
+    api.post(`/api/personas/${personaId}/enrich-from-brand`, payload).then(r => r.data)
 };
 
 export interface Archetype {

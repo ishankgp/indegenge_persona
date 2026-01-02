@@ -10,6 +10,7 @@ class Persona(Base):
     avatar_url = Column(String, nullable=True)  # DALL-E 3 generated avatar image URL
     persona_type = Column(String, default="Patient")
     persona_subtype = Column(String, nullable=True)
+    disease_pack = Column(String, nullable=True)
     tagline = Column(Text, nullable=True)
     # Brand ownership - optional, allows personas to belong to a specific brand
     brand_id = Column(Integer, ForeignKey("brands.id"), nullable=True, index=True)

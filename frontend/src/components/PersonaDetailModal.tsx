@@ -12,6 +12,8 @@ import { PersonasAPI } from '@/lib/api';
 import { User, Heart, MapPin, Activity, Brain, MessageSquare, Target, Users, Calendar, Lightbulb, Shield, Radio, Quote } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
+import { PersonaDNA } from './PersonaDNA';
+
 interface PersonaDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -303,6 +305,18 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
             </div>
           )}
           <div className="space-y-6">
+            <PersonaDNA
+              baseAttributes={{
+                age: persona.age,
+                gender: persona.gender,
+                location: persona.location,
+                condition: persona.condition
+              }}
+              archetype={persona.persona_subtype}
+              diseasePack={persona.disease_pack}
+              brandName={selectedBrandId ? "Mounjaro" : null} // In a real app, fetch brand name
+            />
+
             {/* Basic Information */}
             <Card>
               <CardHeader className="pb-3">
@@ -341,6 +355,15 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                     {persona.persona_subtype || 'N/A'}
                   </p>
                 </div>
+                {persona.disease_pack && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Disease Pack</label>
+                    <p className="text-base flex items-center gap-1">
+                      <Heart className="h-3 w-3 text-blue-600" />
+                      {persona.disease_pack}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

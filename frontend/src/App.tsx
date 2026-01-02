@@ -8,6 +8,7 @@ import { PersonaBuilder } from './pages/PersonaBuilder';
 import { SimulationHub } from './pages/SimulationHub';
 import { Analytics } from './pages/Analytics';
 import { PersonaCoverage } from './pages/PersonaCoverage';
+import { ComparePersonas } from './pages/ComparePersonas';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
           <Route path="simulation" element={<SimulationHub />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="coverage" element={<PersonaCoverage />} />
+          <Route path="compare" element={<ComparePersonas />} />
         </Route>
       </Routes>
     </Router>

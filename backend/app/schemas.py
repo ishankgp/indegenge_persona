@@ -53,6 +53,7 @@ class PersonaBase(BaseModel):
     full_persona_json: str
     brand_id: Optional[int] = None
     persona_subtype: Optional[str] = None
+    disease_pack: Optional[str] = None
     tagline: Optional[str] = None
     specialty: Optional[str] = None
     practice_setup: Optional[str] = None
@@ -79,6 +80,7 @@ class PersonaUpdate(BaseModel):
     avatar_url: Optional[str] = None
     persona_type: Optional[str] = None
     persona_subtype: Optional[str] = None
+    disease_pack: Optional[str] = None
     tagline: Optional[str] = None
     brand_id: Optional[int] = None
     age: Optional[int] = None
