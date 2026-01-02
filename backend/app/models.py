@@ -56,6 +56,7 @@ class Brand(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True, unique=True)
+    gemini_corpus_id = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class BrandDocument(Base):
@@ -68,7 +69,7 @@ class BrandDocument(Base):
     category = Column(String)
     summary = Column(Text, nullable=True)
     extracted_insights = Column(JSON, nullable=True)
-    vector_store_id = Column(String, nullable=True)
+    gemini_document_name = Column(String, nullable=True)
     chunk_size = Column(Integer, nullable=True)
     chunk_ids = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

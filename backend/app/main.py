@@ -1230,6 +1230,7 @@ def _aggregate_with_vector_search(
     documents: List[models.BrandDocument],
     target_segment: Optional[str],
     limit_per_category: int,
+    corpus_id: Optional[str] = None,
 ) -> Dict[str, List[Dict[str, str]]]:
     """Prefer vector-search snippets when available, fall back to full documents."""
 
@@ -1238,13 +1239,14 @@ def _aggregate_with_vector_search(
         documents=documents,
         target_segment=target_segment,
         top_k=limit_per_category * 3,
+        corpus_id=corpus_id,
     )
 
     if vector_results:
         logger.info("Using vector search results for brand %s", brand_id)
         return _aggregate_insight_entries(vector_results, target_segment, limit_per_category)
 
-    logger.info("Vector search unavailable; aggregating from documents for brand %s", brand_id)
+    logger.info("Vector search unavailable (or empty); aggregating from documents for brand %s", brand_id)
     return _aggregate_brand_insights(documents, target_segment, limit_per_category)
 
 
@@ -1356,16 +1358,25 @@ async def upload_brand_document(
 
     chunk_size = 800
     chunks = document_processor.chunk_text(text, chunk_size=chunk_size)
-    vector_store_id, chunk_ids = document_processor.generate_vector_embeddings(
+    
+    gemini_corpus_id, gemini_document_name, chunk_ids = document_processor.generate_vector_embeddings(
         chunks,
         brand_id=brand_id,
         filename=safe_filename,
         chunk_size=chunk_size,
         insights=extracted_insights,
+        existing_corpus_id=brand.gemini_corpus_id
     )
 
+    # Update brand corpus ID if newly created
+    if gemini_corpus_id and not brand.gemini_corpus_id:
+        brand.gemini_corpus_id = gemini_corpus_id
+        db.add(brand)
+        db.commit()
+        db.refresh(brand)
+
     # Create or replace document record while cleaning up any stale vectors
-    chunk_size_value = chunk_size if (chunks or vector_store_id) else None
+    chunk_size_value = chunk_size if (chunks or gemini_document_name) else None
 
     doc_create = schemas.BrandDocumentCreate(
         brand_id=brand_id,
@@ -1374,7 +1385,7 @@ async def upload_brand_document(
         category=category,
         summary=text[:200] + "..." if text else "No text extracted",
         extracted_insights=extracted_insights,
-        vector_store_id=vector_store_id,
+        gemini_document_name=gemini_document_name,
         chunk_size=chunk_size_value,
         chunk_ids=chunk_ids or None,
     )
@@ -1445,6 +1456,7 @@ async def get_brand_context(
         documents=documents,
         target_segment=target_segment,
         limit_per_category=limit_per_category,
+        corpus_id=brand.gemini_corpus_id,
     )
 
     return schemas.BrandContextResponse(
@@ -1471,6 +1483,7 @@ async def get_brand_persona_suggestions(
         documents=documents,
         target_segment=request.target_segment,
         limit_per_category=limit,
+        corpus_id=brand.gemini_corpus_id,
     )
     flattened = _flatten_insights(aggregated)
 
@@ -1525,19 +1538,44 @@ async def seed_brand_documents(brand_id: int, db: Session = Depends(get_db)):
         # For speed and reliability of the demo, we can force the category or let the AI do it.
         # Let's force it to ensure the demo works perfectly for the user's specific request.
         
+        chunk_size = 800
+        chunks = document_processor.chunk_text(text, chunk_size=chunk_size)
+        
+        extracted_insights = [
+            {
+                **insight,
+                "source_document": filename
+            }
+            for insight in persona_engine.extract_mbt_from_text(text)
+        ]
+
+        gemini_corpus_id, gemini_document_name, chunk_ids = document_processor.generate_vector_embeddings(
+            chunks,
+            brand_id=brand_id,
+            filename=filename,
+            chunk_size=chunk_size,
+            insights=extracted_insights,
+            existing_corpus_id=brand.gemini_corpus_id
+        )
+
+        # Update brand corpus ID if newly created
+        if gemini_corpus_id and not brand.gemini_corpus_id:
+            brand.gemini_corpus_id = gemini_corpus_id
+            db.add(brand)
+            db.commit()
+            # Refresh to get the ID for next iteration implicitly (object is attached to session)
+            db.refresh(brand)
+
         doc_create = schemas.BrandDocumentCreate(
             brand_id=brand_id,
             filename=filename,
             filepath=filepath,
             category=category,
             summary=text,
-            extracted_insights=[
-                {
-                    **insight,
-                    "source_document": filename
-                }
-                for insight in persona_engine.extract_mbt_from_text(text)
-            ]
+            extracted_insights=extracted_insights,
+            gemini_document_name=gemini_document_name,
+            chunk_size=chunk_size,
+            chunk_ids=chunk_ids or None
         )
         
         new_doc = crud.upsert_brand_document(db, doc_create)

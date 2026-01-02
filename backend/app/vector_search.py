@@ -1,122 +1,102 @@
+
 import logging
 from typing import Dict, List, Optional
-
-from . import persona_engine
+import os
+import google.generativeai as genai
+from google.generativeai import retriever
 
 logger = logging.getLogger(__name__)
 
-
-def _extract_text_from_content(content) -> str:
-    """Normalize possible response content structures into plain text."""
-    if isinstance(content, str):
-        return content.strip()
-
-    if isinstance(content, list):
-        parts: List[str] = []
-        for item in content:
-            if isinstance(item, dict):
-                text = item.get("text") or item.get("value") or ""
-                parts.append(str(text))
-            else:
-                parts.append(str(item))
-        return " ".join(p.strip() for p in parts if p).strip()
-
-    return str(content or "").strip()
-
-
-def _extract_results(response) -> List[dict]:
-    """Return a unified list of search results across possible SDK shapes."""
-    if response is None:
-        return []
-
-    if hasattr(response, "data") and isinstance(response.data, list):
-        return response.data
-
-    if hasattr(response, "results") and isinstance(response.results, list):
-        return response.results
-
-    return []
-
+def configure_genai():
+    """Configure Gemini API with key from environment."""
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        logger.warning("Gemini API key not found (GEMINI_API_KEY or GOOGLE_API_KEY).")
+        return
+    genai.configure(api_key=api_key)
 
 def search_brand_chunks(
     *,
     brand_id: int,
-    documents: List,
+    corpus_id: Optional[str] = None,
+    documents: Optional[List] = None,
     target_segment: Optional[str] = None,
     top_k: int = 15,
 ) -> Optional[List[Dict[str, str]]]:
     """
-    Query OpenAI's vector database for brand-specific snippets.
-
-    Returns a list of insight-like dicts compatible with the existing MBT aggregation
-    pipeline, or ``None`` when vector search is not available.
+    Query Gemini's Semantic Retriever for brand-specific snippets.
+    
+    Requires `corpus_id` (the Gemini corpus name) to be passed.
     """
-
-    client = persona_engine.get_openai_client()
-    vector_api = getattr(client, "vector_stores", None) if client else None
-    if client is None or vector_api is None:
-        logger.info("Vector search unavailable (no OpenAI client/vector API).")
+    configure_genai()
+    
+    if not corpus_id:
+        logger.info("Vector search skipped (no corpus_id provided).")
         return None
-
-    query_method = None
-    # Support either ``query`` or ``search`` depending on SDK version
-    if hasattr(vector_api, "query"):
-        query_method = vector_api.query
-    elif hasattr(vector_api, "search"):
-        query_method = vector_api.search
-
-    if query_method is None:
-        logger.info("Vector search unavailable (no query/search method).")
-        return None
-
-    vector_store_ids = [doc.vector_store_id for doc in documents if getattr(doc, "vector_store_id", None)]
-    if not vector_store_ids:
-        logger.info("Vector search skipped (no vector_store_id on documents).")
-        return None
-
-    filters: Dict[str, str] = {"brand_id": str(brand_id)}
-    if target_segment:
-        filters["segment"] = target_segment
 
     query_text = target_segment or "brand insights"
+    
+    # Optional: Filter by specific documents if needed, but usually we search the whole brand corpus.
+    # Gemini allows filtering by custom metadata.
+    # filter_mask = {"key": "brand_id", "string_value": str(brand_id)} 
+    # We already search a specific Corpus (per brand), so no need to filter by brand_id again 
+    # unless we share a corpus.
+    
+    # Add segment filter if provided and if we indexed it
+    metadata_filters = []
+    if target_segment:
+        # Note: This assumes exact match on 'segment' metadata key we added in document_processor
+        # Gemini filters are exact match.
+        # But 'segment' in ingestion was: "segment": insight.get("segment") or "General"
+        # If target_segment is broad, exact match might be too strict. 
+        # For now, let's just query and let semantic search do the work, 
+        # or rely on the query text to boost relevance.
+        pass
+
+    try:
+        results = retriever.query(
+            name=corpus_id,
+            query=query_text,
+            results_count=top_k,
+            metadata_filters=metadata_filters
+        )
+    except Exception as exc:
+        logger.warning("Gemini vector search failed for corpus %s: %s", corpus_id, exc)
+        return None
+
     retrieved_insights: List[Dict[str, str]] = []
 
-    for store_id in vector_store_ids:
-        kwargs = {"vector_store_id": store_id, "query": query_text, "top_k": top_k}
-        try:
-            # Some SDK versions expect "filter", others "filters"; try both gracefully.
-            try:
-                response = query_method(**kwargs, filter=filters)
-            except TypeError:
-                response = query_method(**kwargs, filters=filters)
-        except Exception as exc:
-            logger.warning("Vector search failed for store %s: %s", store_id, exc)
+    for chunk in results:
+        # Robust access to text data
+        text = ""
+        if hasattr(chunk.data, 'string_value'):
+             text = chunk.data.string_value
+        elif isinstance(chunk.data, str):
+             text = chunk.data
+        else:
+             # Fallback/Debug
+             text = str(chunk.data)
+
+        if not text:
             continue
-
-        for item in _extract_results(response):
-            metadata = getattr(item, "metadata", {}) or {}
-            content = getattr(item, "content", None)
-            if content is None:
-                content = getattr(item, "text", None) or getattr(item, "value", None)
-
-            text = metadata.get("text") or _extract_text_from_content(content)
-            if not text:
-                continue
-
-            retrieved_insights.append(
-                {
-                    "type": metadata.get("type"),
-                    "text": text,
-                    "segment": metadata.get("segment") or target_segment or metadata.get("audience") or "General",
-                    "source_snippet": metadata.get("source_snippet") or text,
-                    "source_document": metadata.get("source_document")
-                    or metadata.get("filename")
-                    or f"vector_store:{store_id}",
-                }
-            )
+            
+        # Extract metadata
+        meta = {}
+        for m in chunk.custom_metadata:
+            meta[m.key] = m.string_value
+            
+        retrieved_insights.append(
+            {
+                "type": meta.get("type"),
+                "text": text,
+                "segment": meta.get("segment") or target_segment or "General",
+                "source_snippet": meta.get("source_snippet") or text,
+                "source_document": meta.get("source_document") or "Gemini Search",
+            }
+        )
 
     if not retrieved_insights:
         return None
 
-    logger.info("Vector search returned %s snippets across %s stores", len(retrieved_insights), len(vector_store_ids))
+    logger.info("Gemini search returned %s snippets", len(retrieved_insights))
     return retrieved_insights

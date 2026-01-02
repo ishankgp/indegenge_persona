@@ -1,4 +1,4 @@
-import sqlite3
+ have saimport sqlite3
 import os
 
 def check_db():

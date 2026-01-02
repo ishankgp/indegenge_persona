@@ -465,37 +465,31 @@ def create_brand_document(db: Session, document: schemas.BrandDocumentCreate):
     return db_document
 
 
-def _delete_vector_store(vector_store_id: Optional[str]) -> None:
-    """Best-effort cleanup of remote vector stores.
-
-    The operation is intentionally idempotent and should never raise, to avoid
-    blocking local state changes when the remote store is already removed or
-    unavailable.
-    """
-
-    if not vector_store_id:
+def _delete_gemini_document(document_name: Optional[str]) -> None:
+    """Best-effort cleanup of remote Gemini documents."""
+    if not document_name:
         return
-
-    client = persona_engine.get_openai_client()
-    vector_api = getattr(client, "vector_stores", None) if client else None
-
-    if vector_api is None:
-        logger.info("Vector store cleanup skipped (no client/vector API available).")
-        return
-
+    
     try:
-        vector_api.delete(vector_store_id)
-        logger.info("Deleted vector store %s during brand document cleanup.", vector_store_id)
-    except Exception as exc:  # noqa: BLE001 - logging best-effort cleanup
-        logger.warning("Vector store cleanup failed for %s: %s", vector_store_id, exc)
+        from google.generativeai import retriever
+        import google.generativeai as genai
+        import os
+        
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if api_key:
+            genai.configure(api_key=api_key)
+            retriever.delete_document(name=document_name)
+            logger.info("Deleted Gemini document %s", document_name)
+    except Exception as exc:
+        logger.warning("Gemini document cleanup failed for %s: %s", document_name, exc)
 
 
 def upsert_brand_document(db: Session, document: schemas.BrandDocumentCreate):
     """Create or replace a brand document while cleaning up stale vectors.
 
     If a document with the same brand and filename exists, it will be updated
-    with the new payload. When a replacement includes a new vector store ID,
-    the previous vector store is removed on a best-effort basis.
+    with the new payload. When a replacement includes a new document name,
+    the previous document is removed on a best-effort basis.
     """
 
     existing = db.query(models.BrandDocument).filter(
@@ -504,15 +498,15 @@ def upsert_brand_document(db: Session, document: schemas.BrandDocumentCreate):
     ).first()
 
     if existing:
-        previous_vector_store = existing.vector_store_id
+        previous_doc_name = existing.gemini_document_name
         for key, value in document.dict().items():
             setattr(existing, key, value)
 
         db.commit()
         db.refresh(existing)
 
-        if previous_vector_store and previous_vector_store != existing.vector_store_id:
-            _delete_vector_store(previous_vector_store)
+        if previous_doc_name and previous_doc_name != existing.gemini_document_name:
+            _delete_gemini_document(previous_doc_name)
 
         return existing
 
@@ -526,10 +520,10 @@ def delete_brand_document(db: Session, document_id: int, *, brand_id: Optional[i
 
     db_document = query.first()
     if db_document:
-        vector_store_id = db_document.vector_store_id
+        doc_name = db_document.gemini_document_name
         db.delete(db_document)
         db.commit()
-        _delete_vector_store(vector_store_id)
+        _delete_gemini_document(doc_name)
         return True
 
     return False

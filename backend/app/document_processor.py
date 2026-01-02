@@ -141,6 +141,44 @@ def classify_document(text: str) -> str:
         return "Unclassified (Error)"
 
 
+
+import google.generativeai as genai
+from google.generativeai import retriever
+
+def configure_genai():
+    """Configure Gemini API with key from environment."""
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        logger.warning("Gemini API key not found (GEMINI_API_KEY or GOOGLE_API_KEY).")
+        return
+    genai.configure(api_key=api_key)
+
+def _get_or_create_corpus(brand_id: int, existing_corpus_id: Optional[str] = None) -> Optional[str]:
+    """
+    Get an existing corpus or create a new one for the brand.
+    Returns the corpus resource name (e.g., 'corpora/123...').
+    """
+    configure_genai()
+    
+    # If we already have a corpus ID, try to get it to ensure it exists
+    if existing_corpus_id:
+        try:
+            # Verify existence (this might throw if not found)
+            retriever.get_corpus(name=existing_corpus_id)
+            return existing_corpus_id
+        except Exception:
+            logger.warning(f"Corpus {existing_corpus_id} not found, creating new one.")
+    
+    # Create new corpus
+    display_name = f"Brand {brand_id} Corpus"
+    try:
+        corpus = retriever.create_corpus(display_name=display_name)
+        logger.info(f"Created new Gemini corpus: {corpus.name}")
+        return corpus.name
+    except Exception as e:
+        logger.error(f"Failed to create Gemini corpus: {e}")
+        return None
+
 def generate_vector_embeddings(
     chunks: List[str],
     *,
@@ -148,105 +186,108 @@ def generate_vector_embeddings(
     filename: str,
     chunk_size: int,
     insights: Optional[List[dict]] = None,
-) -> Tuple[Optional[str], List[str]]:
-    """Create a vector store populated with chunked insights when possible.
-
-    The function prefers structured ``insights`` (Motivation/Belief/Tension
-    entries) for metadata-rich retrieval. If insights are unavailable, it
-    falls back to embedding raw text chunks. Returns the vector store ID and a
-    list of locally generated chunk identifiers for bookkeeping.
+    existing_corpus_id: Optional[str] = None
+) -> Tuple[Optional[str], Optional[str], List[str]]:
     """
+    Ingest document into Gemini Semantic Retriever.
+    
+    Returns:
+        (corpus_id, document_name, chunk_ids)
+    """
+    configure_genai()
 
-    client = _get_openai_client()
-    if client is None:
-        logger.warning("OpenAI API key not configured; skipping embeddings and vector store creation.")
-        return None, []
+    if not chunks and not insights:
+        logger.info("No content to ingest.")
+        return existing_corpus_id, None, []
 
-    payload_entries: List[dict] = []
+    # 1. Ensure Corpus exists
+    corpus_name = _get_or_create_corpus(brand_id, existing_corpus_id)
+    if not corpus_name:
+        return None, None, []
 
+    # 2. Create Document in Corpus
+    # Sanitize filename (alphanumeric + underscores, max 63 chars)
+    # Gemini doc names are resource names, but 'display_name' can be anything.
+    # We let Gemini generate the ID or use valid char name.
+    safe_display_name = filename[:60]
+    
+    try:
+        # Create document resource
+        doc = retriever.create_document(corpus=corpus_name, display_name=safe_display_name)
+        document_name = doc.name
+        logger.info(f"Created Gemini document: {document_name}")
+    except Exception as e:
+        logger.error(f"Failed to create Gemini document: {e}")
+        return corpus_name, None, []
+
+    # 3. Prepare Chunks
+    # Ideally we use 'insights' if available, otherwise 'chunks'.
+    # Gemini chunks are text + metadata.
+    
+    batch_chunks = []
+    
     if insights:
         for idx, insight in enumerate(insights):
             text = (insight.get("text") or "").strip()
+            if not text: 
+                continue
+                
+            metadata = {
+                "type": insight.get("type"),
+                "segment": insight.get("segment") or "General",
+                "source_snippet": (insight.get("source_snippet") or text)[:100], # Limit metadata length
+                "source_document": filename,
+                "brand_id": str(brand_id),
+            }
+            # Add non-null metadata only
+            custom_metadata = [{"key": k, "string_value": str(v)} for k, v in metadata.items() if v]
+
+            batch_chunks.append({
+                "data": {"string_value": text},
+                "custom_metadata": custom_metadata
+            })
+            
+    elif chunks:
+        for idx, text in enumerate(chunks):
+            text = text.strip()
             if not text:
                 continue
+            
+            metadata = {
+                "source_document": filename,
+                "brand_id": str(brand_id),
+                "segment": "General"
+            }
+            custom_metadata = [{"key": k, "string_value": str(v)} for k, v in metadata.items() if v]
 
-            payload_entries.append(
-                {
-                    "text": text,
-                    "metadata": {
-                        "type": insight.get("type"),
-                        "segment": insight.get("segment") or "General",
-                        "source_snippet": insight.get("source_snippet") or text,
-                        "source_document": filename,
-                        "brand_id": str(brand_id),
-                        "chunk_index": idx,
-                        "chunk_size": chunk_size,
-                    },
-                }
-            )
+            batch_chunks.append({
+                "data": {"string_value": text},
+                "custom_metadata": custom_metadata
+            })
 
-    if not payload_entries and chunks:
-        for idx, chunk in enumerate(chunks):
-            text = chunk.strip()
-            if not text:
-                continue
-            payload_entries.append(
-                {
-                    "text": text,
-                    "metadata": {
-                        "segment": "General",
-                        "source_document": filename,
-                        "brand_id": str(brand_id),
-                        "chunk_index": idx,
-                        "chunk_size": chunk_size,
-                    },
-                }
-            )
+    if not batch_chunks:
+        return corpus_name, document_name, []
 
-    if not payload_entries:
-        logger.info("No chunks or insights available for vectorization.")
-        return None, []
-
-    vector_store_id: Optional[str] = None
-    chunk_ids: List[str] = [f"chunk-{idx}" for idx in range(len(payload_entries))]
-
+    # 4. Upload Chunks (Batch)
+    # Gemini allows max 100 chunks per batch request, loop if needed
+    batch_size = 100
+    chunk_ids = []
+    
     try:
-        vector_store = client.vector_stores.create(
-            name=f"brand-{brand_id}-{filename}",
-            metadata={"brand_id": brand_id, "filename": filename, "chunk_size": chunk_size},
-        )
-        vector_store_id = getattr(vector_store, "id", None)
-    except Exception as e:  # noqa: BLE001 - log and continue gracefully
-        logger.error("Error creating vector store: %s", e)
-        return None, []
+        for i in range(0, len(batch_chunks), batch_size):
+            batch = batch_chunks[i : i + batch_size]
+            response = retriever.batch_create_chunks(
+                parent=document_name,
+                requests=[{"chunk": c} for c in batch]
+            )
+            # Collect created chunk resource names
+            chunk_ids.extend([c.name for c in response.chunks])
+            
+        logger.info(f"Ingested {len(chunk_ids)} chunks into {document_name}")
+        
+    except Exception as e:
+        logger.error(f"Failed to upload chunks to Gemini: {e}")
+        # We might want to delete the document if ingestion fails partially, but keeping it for now.
+        return corpus_name, document_name, chunk_ids
 
-    temp_path = None
-    try:
-        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".jsonl") as temp_file:
-            temp_path = temp_file.name
-            for entry in payload_entries:
-                temp_file.write(json.dumps(entry) + "\n")
-
-        with open(temp_path, "rb") as file_obj:
-            uploaded_file = client.files.create(file=file_obj, purpose="assistants")
-
-        client.vector_stores.file_batches.upload_and_poll(
-            vector_store_id=vector_store_id,
-            file_ids=[uploaded_file.id],
-        )
-        logger.info("Uploaded %s entries to vector store %s", len(payload_entries), vector_store_id)
-    except Exception as e:  # noqa: BLE001 - log and cleanup
-        logger.error("Error uploading chunks to vector store %s: %s", vector_store_id, e)
-        try:
-            client.vector_stores.delete(vector_store_id)
-        except Exception as cleanup_exc:  # noqa: BLE001 - best-effort cleanup
-            logger.warning("Cleanup failed for vector store %s: %s", vector_store_id, cleanup_exc)
-        return None, []
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except OSError:
-                logger.warning("Failed to remove temporary chunk file at %s", temp_path)
-
-    return vector_store_id, chunk_ids
+    return corpus_name, document_name, chunk_ids
