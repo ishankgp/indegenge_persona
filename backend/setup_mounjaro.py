@@ -360,6 +360,23 @@ def setup_mounjaro_brand():
             
             print(f"     ✅ Extracted: {motivations} Motivations, {beliefs} Beliefs, {tensions} Tensions")
             
+            # Create chunks and vector embeddings (OpenAI)
+            print(f"     Ingesting into OpenAI Vector Store...")
+            from app import document_processor
+            
+            chunk_size = 800
+            chunks = document_processor.chunk_text(text, chunk_size=chunk_size)
+            
+            # Generate embeddings and get vector_store_id
+            _, vector_store_id, chunk_ids = document_processor.generate_vector_embeddings(
+                chunks,
+                brand_id=mounjaro_brand.id,
+                filename=filename,
+                chunk_size=chunk_size,
+                insights=enriched_insights or []
+            )
+            print(f"     ✅ Vector Store Created: {vector_store_id}")
+
             # Create document
             doc_create = schemas.BrandDocumentCreate(
                 brand_id=mounjaro_brand.id,
@@ -367,7 +384,10 @@ def setup_mounjaro_brand():
                 filepath=filepath,
                 category=category,
                 summary=text[:200].strip() + "...",
-                extracted_insights=enriched_insights
+                extracted_insights=enriched_insights,
+                vector_store_id=vector_store_id,
+                chunk_size=chunk_size,
+                chunk_ids=chunk_ids
             )
             
             new_doc = crud.create_brand_document(db, doc_create)

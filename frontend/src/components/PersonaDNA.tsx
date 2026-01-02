@@ -1,4 +1,3 @@
-import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Layers, User, Activity, Heart, Library } from 'lucide-react';
@@ -26,7 +25,7 @@ export function PersonaDNA({ baseAttributes, archetype, diseasePack, brandName }
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="relative pl-6 border-l-2 border-slate-200 dark:border-slate-800 space-y-6">
-          
+
           {/* Layer 1: Base */}
           <div className="relative">
             <div className="absolute -left-[31px] top-0 bg-slate-100 dark:bg-slate-800 rounded-full p-1.5 border-2 border-white dark:border-slate-950">

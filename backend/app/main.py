@@ -1110,6 +1110,51 @@ async def get_stats(db: Session = Depends(get_db)):
     stats["total_personas"] = persona_count
     return stats
 
+# Seeding Endpoint (Temporary)
+@app.post("/api/admin/seed")
+async def seed_data(
+    background_tasks: BackgroundTasks, 
+    key: str = Query(..., description="Admin Secret")
+):
+    """
+    Trigger database seeding remotely.
+    This runs setup_mounjaro and create_sample_personas in the background.
+    """
+    # Simple hardcoded check for safety
+    if key != "indegene_secret_seed_2024":
+        raise HTTPException(status_code=403, detail="Invalid admin key")
+        
+    def run_seeding_job():
+        logger.info("🚀 Starting Remote Seeding Job...")
+        try:
+            # Import here to avoid circular dependencies if any, and ensure it uses current env
+            import sys
+            import os
+            
+            # Ensure backend dir is in path (it should be)
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            backend_dir = os.path.dirname(current_dir)
+            if backend_dir not in sys.path:
+                sys.path.append(backend_dir)
+            
+            import setup_mounjaro
+            import create_sample_personas
+            
+            logger.info("--- Running setup_mounjaro ---")
+            setup_mounjaro.setup_mounjaro_brand()
+            
+            logger.info("--- Running create_sample_personas ---")
+            create_sample_personas.create_personas()
+            
+            logger.info("✅ Remote Seeding Job Completed Successfully")
+        except Exception as e:
+            logger.error(f"❌ Remote Seeding Job Failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    background_tasks.add_task(run_seeding_job)
+    return {"message": "Seeding job started in background. Check server logs for progress."}
+
 # --- Health Check ---
 @app.get("/health")
 async def health_check():

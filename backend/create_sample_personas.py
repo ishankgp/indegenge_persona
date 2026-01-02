@@ -117,84 +117,95 @@ PERSONAS_TO_CREATE = [
     }
 ]
 
+
 def create_personas():
     """Generate all sample personas."""
-    db = database.SessionLocal()
+    # We will invoke SessionLocal inside the loop for robustness against connection drops
     
-    try:
-        print("🚀 Creating 12 sample personas...")
-        print("=" * 60)
-        
-        created_count = 0
-        failed_count = 0
-        
-        for i, persona_spec in enumerate(PERSONAS_TO_CREATE, 1):
-            try:
-                print(f"\n[{i}/12] Creating {persona_spec['type']}: {persona_spec['condition']}")
-                
-                # Generate persona using AI
-                persona_data = schemas.PersonaCreate(
-                    age=persona_spec['age'],
-                    gender=persona_spec['gender'],
-                    condition=persona_spec['condition'],
-                    location=persona_spec['location'],
-                    concerns=persona_spec['concerns']
-                )
-                
-                # Call persona engine
-                full_persona_json = persona_engine.generate_persona_from_attributes(
-                    age=persona_data.age,
-                    gender=persona_data.gender,
-                    condition=persona_data.condition,
-                    location=persona_data.location,
-                    concerns=persona_data.concerns
-                )
-                
-                # Verify MBT structure
-                persona_dict = json.loads(full_persona_json)
-                has_motivations = bool(persona_dict.get("motivations"))
-                has_beliefs = bool(persona_dict.get("beliefs"))
-                has_pain_points = bool(persona_dict.get("pain_points"))
-                
-                if not (has_motivations and has_beliefs and has_pain_points):
-                    print(f"  ⚠️  Warning: Missing MBT fields")
-                    print(f"     Motivations: {has_motivations}")
-                    print(f"     Beliefs: {has_beliefs}")
-                    print(f"     Pain Points: {has_pain_points}")
-                
-                # Save to database
-                new_persona = crud.create_persona(
-                    db=db,
-                    persona_data=persona_data,
-                    persona_json=full_persona_json
-                )
-                
-                # Update persona_type
-                db.query(models.Persona).filter(
-                    models.Persona.id == new_persona.id
-                ).update({"persona_type": persona_spec['type']})
-                db.commit()
-                
-                print(f"  ✅ Created: {persona_dict.get('name', 'Unknown')} (ID: {new_persona.id})")
-                created_count += 1
-                
-            except Exception as e:
-                print(f"  ❌ Failed: {e}")
-                failed_count += 1
-                continue
-        
-        print("\n" + "=" * 60)
-        print(f"✅ Successfully created {created_count} personas")
-        if failed_count > 0:
-            print(f"❌ Failed to create {failed_count} personas")
-        print("=" * 60)
-        
-    except Exception as e:
-        print(f"❌ Fatal error: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        db.close()
+    print("🚀 Creating 12 sample personas...")
+    print("=" * 60)
+    
+    created_count = 0
+    failed_count = 0
+    
+    for i, persona_spec in enumerate(PERSONAS_TO_CREATE, 1):
+        db = None
+        try:
+            print(f"\n[{i}/12] Creating {persona_spec['type']}: {persona_spec['condition']}")
+            
+            # Generate persona using AI (this takes time, do it BEFORE connecting to DB to save connection time)
+            # However, persona_engine might use DB? 
+            # Check persona_engine.generate_persona_from_attributes. It uses LLM, usually no DB access unless using RAG context?
+            # It uses `_get_prompt` -> no DB.
+            
+            persona_data = schemas.PersonaCreate(
+                age=persona_spec['age'],
+                gender=persona_spec['gender'],
+                condition=persona_spec['condition'],
+                location=persona_spec['location'],
+                concerns=persona_spec['concerns']
+            )
+            
+            full_persona_json = persona_engine.generate_persona_from_attributes(
+                age=persona_data.age,
+                gender=persona_data.gender,
+                condition=persona_data.condition,
+                location=persona_data.location,
+                concerns=persona_data.concerns
+            )
+            
+            # Verify MBT structure
+            persona_dict = json.loads(full_persona_json)
+            has_motivations = bool(persona_dict.get("motivations"))
+            has_beliefs = bool(persona_dict.get("beliefs"))
+            has_pain_points = bool(persona_dict.get("pain_points"))
+            
+            if not (has_motivations and has_beliefs and has_pain_points):
+                print(f"  ⚠️  Warning: Missing MBT fields")
+                print(f"     Motivations: {has_motivations}")
+                print(f"     Beliefs: {has_beliefs}")
+                print(f"     Pain Points: {has_pain_points}")
+            
+            # Now Connect to DB to save
+            db = database.SessionLocal()
+            
+            # Check if already exists (optional dedupe based on name? No, generate randomly)
+            
+            # Save to database
+            new_persona = crud.create_persona(
+                db=db,
+                persona_data=persona_data,
+                persona_json=full_persona_json
+            )
+            
+            # Update persona_type
+            db.query(models.Persona).filter(
+                models.Persona.id == new_persona.id
+            ).update({"persona_type": persona_spec['type']})
+            db.commit()
+            
+            print(f"  ✅ Created: {persona_dict.get('name', 'Unknown')} (ID: {new_persona.id})")
+            created_count += 1
+            
+        except Exception as e:
+            print(f"  ❌ Failed: {e}")
+            failed_count += 1
+            # Try to rollback if db is open
+            if db:
+                try:
+                    db.rollback()
+                except:
+                    pass
+            continue
+        finally:
+            if db:
+                db.close()
+    
+    print("\n" + "=" * 60)
+    print(f"✅ Successfully created {created_count} personas")
+    if failed_count > 0:
+        print(f"❌ Failed to create {failed_count} personas")
+    print("=" * 60)
 
 if __name__ == "__main__":
     create_personas()
