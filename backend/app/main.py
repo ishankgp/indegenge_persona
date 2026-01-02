@@ -1230,16 +1230,15 @@ def _aggregate_with_vector_search(
     documents: List[models.BrandDocument],
     target_segment: Optional[str],
     limit_per_category: int,
-    corpus_id: Optional[str] = None,
 ) -> Dict[str, List[Dict[str, str]]]:
     """Prefer vector-search snippets when available, fall back to full documents."""
 
     vector_results = vector_search.search_brand_chunks(
         brand_id=brand_id,
         documents=documents,
-        target_segment=target_segment,
+        query_text=target_segment or "brand insights",
         top_k=limit_per_category * 3,
-        corpus_id=corpus_id,
+        target_segment=target_segment
     )
 
     if vector_results:
@@ -1356,27 +1355,21 @@ async def upload_brand_document(
         for insight in persona_engine.extract_mbt_from_text(text)
     ]
 
+    # Create chunks and vector embeddings (OpenAI)
     chunk_size = 800
     chunks = document_processor.chunk_text(text, chunk_size=chunk_size)
     
-    gemini_corpus_id, gemini_document_name, chunk_ids = document_processor.generate_vector_embeddings(
+    # generate_vector_embeddings returns (None, vector_store_id, chunk_ids)
+    _, vector_store_id, chunk_ids = document_processor.generate_vector_embeddings(
         chunks,
         brand_id=brand_id,
         filename=safe_filename,
         chunk_size=chunk_size,
-        insights=extracted_insights,
-        existing_corpus_id=brand.gemini_corpus_id
+        insights=extracted_insights
     )
 
-    # Update brand corpus ID if newly created
-    if gemini_corpus_id and not brand.gemini_corpus_id:
-        brand.gemini_corpus_id = gemini_corpus_id
-        db.add(brand)
-        db.commit()
-        db.refresh(brand)
-
     # Create or replace document record while cleaning up any stale vectors
-    chunk_size_value = chunk_size if (chunks or gemini_document_name) else None
+    chunk_size_value = chunk_size if (chunks or vector_store_id) else None
 
     doc_create = schemas.BrandDocumentCreate(
         brand_id=brand_id,
@@ -1385,7 +1378,7 @@ async def upload_brand_document(
         category=category,
         summary=text[:200] + "..." if text else "No text extracted",
         extracted_insights=extracted_insights,
-        gemini_document_name=gemini_document_name,
+        vector_store_id=vector_store_id,
         chunk_size=chunk_size_value,
         chunk_ids=chunk_ids or None,
     )
@@ -1456,7 +1449,6 @@ async def get_brand_context(
         documents=documents,
         target_segment=target_segment,
         limit_per_category=limit_per_category,
-        corpus_id=brand.gemini_corpus_id,
     )
 
     return schemas.BrandContextResponse(
@@ -1483,7 +1475,6 @@ async def get_brand_persona_suggestions(
         documents=documents,
         target_segment=request.target_segment,
         limit_per_category=limit,
-        corpus_id=brand.gemini_corpus_id,
     )
     flattened = _flatten_insights(aggregated)
 
@@ -1549,22 +1540,13 @@ async def seed_brand_documents(brand_id: int, db: Session = Depends(get_db)):
             for insight in persona_engine.extract_mbt_from_text(text)
         ]
 
-        gemini_corpus_id, gemini_document_name, chunk_ids = document_processor.generate_vector_embeddings(
+        _, vector_store_id, chunk_ids = document_processor.generate_vector_embeddings(
             chunks,
             brand_id=brand_id,
             filename=filename,
             chunk_size=chunk_size,
-            insights=extracted_insights,
-            existing_corpus_id=brand.gemini_corpus_id
+            insights=extracted_insights
         )
-
-        # Update brand corpus ID if newly created
-        if gemini_corpus_id and not brand.gemini_corpus_id:
-            brand.gemini_corpus_id = gemini_corpus_id
-            db.add(brand)
-            db.commit()
-            # Refresh to get the ID for next iteration implicitly (object is attached to session)
-            db.refresh(brand)
 
         doc_create = schemas.BrandDocumentCreate(
             brand_id=brand_id,
@@ -1573,7 +1555,7 @@ async def seed_brand_documents(brand_id: int, db: Session = Depends(get_db)):
             category=category,
             summary=text,
             extracted_insights=extracted_insights,
-            gemini_document_name=gemini_document_name,
+            vector_store_id=vector_store_id,
             chunk_size=chunk_size,
             chunk_ids=chunk_ids or None
         )

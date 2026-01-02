@@ -465,31 +465,27 @@ def create_brand_document(db: Session, document: schemas.BrandDocumentCreate):
     return db_document
 
 
-def _delete_gemini_document(document_name: Optional[str]) -> None:
-    """Best-effort cleanup of remote Gemini documents."""
-    if not document_name:
+def _delete_vector_store(vector_store_id: Optional[str]) -> None:
+    """Best-effort cleanup of remote OpenAI Vector Stores."""
+    if not vector_store_id:
         return
     
     try:
-        from google.generativeai import retriever
-        import google.generativeai as genai
-        import os
-        
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        if api_key:
-            genai.configure(api_key=api_key)
-            retriever.delete_document(name=document_name)
-            logger.info("Deleted Gemini document %s", document_name)
+        from .document_processor import _get_openai_client
+        client = _get_openai_client()
+        if client:
+            client.beta.vector_stores.delete(vector_store_id)
+            logger.info("Deleted OpenAI Vector Store %s", vector_store_id)
     except Exception as exc:
-        logger.warning("Gemini document cleanup failed for %s: %s", document_name, exc)
+        logger.warning("Vector store cleanup failed for %s: %s", vector_store_id, exc)
 
 
 def upsert_brand_document(db: Session, document: schemas.BrandDocumentCreate):
     """Create or replace a brand document while cleaning up stale vectors.
 
     If a document with the same brand and filename exists, it will be updated
-    with the new payload. When a replacement includes a new document name,
-    the previous document is removed on a best-effort basis.
+    with the new payload. When a replacement includes a new vector_store_id,
+    the previous store is removed on a best-effort basis.
     """
 
     existing = db.query(models.BrandDocument).filter(
@@ -498,15 +494,16 @@ def upsert_brand_document(db: Session, document: schemas.BrandDocumentCreate):
     ).first()
 
     if existing:
-        previous_doc_name = existing.gemini_document_name
+        previous_vs_id = existing.vector_store_id
         for key, value in document.dict().items():
             setattr(existing, key, value)
 
         db.commit()
         db.refresh(existing)
 
-        if previous_doc_name and previous_doc_name != existing.gemini_document_name:
-            _delete_gemini_document(previous_doc_name)
+        # If vector store ID changed (and wasn't None), delete the old one to avoid garbage
+        if previous_vs_id and previous_vs_id != existing.vector_store_id:
+             _delete_vector_store(previous_vs_id)
 
         return existing
 
@@ -520,10 +517,10 @@ def delete_brand_document(db: Session, document_id: int, *, brand_id: Optional[i
 
     db_document = query.first()
     if db_document:
-        doc_name = db_document.gemini_document_name
+        vs_id = db_document.vector_store_id
         db.delete(db_document)
         db.commit()
-        _delete_gemini_document(doc_name)
+        _delete_vector_store(vs_id)
         return True
 
     return False

@@ -3,6 +3,10 @@ import sys
 import os
 import logging
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load env vars
+load_dotenv()
 
 # Add Backend root to path
 sys.path.append(os.getcwd())
@@ -47,10 +51,10 @@ def verify_rag():
         )
         
         if not gemini_corpus_id:
-            logger.error("❌ Failed to create/get corpus ID. Is GEMINI_API_KEY valid?")
+            print("FAILED to create/get corpus ID. Is GEMINI_API_KEY valid?")
             return
             
-        logger.info(f"✅ Ingestion success. Corpus: {gemini_corpus_id}, Document: {gemini_document_name}")
+        print(f"Ingestion success. Corpus: {gemini_corpus_id}, Document: {gemini_document_name}")
          
          # Update Brand with Corpus ID
         if not brand.gemini_corpus_id:
@@ -59,8 +63,12 @@ def verify_rag():
             db.commit()
             db.refresh(brand)
             
+        print("Sleeping 10s for indexing...")
+        import time
+        time.sleep(10)
+
         # 3. Simulate Search
-        logger.info("Testing Search...")
+        print("Testing Search...")
         results = vector_search.search_brand_chunks(
             brand_id=brand.id,
             corpus_id=brand.gemini_corpus_id,
@@ -69,11 +77,11 @@ def verify_rag():
         )
         
         if results:
-            logger.info(f"✅ Search returned {len(results)} results:")
+            print(f"Search returned {len(results)} results:")
             for r in results:
-                logger.info(f" - {r['text'][:50]}...")
+                print(f" - {r['text'][:50]}...")
         else:
-            logger.warning("⚠️ Search returned no results. Indexing might take a moment or failed.")
+            print("Search returned no results. Indexing might take a moment or failed.")
 
     finally:
         db.close()

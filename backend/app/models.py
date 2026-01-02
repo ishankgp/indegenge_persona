@@ -56,7 +56,6 @@ class Brand(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True, unique=True)
-    gemini_corpus_id = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class BrandDocument(Base):
@@ -65,9 +64,9 @@ class BrandDocument(Base):
     id = Column(Integer, primary_key=True, index=True)
     brand_id = Column(Integer, index=True)
     filename = Column(String)
-    filepath = Column(String)
-    category = Column(String)
-    summary = Column(Text, nullable=True)
+    file_type = Column(String)
+    upload_date = Column(DateTime, default=datetime.datetime.utcnow)
+    vector_store_id = Column(String) # OpenAI Vector Store ID
     extracted_insights = Column(JSON, nullable=True)
     gemini_document_name = Column(String, nullable=True)
     chunk_size = Column(Integer, nullable=True)

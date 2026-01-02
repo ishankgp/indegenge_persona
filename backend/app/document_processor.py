@@ -142,42 +142,6 @@ def classify_document(text: str) -> str:
 
 
 
-import google.generativeai as genai
-from google.generativeai import retriever
-
-def configure_genai():
-    """Configure Gemini API with key from environment."""
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        logger.warning("Gemini API key not found (GEMINI_API_KEY or GOOGLE_API_KEY).")
-        return
-    genai.configure(api_key=api_key)
-
-def _get_or_create_corpus(brand_id: int, existing_corpus_id: Optional[str] = None) -> Optional[str]:
-    """
-    Get an existing corpus or create a new one for the brand.
-    Returns the corpus resource name (e.g., 'corpora/123...').
-    """
-    configure_genai()
-    
-    # If we already have a corpus ID, try to get it to ensure it exists
-    if existing_corpus_id:
-        try:
-            # Verify existence (this might throw if not found)
-            retriever.get_corpus(name=existing_corpus_id)
-            return existing_corpus_id
-        except Exception:
-            logger.warning(f"Corpus {existing_corpus_id} not found, creating new one.")
-    
-    # Create new corpus
-    display_name = f"Brand {brand_id} Corpus"
-    try:
-        corpus = retriever.create_corpus(display_name=display_name)
-        logger.info(f"Created new Gemini corpus: {corpus.name}")
-        return corpus.name
-    except Exception as e:
-        logger.error(f"Failed to create Gemini corpus: {e}")
-        return None
 
 def generate_vector_embeddings(
     chunks: List[str],
@@ -189,105 +153,60 @@ def generate_vector_embeddings(
     existing_corpus_id: Optional[str] = None
 ) -> Tuple[Optional[str], Optional[str], List[str]]:
     """
-    Ingest document into Gemini Semantic Retriever.
+    Generate vector embeddings for the given chunks using OpenAI.
+    
+    This function:
+    1. Creating a Vector Store for the brand/document if needed.
+    2. Uploading the file to OpenAI.
+    3. Attaching the file to the Vector Store.
     
     Returns:
-        (corpus_id, document_name, chunk_ids)
+        (None, vector_store_id, []) - We return vector_store_id as the second element (document identifier)
     """
-    configure_genai()
-
-    if not chunks and not insights:
-        logger.info("No content to ingest.")
-        return existing_corpus_id, None, []
-
-    # 1. Ensure Corpus exists
-    corpus_name = _get_or_create_corpus(brand_id, existing_corpus_id)
-    if not corpus_name:
+    client = _get_openai_client()
+    if not client:
+        logger.warning("OpenAI client not initialized.")
         return None, None, []
 
-    # 2. Create Document in Corpus
-    # Sanitize filename (alphanumeric + underscores, max 63 chars)
-    # Gemini doc names are resource names, but 'display_name' can be anything.
-    # We let Gemini generate the ID or use valid char name.
-    safe_display_name = filename[:60]
-    
-    try:
-        # Create document resource
-        doc = retriever.create_document(corpus=corpus_name, display_name=safe_display_name)
-        document_name = doc.name
-        logger.info(f"Created Gemini document: {document_name}")
-    except Exception as e:
-        logger.error(f"Failed to create Gemini document: {e}")
-        return corpus_name, None, []
-
-    # 3. Prepare Chunks
-    # Ideally we use 'insights' if available, otherwise 'chunks'.
-    # Gemini chunks are text + metadata.
-    
-    batch_chunks = []
-    
-    if insights:
-        for idx, insight in enumerate(insights):
-            text = (insight.get("text") or "").strip()
-            if not text: 
-                continue
-                
-            metadata = {
-                "type": insight.get("type"),
-                "segment": insight.get("segment") or "General",
-                "source_snippet": (insight.get("source_snippet") or text)[:100], # Limit metadata length
-                "source_document": filename,
-                "brand_id": str(brand_id),
-            }
-            # Add non-null metadata only
-            custom_metadata = [{"key": k, "string_value": str(v)} for k, v in metadata.items() if v]
-
-            batch_chunks.append({
-                "data": {"string_value": text},
-                "custom_metadata": custom_metadata
-            })
-            
-    elif chunks:
-        for idx, text in enumerate(chunks):
-            text = text.strip()
-            if not text:
-                continue
-            
-            metadata = {
-                "source_document": filename,
-                "brand_id": str(brand_id),
-                "segment": "General"
-            }
-            custom_metadata = [{"key": k, "string_value": str(v)} for k, v in metadata.items() if v]
-
-            batch_chunks.append({
-                "data": {"string_value": text},
-                "custom_metadata": custom_metadata
-            })
-
-    if not batch_chunks:
-        return corpus_name, document_name, []
-
-    # 4. Upload Chunks (Batch)
-    # Gemini allows max 100 chunks per batch request, loop if needed
-    batch_size = 100
-    chunk_ids = []
-    
-    try:
-        for i in range(0, len(batch_chunks), batch_size):
-            batch = batch_chunks[i : i + batch_size]
-            response = retriever.batch_create_chunks(
-                parent=document_name,
-                requests=[{"chunk": c} for c in batch]
-            )
-            # Collect created chunk resource names
-            chunk_ids.extend([c.name for c in response.chunks])
-            
-        logger.info(f"Ingested {len(chunk_ids)} chunks into {document_name}")
+    if not chunks:
+        logger.info("No chunks/text to ingest.")
+        return None, None, []
         
-    except Exception as e:
-        logger.error(f"Failed to upload chunks to Gemini: {e}")
-        # We might want to delete the document if ingestion fails partially, but keeping it for now.
-        return corpus_name, document_name, chunk_ids
+    # Create valid filename
+    safe_filename = "".join([c for c in filename if c.isalnum() or c in "._-"])
+    
+    try:
+        # 1. Create a Vector Store
+        # For simplicity in this revert, we create a new store for each document batch or use the brand's store logic if we had it.
+        # Based on previous code analysis, we were creating a store per document.
+        vs_name = f"brand-{brand_id}-{safe_filename}"
+        vector_store = client.beta.vector_stores.create(name=vs_name)
+        
+        # 2. Upload File (Stream the text content as a file)
+        # We need to recreate the file content from chunks or use the original file if we had the path.
+        # Since we receive 'chunks' (list of str), we'll join them to form the document content.
+        full_text = "\n\n".join(chunks)
+        
+        # Create a temporary file to upload
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix=".txt", encoding='utf-8') as tmp:
+            tmp.write(full_text)
+            tmp_path = tmp.name
+            
+        try:
+            with open(tmp_path, "rb") as file_stream:
+                file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
+                    vector_store_id=vector_store.id,
+                    files=[file_stream]
+                )
+                logger.info(f"Uploaded file batch status: {file_batch.status}")
+                logger.info(f"File counts: {file_batch.file_counts}")
 
-    return corpus_name, document_name, chunk_ids
+            return None, vector_store.id, []
+            
+        finally:
+            os.remove(tmp_path)
+
+    except Exception as e:
+        logger.error(f"Failed to ingest into OpenAI Vector Store: {e}")
+        return None, None, []

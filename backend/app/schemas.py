@@ -200,7 +200,6 @@ class BrandCreate(BrandBase):
 
 class Brand(BrandBase):
     id: int
-    gemini_corpus_id: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -220,7 +219,7 @@ class BrandDocumentBase(BaseModel):
     category: str
     summary: Optional[str] = None
     extracted_insights: Optional[List[BrandInsight]] = None
-    gemini_document_name: Optional[str] = None
+    vector_store_id: Optional[str] = None
     chunk_size: Optional[int] = None
     chunk_ids: Optional[List[str]] = None
 
