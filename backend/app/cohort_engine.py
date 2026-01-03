@@ -508,7 +508,7 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
     insights = []
     
     # Analyze intent patterns
-    intent_scores = [resp['responses'].get('purchase_intent') for resp in individual_responses if resp['responses'].get('purchase_intent')]
+    intent_scores = [resp['responses'].get('intent_to_action') for resp in individual_responses if resp['responses'].get('intent_to_action')]
     if intent_scores:
         avg_intent = sum(intent_scores) / len(intent_scores)
         if avg_intent >= 7:
@@ -519,7 +519,7 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
             insights.append("Moderate request/prescribe intent - message shows potential but may need refinement.")
     
     # Analyze sentiment patterns
-    sentiments = [resp['responses'].get('sentiment') for resp in individual_responses if resp['responses'].get('sentiment')]
+    sentiments = [resp['responses'].get('emotional_response') for resp in individual_responses if resp['responses'].get('emotional_response')]
     if sentiments:
         avg_sentiment = sum(sentiments) / len(sentiments)
         if avg_sentiment >= 0.5:
@@ -530,7 +530,7 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
             insights.append("Neutral sentiment - message is well-received but may need emotional enhancement.")
     
     # Analyze trust patterns
-    trust_scores = [resp['responses'].get('trust_in_brand') for resp in individual_responses if resp['responses'].get('trust_in_brand')]
+    trust_scores = [resp['responses'].get('brand_trust') for resp in individual_responses if resp['responses'].get('brand_trust')]
     if trust_scores:
         avg_trust = sum(trust_scores) / len(trust_scores)
         if avg_trust >= 7:
@@ -596,7 +596,11 @@ def run_cohort_analysis(
     individual_responses = []
     for persona in personas:
         # Parse the JSON string to get the persona data
-        persona_data = json.loads(persona.full_persona_json)
+        try:
+            persona_data = json.loads(persona.full_persona_json) if persona.full_persona_json else {}
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse persona JSON for {persona.name} (ID: {persona.id}): {e}")
+            persona_data = {}
         persona_type = getattr(persona, "persona_type", None) or persona_data.get("persona_type") or "Patient"
         analysis_result = analyze_persona_response(
             persona_data,
