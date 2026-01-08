@@ -469,3 +469,29 @@ export const VeevaCRMAPI = {
       options
     }).then(r => r.data)
 };
+
+// Asset Intelligence API - Nano Banana Pro integration
+export interface AssetAnalysisResult {
+  persona_id: number;
+  persona_name: string;
+  annotated_image: string | null; // Base64 encoded
+  text_summary: string;
+  error: string | null;
+}
+
+export interface AssetAnalysisResponse {
+  success: boolean;
+  asset_filename: string;
+  personas_analyzed: number;
+  results: AssetAnalysisResult[];
+}
+
+export const AssetIntelligenceAPI = {
+  analyze: (file: File, personaIds: number[]): Promise<AssetAnalysisResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('persona_ids', personaIds.join(','));
+    return api.post('/api/assets/analyze', formData).then(r => r.data);
+  }
+};
+

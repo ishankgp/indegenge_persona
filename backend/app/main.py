@@ -20,6 +20,7 @@ from datetime import datetime
 
 from . import crud, models, schemas, persona_engine, cohort_engine, document_processor, avatar_engine, image_improvement, vector_search
 from . import archetypes, disease_packs
+from . import asset_analyzer
 from .database import engine, get_db
 import shutil
 
@@ -1881,5 +1882,84 @@ async def import_personas_from_crm(request: dict, db: Session = Depends(get_db))
         logger.error(f"Error importing personas from CRM: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to import personas: {str(e)}")
 
+
+# --- Asset Intelligence Endpoints ---
+
+@app.post("/api/assets/analyze")
+async def analyze_asset_with_personas(
+    file: UploadFile = File(...),
+    persona_ids: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Analyze a marketing asset from the perspective of selected personas.
+    
+    Uses Nano Banana Pro (Gemini 3.0 Pro Image) to generate annotated images
+    with professional red-lining feedback for each persona.
+    
+    Args:
+        file: The marketing asset image to analyze
+        persona_ids: Comma-separated list of persona IDs
+        
+    Returns:
+        List of analysis results, one per persona, each containing:
+        - persona_id: ID of the persona
+        - persona_name: Name of the persona
+        - annotated_image: Base64 encoded annotated image
+        - text_summary: Text summary of the feedback
+    """
+    # Parse persona IDs
+    try:
+        ids = [int(id.strip()) for id in persona_ids.split(",") if id.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid persona_ids format. Expected comma-separated integers.")
+    
+    if not ids:
+        raise HTTPException(status_code=400, detail="At least one persona_id is required.")
+    
+    # Fetch personas from database
+    personas = []
+    for persona_id in ids:
+        persona = db.query(models.Persona).filter(models.Persona.id == persona_id).first()
+        if persona:
+            personas.append({
+                "id": persona.id,
+                "name": persona.name,
+                "persona_type": persona.persona_type,
+                "persona_subtype": persona.persona_subtype,
+                "decision_style": persona.decision_style,
+                "full_persona_json": persona.full_persona_json
+            })
+        else:
+            logger.warning(f"Persona with id {persona_id} not found, skipping.")
+    
+    if not personas:
+        raise HTTPException(status_code=404, detail="No valid personas found for the provided IDs.")
+    
+    # Read the uploaded file
+    try:
+        image_bytes = await file.read()
+        mime_type = file.content_type or "image/png"
+    except Exception as e:
+        logger.error(f"Failed to read uploaded file: {e}")
+        raise HTTPException(status_code=400, detail="Failed to read uploaded file.")
+    
+    # Analyze asset for each persona
+    logger.info(f"🎨 Analyzing asset for {len(personas)} personas using Nano Banana Pro")
+    results = await asset_analyzer.analyze_asset_for_personas(
+        image_bytes=image_bytes,
+        personas=personas,
+        mime_type=mime_type
+    )
+    
+    return {
+        "success": True,
+        "asset_filename": file.filename,
+        "personas_analyzed": len(results),
+        "results": results
+    }
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
