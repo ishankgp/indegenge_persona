@@ -10,9 +10,9 @@ import logging
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 
-# Load environment variables
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-env_path = os.path.join(project_root, '.env')
+# Load environment variables from the backend folder
+backend_dir = os.path.dirname(os.path.dirname(__file__))
+env_path = os.path.join(backend_dir, '.env')
 load_dotenv(env_path)
 
 logger = logging.getLogger(__name__)
@@ -153,7 +153,7 @@ def improve_image_with_ai(
             # Reference: https://ai.google.dev/gemini-api/docs/image-generation
             
             response = client.models.generate_content(
-                model="gemini-3-pro-image-preview",
+                model="gemini-2.0-flash-exp",
                 contents=[
                     # Include the original image
                     types.Part.from_bytes(
@@ -162,13 +162,7 @@ def improve_image_with_ai(
                     ),
                     # Include the improvement prompt
                     improvement_prompt
-                ],
-                config=types.GenerateContentConfig(
-                    image_config=types.ImageConfig(
-                        aspect_ratio="16:9",  # Maintain aspect ratio
-                        image_size="2K"  # High quality 2K resolution
-                    )
-                )
+                ]
             )
             
             # Extract the improved image from the response

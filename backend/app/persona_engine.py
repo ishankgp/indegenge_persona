@@ -8,9 +8,9 @@ import uuid
 import random
 from datetime import datetime
 
-# Load environment variables from the project root
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-env_path = os.path.join(project_root, '.env')
+# Load environment variables from the backend folder
+backend_dir = os.path.dirname(os.path.dirname(__file__))
+env_path = os.path.join(backend_dir, '.env')
 load_dotenv(env_path)
 
 # Cache for the OpenAI client.  The SDK requires an API key during

@@ -14,7 +14,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv()
+# Try backend/.env first (where keys are stored), then project root
+load_dotenv(Path(__file__).parent / "backend" / ".env")
+load_dotenv()  # Also load from root if exists
 
 # --- Configuration ---
 BACKEND_PORT = 8000

@@ -11,9 +11,9 @@ from typing import Dict, Any, List, Optional
 from . import crud
 from datetime import datetime
 
-# Load environment variables from the project root
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-env_path = os.path.join(project_root, '.env')
+# Load environment variables from the backend folder
+backend_dir = os.path.dirname(os.path.dirname(__file__))
+env_path = os.path.join(backend_dir, '.env')
 load_dotenv(env_path)
 
 # Initialize OpenAI client lazily to avoid requiring credentials at import time

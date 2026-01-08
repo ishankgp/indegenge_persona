@@ -13,9 +13,9 @@ import logging
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 
-# Load environment variables
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-env_path = os.path.join(project_root, '.env')
+# Load environment variables from the backend folder
+backend_dir = os.path.dirname(os.path.dirname(__file__))
+env_path = os.path.join(backend_dir, '.env')
 load_dotenv(env_path)
 
 logger = logging.getLogger(__name__)
@@ -152,8 +152,8 @@ async def analyze_image_with_nano_banana(
         # Build persona-specific prompt
         prompt = build_annotation_prompt(persona)
         
-        # Use gemini-3-pro-image-preview (Nano Banana Pro) for native image annotation
-        model_name = "gemini-3-pro-image-preview"
+        # Use gemini-2.0-flash-exp for image analysis
+        model_name = "gemini-2.0-flash-exp"
         logger.info(f"Using model: {model_name} for persona: {persona.get('name', 'Unknown')}")
         
         annotated_image_b64 = None
@@ -162,7 +162,7 @@ async def analyze_image_with_nano_banana(
         try:
             # Use the new SDK pattern with image-to-image editing
             response = client.models.generate_content(
-                model=model_name,
+                model="gemini-2.0-flash-exp",
                 contents=[
                     # Include the original image
                     types.Part.from_bytes(
@@ -171,13 +171,7 @@ async def analyze_image_with_nano_banana(
                     ),
                     # Include the annotation prompt
                     prompt
-                ],
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"],
-                    image_config=types.ImageConfig(
-                        image_size="2K"  # High quality output
-                    )
-                )
+                ]
             )
             
             # Extract annotated image and text from response
