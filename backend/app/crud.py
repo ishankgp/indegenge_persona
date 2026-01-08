@@ -107,7 +107,7 @@ def _deep_merge_persona_json(
                 
         # Also mark fields as confirmed even if not in updates
         for field_path in confirm_fields:
-            if field_path.startswith(path + ".") if path else not "." in field_path:
+            if (field_path.startswith(path + ".") if path else "." not in field_path):
                 parts = field_path.split(".")
                 current_key = parts[-1] if path else parts[0]
                 if current_key in target and _is_enriched_field(target[current_key]):

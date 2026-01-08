@@ -242,8 +242,8 @@ def create_cohort_analysis_prompt(
     if questions:
         formatted_questions = "\n".join([f"- Q{idx+1}: {q}" for idx, q in enumerate(questions)])
         question_block = f"\n**Qualitative Questions:**\n{formatted_questions}\n"
-        answers_block = """
-    ,"answers": [
+        answers_block = """,
+    "answers": [
         "<response to Q1>",
         "<response to Q2>",
         ...

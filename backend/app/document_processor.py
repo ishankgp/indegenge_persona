@@ -19,8 +19,12 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[str
     if not text:
         return []
 
-    if chunk_size <= overlap:
-        logger.warning("Chunk size must be larger than overlap; using non-overlapping chunks.")
+    if chunk_size <= 0:
+        logger.warning("Chunk size must be positive; returning empty list.")
+        return []
+    
+    if overlap >= chunk_size:
+        logger.warning("Overlap must be smaller than chunk size; using non-overlapping chunks.")
         overlap = 0
 
     chunks: List[str] = []
@@ -32,7 +36,9 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[str
         chunk = text[start:end].strip()
         if chunk:
             chunks.append(chunk)
-        start += chunk_size - overlap if chunk_size > overlap else chunk_size
+        # Ensure we always advance by at least 1 to prevent infinite loop
+        increment = max(1, chunk_size - overlap)
+        start += increment
 
     return chunks
 
