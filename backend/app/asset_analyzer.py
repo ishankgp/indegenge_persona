@@ -132,23 +132,16 @@ async def analyze_image_with_nano_banana(
         # Build persona-specific prompt
         prompt = build_annotation_prompt(persona)
         
-        # Try Gemini 3.0 Pro Image (Nano Banana Pro) first, fallback to gemini-2.0-flash-exp
-        model_options = ['gemini-3.0-pro-image', 'gemini-2.0-flash-exp', 'gemini-1.5-pro']
-        model = None
-        last_error = None
+        # Use gemini-2.0-flash-exp which supports image input/output
+        model_name = 'gemini-2.0-flash-exp'
         
-        for model_name in model_options:
-            try:
-                model = genai.GenerativeModel(model_name)
-                logger.info(f"Using model: {model_name}")
-                break
-            except Exception as e:
-                last_error = e
-                logger.warning(f"Model {model_name} not available: {e}")
-                continue
-        
-        if model is None:
-            raise Exception(f"No suitable model available. Last error: {last_error}")
+        try:
+            model = genai.GenerativeModel(model_name)
+            logger.info(f"Using model: {model_name}")
+        except Exception as e:
+            # Fallback to gemini-1.5-pro for text analysis only
+            logger.warning(f"Model {model_name} not available: {e}, falling back to gemini-1.5-pro")
+            model = genai.GenerativeModel('gemini-1.5-pro')
         
         # Prepare image for the API
         image_part = {
@@ -156,27 +149,44 @@ async def analyze_image_with_nano_banana(
             "data": base64.b64encode(image_bytes).decode('utf-8')
         }
         
-        # Generate annotated image
-        response = model.generate_content(
-            [prompt, image_part],
-            generation_config={
-                "response_modalities": ["image", "text"],
-            }
-        )
-        
-        # Extract the response
+        # First, try with image output modality
         annotated_image_b64 = None
         text_summary = ""
         
-        if response.candidates and response.candidates[0].content.parts:
-            for part in response.candidates[0].content.parts:
-                if hasattr(part, 'inline_data') and part.inline_data:
-                    # This is the annotated image
-                    annotated_image_b64 = part.inline_data.data
-                    if isinstance(annotated_image_b64, bytes):
-                        annotated_image_b64 = base64.b64encode(annotated_image_b64).decode('utf-8')
-                elif hasattr(part, 'text') and part.text:
-                    text_summary += part.text
+        try:
+            # Try to generate with image output
+            response = model.generate_content(
+                [prompt, image_part],
+                generation_config={
+                    "response_modalities": ["image", "text"],
+                }
+            )
+            
+            if response.candidates and response.candidates[0].content.parts:
+                for part in response.candidates[0].content.parts:
+                    if hasattr(part, 'inline_data') and part.inline_data:
+                        annotated_image_b64 = part.inline_data.data
+                        if isinstance(annotated_image_b64, bytes):
+                            annotated_image_b64 = base64.b64encode(annotated_image_b64).decode('utf-8')
+                    elif hasattr(part, 'text') and part.text:
+                        text_summary += part.text
+        except Exception as img_error:
+            logger.warning(f"Image generation failed: {img_error}, falling back to text-only analysis")
+            # Fallback to text-only analysis
+            text_prompt = f"""{prompt}
+
+Since you cannot annotate the image directly, please provide a detailed text analysis:
+1. List 3-5 specific areas of concern with their approximate locations (e.g., "top-left corner", "main headline")
+2. For each area, provide your critique
+3. Suggest specific improvements
+
+Format your response clearly with bullet points."""
+            
+            response = model.generate_content([text_prompt, image_part])
+            if response.candidates and response.candidates[0].content.parts:
+                for part in response.candidates[0].content.parts:
+                    if hasattr(part, 'text') and part.text:
+                        text_summary += part.text
         
         return {
             "persona_id": persona.get("id"),
