@@ -1,7 +1,9 @@
 """
-NanoBananaService - Asset Intelligence using Gemini 3.0 Pro Image (Nano Banana Pro)
+NanoBananaService - Asset Intelligence using Gemini 3 Pro Image Preview (Nano Banana Pro)
 
 This service provides visual red-lining of marketing assets from persona perspectives.
+Uses the new google.genai SDK with gemini-3-pro-image-preview for native image annotation.
+Reference: https://ai.google.dev/gemini-api/docs/image-generation
 """
 
 import os
@@ -18,26 +20,41 @@ load_dotenv(env_path)
 
 logger = logging.getLogger(__name__)
 
+# Check for new SDK availability
+try:
+    from google import genai
+    from google.genai import types
+    GENAI_AVAILABLE = True
+except ImportError:
+    GENAI_AVAILABLE = False
+    logger.warning("google-genai not installed. Install with: pip install google-genai")
+
+# API Key for Nano Banana Pro (Gemini 3 Pro Image Preview)
+# Use IMAGE_EDIT_API_KEY for consistency, fallback to GEMINI_API_KEY
+IMAGE_EDIT_API_KEY = os.getenv("IMAGE_EDIT_API_KEY") or os.getenv("GEMINI_API_KEY")
+
 # Lazy-loaded Gemini client
 _gemini_client = None
 
 
 def get_gemini_client():
-    """Return a configured Gemini client if API key is available."""
+    """Return a configured Gemini client (new SDK) if API key is available."""
     global _gemini_client
     
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        logger.warning("GEMINI_API_KEY not found in environment")
+    if not GENAI_AVAILABLE:
+        logger.error("google-genai package not installed")
+        return None
+    
+    if not IMAGE_EDIT_API_KEY:
+        logger.warning("IMAGE_EDIT_API_KEY or GEMINI_API_KEY not found in environment")
         return None
     
     if _gemini_client is None:
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            _gemini_client = genai
-        except ImportError:
-            logger.error("google-generativeai package not installed")
+            _gemini_client = genai.Client(api_key=IMAGE_EDIT_API_KEY)
+            logger.info("Initialized Gemini client with new google.genai SDK")
+        except Exception as e:
+            logger.error(f"Failed to initialize Gemini client: {e}")
             return None
     
     return _gemini_client
@@ -98,7 +115,7 @@ Annotation Style:
 - Mark positive elements with a small checkmark if applicable
 - Keep comments clinical and constructive, not sarcastic or humorous
 
-Identify 3-5 key issues based on your persona's perspective. Return the annotated image."""
+Identify 3-5 key issues based on your persona's perspective. Return the annotated image with visual markups."""
 
     return prompt
 
@@ -109,7 +126,10 @@ async def analyze_image_with_nano_banana(
     mime_type: str = "image/png"
 ) -> Dict[str, Any]:
     """
-    Analyze an image using Nano Banana Pro (Gemini 3.0 Pro Image).
+    Analyze an image using Nano Banana Pro (Gemini 3 Pro Image Preview).
+    
+    Uses the new google.genai SDK for native image annotation capabilities.
+    Reference: https://ai.google.dev/gemini-api/docs/image-generation
     
     Args:
         image_bytes: Raw bytes of the image to analyze
@@ -120,73 +140,94 @@ async def analyze_image_with_nano_banana(
         Dictionary with 'annotated_image' (base64) and 'text_summary'
     """
     
-    genai = get_gemini_client()
-    if genai is None:
+    client = get_gemini_client()
+    if client is None:
         return {
             "error": "Gemini API not configured",
             "annotated_image": None,
-            "text_summary": "Unable to analyze: Gemini API key not configured"
+            "text_summary": "Unable to analyze: Gemini API key not configured or google-genai not installed"
         }
     
     try:
         # Build persona-specific prompt
         prompt = build_annotation_prompt(persona)
         
-        # Use gemini-2.0-flash-exp which supports image input/output
-        model_name = 'gemini-2.0-flash-exp'
+        # Use gemini-3-pro-image-preview (Nano Banana Pro) for native image annotation
+        model_name = "gemini-3-pro-image-preview"
+        logger.info(f"Using model: {model_name} for persona: {persona.get('name', 'Unknown')}")
         
-        try:
-            model = genai.GenerativeModel(model_name)
-            logger.info(f"Using model: {model_name}")
-        except Exception as e:
-            # Fallback to gemini-1.5-pro for text analysis only
-            logger.warning(f"Model {model_name} not available: {e}, falling back to gemini-1.5-pro")
-            model = genai.GenerativeModel('gemini-1.5-pro')
-        
-        # Prepare image for the API
-        image_part = {
-            "mime_type": mime_type,
-            "data": base64.b64encode(image_bytes).decode('utf-8')
-        }
-        
-        # First, try with image output modality
         annotated_image_b64 = None
         text_summary = ""
         
         try:
-            # Try to generate with image output
-            response = model.generate_content(
-                [prompt, image_part],
-                generation_config={
-                    "response_modalities": ["image", "text"],
-                }
+            # Use the new SDK pattern with image-to-image editing
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[
+                    # Include the original image
+                    types.Part.from_bytes(
+                        data=image_bytes,
+                        mime_type=mime_type
+                    ),
+                    # Include the annotation prompt
+                    prompt
+                ],
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
+                    image_config=types.ImageConfig(
+                        image_size="2K"  # High quality output
+                    )
+                )
             )
             
-            if response.candidates and response.candidates[0].content.parts:
-                for part in response.candidates[0].content.parts:
-                    if hasattr(part, 'inline_data') and part.inline_data:
-                        annotated_image_b64 = part.inline_data.data
-                        if isinstance(annotated_image_b64, bytes):
-                            annotated_image_b64 = base64.b64encode(annotated_image_b64).decode('utf-8')
-                    elif hasattr(part, 'text') and part.text:
-                        text_summary += part.text
+            # Extract annotated image and text from response
+            for part in response.parts:
+                if part.text is not None:
+                    text_summary += part.text + "\n"
+                elif part.inline_data is not None:
+                    # This is the annotated image
+                    annotated_image_data = part.inline_data.data
+                    if isinstance(annotated_image_data, bytes):
+                        annotated_image_b64 = base64.b64encode(annotated_image_data).decode('utf-8')
+                    else:
+                        annotated_image_b64 = annotated_image_data
+                    
+            if not text_summary and annotated_image_b64:
+                text_summary = "Image annotated with persona feedback using Nano Banana Pro."
+                
         except Exception as img_error:
-            logger.warning(f"Image generation failed: {img_error}, falling back to text-only analysis")
-            # Fallback to text-only analysis
-            text_prompt = f"""{prompt}
+            logger.warning(f"Image annotation with {model_name} failed: {img_error}")
+            logger.info("Falling back to text-only analysis")
+            
+            # Fallback to text-only analysis with gemini-2.0-flash-exp
+            try:
+                text_prompt = f"""{prompt}
 
 Since you cannot annotate the image directly, please provide a detailed text analysis:
 1. List 3-5 specific areas of concern with their approximate locations (e.g., "top-left corner", "main headline")
-2. For each area, provide your critique
+2. For each area, provide your critique from this persona's perspective
 3. Suggest specific improvements
 
 Format your response clearly with bullet points."""
-            
-            response = model.generate_content([text_prompt, image_part])
-            if response.candidates and response.candidates[0].content.parts:
-                for part in response.candidates[0].content.parts:
-                    if hasattr(part, 'text') and part.text:
-                        text_summary += part.text
+
+                fallback_response = client.models.generate_content(
+                    model="gemini-2.0-flash-exp",
+                    contents=[
+                        types.Part.from_bytes(
+                            data=image_bytes,
+                            mime_type=mime_type
+                        ),
+                        text_prompt
+                    ]
+                )
+                
+                for part in fallback_response.parts:
+                    if part.text is not None:
+                        text_summary += part.text + "\n"
+                        
+            except Exception as fallback_error:
+                logger.error(f"Fallback text analysis also failed: {fallback_error}")
+                text_summary = f"Analysis failed: {str(img_error)}"
         
         return {
             "persona_id": persona.get("id"),

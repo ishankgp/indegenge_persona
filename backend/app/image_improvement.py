@@ -29,7 +29,8 @@ from PIL import Image, ImageEnhance
 import io
 
 # API Key for Nano Banana Pro (Gemini 3 Pro Image Preview)
-IMAGE_EDIT_API_KEY = os.getenv("IMAGE_EDIT_API_KEY")
+# Use IMAGE_EDIT_API_KEY for consistency, fallback to GEMINI_API_KEY
+IMAGE_EDIT_API_KEY = os.getenv("IMAGE_EDIT_API_KEY") or os.getenv("GEMINI_API_KEY")
 
 def get_image_edit_client():
     """Initialize the Nano Banana Pro API client."""
