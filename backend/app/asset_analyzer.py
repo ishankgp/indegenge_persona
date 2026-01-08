@@ -132,9 +132,23 @@ async def analyze_image_with_nano_banana(
         # Build persona-specific prompt
         prompt = build_annotation_prompt(persona)
         
-        # Create the model - use gemini-2.0-flash-exp for image generation
-        # Note: gemini-3.0-pro-image may require different model name in API
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        # Try Gemini 3.0 Pro Image (Nano Banana Pro) first, fallback to gemini-2.0-flash-exp
+        model_options = ['gemini-3.0-pro-image', 'gemini-2.0-flash-exp', 'gemini-1.5-pro']
+        model = None
+        last_error = None
+        
+        for model_name in model_options:
+            try:
+                model = genai.GenerativeModel(model_name)
+                logger.info(f"Using model: {model_name}")
+                break
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Model {model_name} not available: {e}")
+                continue
+        
+        if model is None:
+            raise Exception(f"No suitable model available. Last error: {last_error}")
         
         # Prepare image for the API
         image_part = {
