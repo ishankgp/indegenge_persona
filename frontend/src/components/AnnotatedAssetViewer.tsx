@@ -60,7 +60,11 @@ export function AnnotatedAssetViewer({
         if (!currentResult.annotated_image) return
 
         const link = document.createElement('a')
-        link.href = `data:image/png;base64,${currentResult.annotated_image}`
+        // Backend now returns full data URI with correct MIME type
+        const imageData = currentResult.annotated_image.startsWith('data:') 
+            ? currentResult.annotated_image 
+            : `data:image/png;base64,${currentResult.annotated_image}`
+        link.href = imageData
         link.download = `${currentResult.persona_name.replace(/\s+/g, '_')}_feedback.png`
         link.click()
     }
@@ -149,9 +153,28 @@ export function AnnotatedAssetViewer({
                 ) : hasImage ? (
                     <div className="relative">
                         <img
-                            src={`data:image/png;base64,${currentResult.annotated_image}`}
+                            src={currentResult.annotated_image.startsWith('data:') 
+                                ? currentResult.annotated_image 
+                                : `data:image/png;base64,${currentResult.annotated_image}`}
                             alt={`Annotated feedback from ${currentResult.persona_name}`}
                             className="w-full max-h-[600px] object-contain rounded-lg border shadow-sm"
+                            onLoad={() => {
+                                console.log('✅ Image loaded successfully for', currentResult.persona_name)
+                            }}
+                            onError={(e) => {
+                                const img = e.target as HTMLImageElement
+                                console.error('❌ Image failed to load for', currentResult.persona_name)
+                                console.error('Image data length:', currentResult.annotated_image?.length)
+                                console.error('Image src prefix (first 100 chars):', currentResult.annotated_image?.substring(0, 100))
+                                console.error('Image src suffix (last 50 chars):', currentResult.annotated_image?.substring(currentResult.annotated_image.length - 50))
+                                console.error('Actual img.src length:', img.src?.length)
+                                console.error('Actual img.src prefix:', img.src?.substring(0, 100))
+                                
+                                // Check if data might be truncated
+                                if (currentResult.annotated_image && !currentResult.annotated_image.startsWith('data:')) {
+                                    console.error('⚠️ Image data does not start with data: prefix!')
+                                }
+                            }}
                         />
                     </div>
                 ) : (

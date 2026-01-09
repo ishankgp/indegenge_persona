@@ -99,23 +99,30 @@ def build_annotation_prompt(persona: Dict[str, Any]) -> str:
     decision_style = persona.get("decision_style", "")
     archetype = persona.get("persona_subtype", decision_style if decision_style else "Analytical")
     
-    prompt = f"""You are a pharmaceutical medical affairs reviewer simulating the perspective of: {name}.
+    prompt = f"""You are a pharmaceutical marketing reviewer role-playing as: {name}.
 
 Persona Profile:
 - Archetype: {archetype}
 - Core Beliefs: {beliefs_str}
-- Key Tensions: {tensions_str}
+- Key Tensions/Concerns: {tensions_str}
 
-Task: Review this pharmaceutical marketing asset and annotate it with your professional feedback.
+TASK: Create a visually annotated version of this marketing asset with hand-drawn style feedback markups.
 
-Annotation Style:
-- Use RED color for all annotations
-- Draw circles or underlines around problematic areas
-- Add short, professional margin comments (e.g., "Cite source", "Clarify dosing", "Overstated claim", "Missing safety info")
-- Mark positive elements with a small checkmark if applicable
-- Keep comments clinical and constructive, not sarcastic or humorous
+VISUAL ANNOTATION REQUIREMENTS (VERY IMPORTANT - YOU MUST DRAW ON THE IMAGE):
+1. Draw RED CIRCLES around 3-5 areas that concern this persona
+2. Draw ARROWS pointing to specific elements with handwritten-style comments
+3. Add SHORT MARGIN NOTES in a casual handwriting style (e.g., "Too clinical!", "Where's the data?", "Love this!", "Confusing!")
+4. Use RED/ORANGE for concerns, GREEN checkmarks for positives
+5. Add emotion indicators where relevant (e.g., "?" for confusion, "!" for strong reaction)
 
-Identify 3-5 key issues based on your persona's perspective. Return the annotated image with visual markups."""
+ANNOTATION STYLE - Make it look like a real person marked up a printed document:
+- Casual, handwritten text labels (not typed/formal)
+- Organic hand-drawn circles and arrows (not perfect geometric shapes)
+- Brief reactions that reflect this persona's viewpoint
+
+Based on {name}'s perspective, identify what would catch their eye, concern them, or resonate with them.
+
+OUTPUT: Return the original image with all visual annotations drawn directly on it."""
 
     return prompt
 
@@ -152,17 +159,18 @@ async def analyze_image_with_nano_banana(
         # Build persona-specific prompt
         prompt = build_annotation_prompt(persona)
         
-        # Use gemini-2.0-flash-exp for image analysis
-        model_name = "gemini-2.0-flash-exp"
+        # Use Gemini 3 Pro Image for visual annotation
+        model_name = "gemini-3-pro-image-preview"
         logger.info(f"Using model: {model_name} for persona: {persona.get('name', 'Unknown')}")
         
         annotated_image_b64 = None
         text_summary = ""
         
         try:
-            # Use the new SDK pattern with image-to-image editing
+            # Use Gemini 3 Pro Image for visual annotation with image output
+            # CRITICAL: Must include response_modalities=["IMAGE", "TEXT"] for image output
             response = client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model=model_name,
                 contents=[
                     # Include the original image
                     types.Part.from_bytes(
@@ -171,23 +179,129 @@ async def analyze_image_with_nano_banana(
                     ),
                     # Include the annotation prompt
                     prompt
-                ]
+                ],
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"]
+                )
             )
             
             # Extract annotated image and text from response
-            for part in response.parts:
-                if part.text is not None:
+            # Handle different SDK response formats
+            logger.info(f"Response type: {type(response)}")
+            logger.info(f"Response attributes: {dir(response)}")
+            
+            # Try to get parts from candidates first (most reliable for new SDK)
+            parts = []
+            if hasattr(response, 'candidates') and response.candidates:
+                candidate = response.candidates[0]
+                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                    parts = candidate.content.parts
+                    logger.info(f"Got {len(parts)} parts from candidates")
+            
+            # Fallback to direct parts attribute
+            if not parts and hasattr(response, 'parts') and response.parts:
+                parts = response.parts
+                logger.info(f"Got {len(parts)} parts from response.parts")
+            
+            for i, part in enumerate(parts):
+                logger.info(f"Part {i}: type={type(part)}, attrs={dir(part)}")
+                
+                # Check for text
+                if hasattr(part, 'text') and part.text:
                     text_summary += part.text + "\n"
-                elif part.inline_data is not None:
-                    # This is the annotated image
-                    annotated_image_data = part.inline_data.data
-                    if isinstance(annotated_image_data, bytes):
-                        annotated_image_b64 = base64.b64encode(annotated_image_data).decode('utf-8')
-                    else:
-                        annotated_image_b64 = annotated_image_data
+                    logger.info(f"Found text in part {i}")
+                
+                # Check for inline_data (image)
+                if hasattr(part, 'inline_data') and part.inline_data:
+                    logger.info(f"Found inline_data in part {i}")
+                    inline_data = part.inline_data
+                    
+                    # Get the MIME type
+                    image_mime_type = "image/png"  # default
+                    if hasattr(inline_data, 'mime_type') and inline_data.mime_type:
+                        image_mime_type = inline_data.mime_type
+                        logger.info(f"Image MIME type: {image_mime_type}")
+                    
+                    # Try different ways to get the image data
+                    image_data = None
+                    if hasattr(inline_data, 'data'):
+                        image_data = inline_data.data
+                    elif hasattr(inline_data, '_pb') and hasattr(inline_data._pb, 'data'):
+                        image_data = inline_data._pb.data
+                    elif isinstance(inline_data, bytes):
+                        image_data = inline_data
+                    
+                    if image_data:
+                        logger.info(f"Got image data: {len(image_data) if isinstance(image_data, bytes) else type(image_data)}")
+                        
+                        b64_data = None
+                        
+                        if isinstance(image_data, bytes):
+                            # Check if data is raw image bytes OR already base64-encoded bytes
+                            jpeg_header = b'\xff\xd8\xff'
+                            png_header = b'\x89PNG'
+                            
+                            # Check for raw JPEG/PNG headers
+                            if image_data[:3] == jpeg_header:
+                                logger.info("✅ Valid raw JPEG image detected - encoding to base64")
+                                b64_data = base64.b64encode(image_data).decode('utf-8')
+                            elif image_data[:4] == png_header:
+                                logger.info("✅ Valid raw PNG image detected - encoding to base64")
+                                b64_data = base64.b64encode(image_data).decode('utf-8')
+                            else:
+                                # Check if bytes are actually a base64-encoded string
+                                # Base64 JPEG starts with "/9j/" and PNG starts with "iVBOR"
+                                try:
+                                    decoded_str = image_data.decode('utf-8')
+                                    if decoded_str.startswith('/9j/'):
+                                        logger.info("✅ Image data is already base64-encoded JPEG - using directly")
+                                        b64_data = decoded_str
+                                    elif decoded_str.startswith('iVBOR'):
+                                        logger.info("✅ Image data is already base64-encoded PNG - using directly")
+                                        b64_data = decoded_str
+                                        image_mime_type = "image/png"
+                                    else:
+                                        logger.warning(f"⚠️ Unknown format. First 20 chars: {decoded_str[:20]}")
+                                        # Assume it's base64 if it looks like valid base64
+                                        import re
+                                        if re.match(r'^[A-Za-z0-9+/=]+$', decoded_str[:100]):
+                                            logger.info("Data looks like base64 - using directly")
+                                            b64_data = decoded_str
+                                        else:
+                                            logger.warning("Treating as raw bytes - encoding to base64")
+                                            b64_data = base64.b64encode(image_data).decode('utf-8')
+                                except UnicodeDecodeError:
+                                    # Can't decode as UTF-8, must be raw binary
+                                    logger.info("Binary data detected - encoding to base64")
+                                    b64_data = base64.b64encode(image_data).decode('utf-8')
+                        elif isinstance(image_data, str):
+                            # Already a string
+                            if image_data.startswith('data:'):
+                                annotated_image_b64 = image_data
+                                logger.info("Image is already a data URI")
+                            elif image_data.startswith('/9j/') or image_data.startswith('iVBOR'):
+                                b64_data = image_data
+                                logger.info("Image string is base64 - using directly")
+                            else:
+                                b64_data = image_data
+                                logger.warning(f"Unknown string format, using as-is. First 20 chars: {image_data[:20]}")
+                        
+                        if b64_data:
+                            # Clean any newlines from base64
+                            b64_data = b64_data.replace('\n', '').replace('\r', '')
+                            annotated_image_b64 = f"data:{image_mime_type};base64,{b64_data}"
+                        
+                        if annotated_image_b64:
+                            logger.info(f"Final image data URI length: {len(annotated_image_b64)}")
+            
+            # Also check for direct text attribute
+            if not text_summary and hasattr(response, 'text') and response.text:
+                text_summary = response.text
                     
             if not text_summary and annotated_image_b64:
                 text_summary = "Image annotated with persona feedback using Nano Banana Pro."
+            
+            logger.info(f"Final: has_image={bool(annotated_image_b64)}, has_text={bool(text_summary)}")
                 
         except Exception as img_error:
             logger.warning(f"Image annotation with {model_name} failed: {img_error}")
@@ -215,9 +329,17 @@ Format your response clearly with bullet points."""
                     ]
                 )
                 
-                for part in fallback_response.parts:
-                    if part.text is not None:
-                        text_summary += part.text + "\n"
+                # Handle different SDK response formats for fallback
+                if hasattr(fallback_response, 'text') and fallback_response.text:
+                    text_summary = fallback_response.text
+                elif hasattr(fallback_response, 'parts'):
+                    for part in fallback_response.parts:
+                        if hasattr(part, 'text') and part.text:
+                            text_summary += part.text + "\n"
+                elif hasattr(fallback_response, 'candidates') and fallback_response.candidates:
+                    for part in fallback_response.candidates[0].content.parts:
+                        if hasattr(part, 'text') and part.text:
+                            text_summary += part.text + "\n"
                         
             except Exception as fallback_error:
                 logger.error(f"Fallback text analysis also failed: {fallback_error}")

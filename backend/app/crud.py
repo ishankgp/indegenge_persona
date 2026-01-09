@@ -107,11 +107,23 @@ def _deep_merge_persona_json(
                 
         # Also mark fields as confirmed even if not in updates
         for field_path in confirm_fields:
-            if (field_path.startswith(path + ".") if path else "." not in field_path):
-                parts = field_path.split(".")
-                current_key = parts[-1] if path else parts[0]
-                if current_key in target and _is_enriched_field(target[current_key]):
-                    target[current_key]["status"] = "confirmed"
+            # Determine if this field_path belongs to the current merge level
+            if path:
+                # At nested level: field_path must start with path + "."
+                if not field_path.startswith(path + "."):
+                    continue
+                # Extract the key at this level (next segment after path)
+                path_prefix_len = len(path) + 1  # +1 for the dot
+                remaining_path = field_path[path_prefix_len:]
+                current_key = remaining_path.split(".")[0]
+            else:
+                # At top level: field_path must not contain dots (top-level field only)
+                if "." in field_path:
+                    continue
+                current_key = field_path
+            
+            if current_key in target and _is_enriched_field(target[current_key]):
+                target[current_key]["status"] = "confirmed"
     
     merge_recursive(result, updates)
     return result

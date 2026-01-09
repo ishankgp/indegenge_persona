@@ -1952,6 +1952,11 @@ async def analyze_asset_with_personas(
         mime_type=mime_type
     )
     
+    # Log response details before returning
+    for i, result in enumerate(results):
+        img = result.get('annotated_image')
+        logger.info(f"📸 Result {i} ({result.get('persona_name')}): has_image={bool(img)}, img_length={len(img) if img else 0}, prefix={img[:50] if img else 'None'}...")
+    
     return {
         "success": True,
         "asset_filename": file.filename,

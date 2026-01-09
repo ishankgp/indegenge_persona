@@ -148,12 +148,12 @@ def improve_image_with_ai(
         image_bytes = buffered.getvalue()
         
         try:
-            # Use Nano Banana Pro (gemini-3-pro-image-preview) for image-to-image editing
-            # This model supports image-to-image editing with text prompts
+            # Use Gemini 3 Pro Image Preview (Nano Banana Pro) for high-quality image editing
+            # Supports: 1K/2K/4K output, advanced text rendering, up to 14 reference images
             # Reference: https://ai.google.dev/gemini-api/docs/image-generation
             
             response = client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-3-pro-image-preview",
                 contents=[
                     # Include the original image
                     types.Part.from_bytes(
@@ -162,21 +162,35 @@ def improve_image_with_ai(
                     ),
                     # Include the improvement prompt
                     improvement_prompt
-                ]
+                ],
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"]
+                )
             )
             
             # Extract the improved image from the response
+            # Handle different SDK response formats
             improved_image_bytes = None
             analysis_text = ""
             
-            for part in response.parts:
-                if part.text is not None:
+            parts = []
+            if hasattr(response, 'parts'):
+                parts = response.parts
+            elif hasattr(response, 'candidates') and response.candidates:
+                parts = response.candidates[0].content.parts
+            
+            for part in parts:
+                if hasattr(part, 'text') and part.text:
                     analysis_text += part.text + "\n"
-                elif part.inline_data is not None:
+                elif hasattr(part, 'inline_data') and part.inline_data:
                     # This is the generated image
                     improved_image_bytes = part.inline_data.data
                     if not analysis_text:
                         analysis_text = "Image improved based on persona feedback using Nano Banana Pro."
+            
+            # Also check for direct text attribute
+            if not analysis_text and hasattr(response, 'text') and response.text:
+                analysis_text = response.text
             
             if improved_image_bytes:
                 # Convert to base64

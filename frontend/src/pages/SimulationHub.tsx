@@ -524,6 +524,20 @@ export function SimulationHub() {
 
       const response = await AssetIntelligenceAPI.analyze(assetFile, personaIds)
       console.log('✅ Asset analysis complete:', response)
+      
+      // Debug: Log detailed info about each result's annotated_image
+      response.results.forEach((result: AssetAnalysisResult, i: number) => {
+        const hasImage = !!result.annotated_image
+        const imageLength = result.annotated_image?.length || 0
+        const imagePrefix = result.annotated_image?.substring(0, 50) || 'null'
+        console.log(`📸 Result ${i} (${result.persona_name}):`, {
+          hasImage,
+          imageLength,
+          imagePrefix,
+          textSummaryLength: result.text_summary?.length || 0,
+          error: result.error
+        })
+      })
 
       setAssetAnalysisResults(response.results)
     } catch (error) {

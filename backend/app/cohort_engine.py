@@ -272,8 +272,7 @@ def create_cohort_analysis_prompt(
     "responses": {{
         "<metric_name>": <value per metric instructions above>
     }},
-    "reasoning": "2-3 sentences explaining why the persona responded this way, referencing persona traits."
-    {answers_block}
+    "reasoning": "2-3 sentences explaining why the persona responded this way, referencing persona traits."{answers_block}
 }}
 
 Ensure numeric scores respect the ranges provided above. For textual metrics (e.g., key_concerns), return the most salient objection in plain text. Do not include metrics that were not requested.
