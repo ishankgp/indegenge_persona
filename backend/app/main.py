@@ -2172,6 +2172,42 @@ async def get_asset_analysis_history(
     }
 
 
+@app.get("/api/assets/history/full")
+async def get_full_asset_history(
+    skip: int = 0,
+    limit: int = 20,
+    db: Session = Depends(get_db)
+):
+    """
+    Get full asset analysis history including annotated images and results.
+    Groups by image_hash and includes all persona analysis results.
+    """
+    cached_results = crud.get_asset_history(db=db, skip=skip, limit=limit)
+    
+    # Group by image_hash with full results
+    assets = {}
+    for cached in cached_results:
+        asset_key = cached.image_hash
+        if asset_key not in assets:
+            assets[asset_key] = {
+                "image_hash": cached.image_hash,
+                "asset_name": cached.asset_name,
+                "created_at": cached.created_at.isoformat() if cached.created_at else None,
+                "results": []
+            }
+        
+        # Include full result_json with annotated image
+        result = cached.result_json.copy() if cached.result_json else {}
+        result["persona_id"] = cached.persona_id
+        result["analyzed_at"] = cached.created_at.isoformat() if cached.created_at else None
+        assets[asset_key]["results"].append(result)
+    
+    return {
+        "total_assets": len(assets),
+        "assets": list(assets.values())
+    }
+
+
 @app.delete("/api/assets/cache/clear")
 async def clear_asset_analysis_cache(
     db: Session = Depends(get_db)

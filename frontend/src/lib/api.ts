@@ -500,12 +500,30 @@ export interface AssetAnalysisResponse {
   results: AssetAnalysisResult[];
 }
 
+export interface AssetHistoryItem {
+  image_hash: string;
+  asset_name: string;
+  created_at: string;
+  results: AssetAnalysisResult[];
+}
+
+export interface AssetHistoryResponse {
+  total_assets: number;
+  assets: AssetHistoryItem[];
+}
+
 export const AssetIntelligenceAPI = {
   analyze: (file: File, personaIds: number[]): Promise<AssetAnalysisResponse> => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('persona_ids', personaIds.join(','));
     return api.post('/api/assets/analyze', formData).then(r => r.data);
+  },
+  getHistory: (): Promise<AssetHistoryResponse> => {
+    return api.get('/api/assets/history/full').then(r => r.data);
+  },
+  clearCache: (): Promise<{ success: boolean; deleted_count: number }> => {
+    return api.delete('/api/assets/cache/clear').then(r => r.data);
   }
 };
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { PersonasAPI, CohortAPI, AssetIntelligenceAPI, type AssetAnalysisResult } from "@/lib/api"
+import { PersonasAPI, CohortAPI, AssetIntelligenceAPI, type AssetAnalysisResult, type AssetHistoryItem } from "@/lib/api"
 import { metricRegistry } from "@/lib/metricsRegistry"
 import { AnnotatedAssetViewer } from "@/components/AnnotatedAssetViewer"
 import { useNavigate, useLocation } from "react-router-dom"
@@ -38,6 +38,8 @@ import {
   X,
   Eye,
   Filter,
+  History,
+  Clock,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
@@ -118,6 +120,11 @@ export function SimulationHub() {
   const [assetAnalyzing, setAssetAnalyzing] = useState(false)
   const [assetFile, setAssetFile] = useState<File | null>(null)
   const [assetPreview, setAssetPreview] = useState<string | null>(null)
+  
+  // Asset History
+  const [assetHistory, setAssetHistory] = useState<AssetHistoryItem[]>([])
+  const [showAssetHistory, setShowAssetHistory] = useState(false)
+  const [loadingAssetHistory, setLoadingAssetHistory] = useState(false)
 
   // Handle pre-filled message from Analytics page (for message variants)
   const location = useLocation()
@@ -554,6 +561,35 @@ export function SimulationHub() {
     setAssetAnalysisResults([])
   }
 
+  // Asset History handlers
+  const loadAssetHistory = async () => {
+    if (assetHistory.length > 0) {
+      // Already loaded, just toggle visibility
+      setShowAssetHistory(!showAssetHistory)
+      return
+    }
+    
+    setLoadingAssetHistory(true)
+    try {
+      const response = await AssetIntelligenceAPI.getHistory()
+      setAssetHistory(response.assets)
+      setShowAssetHistory(true)
+    } catch (error) {
+      console.error('Failed to load asset history:', error)
+    } finally {
+      setLoadingAssetHistory(false)
+    }
+  }
+
+  const loadHistoricalAsset = (historyItem: AssetHistoryItem) => {
+    // Load historical results into the viewer
+    setAssetAnalysisResults(historyItem.results)
+    // Clear current upload preview since we're loading from history
+    setAssetFile(null)
+    setAssetPreview(null)
+    setShowAssetHistory(false)
+  }
+
 
   const handleRunAnalysis = async () => {
     if (selectedPersonas.size === 0) {
@@ -940,6 +976,69 @@ export function SimulationHub() {
                       isLoading={assetAnalyzing}
                     />
                   </div>
+                </div>
+                
+                {/* History Toggle Button */}
+                <div className="mt-4 pt-4 border-t border-border/50">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={loadAssetHistory}
+                    disabled={loadingAssetHistory}
+                    className="w-full justify-center"
+                  >
+                    {loadingAssetHistory ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <History className="h-4 w-4 mr-2" />
+                    )}
+                    {showAssetHistory ? 'Hide History' : 'Load Previous Analyses'}
+                  </Button>
+                  
+                  {/* History Grid */}
+                  {showAssetHistory && assetHistory.length > 0 && (
+                    <div className="mt-4 space-y-3">
+                      <p className="text-sm font-medium text-muted-foreground">
+                        Previous Asset Analyses ({assetHistory.length})
+                      </p>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[300px] overflow-y-auto">
+                        {assetHistory.map((item, idx) => (
+                          <button
+                            key={item.image_hash || idx}
+                            onClick={() => loadHistoricalAsset(item)}
+                            className="group relative rounded-lg border border-border/50 hover:border-primary/50 p-2 text-left transition-all hover:bg-muted/30"
+                          >
+                            {/* Thumbnail from first result's annotated image */}
+                            {item.results[0]?.annotated_image && (
+                              <img
+                                src={item.results[0].annotated_image}
+                                alt={item.asset_name || 'Asset'}
+                                className="w-full h-24 object-cover rounded mb-2 opacity-80 group-hover:opacity-100 transition-opacity"
+                              />
+                            )}
+                            <div className="space-y-1">
+                              <p className="text-xs font-medium truncate">
+                                {item.asset_name || 'Unnamed Asset'}
+                              </p>
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Clock className="h-3 w-3" />
+                                <span>{new Date(item.created_at).toLocaleDateString()}</span>
+                              </div>
+                              <Badge variant="secondary" className="text-[10px]">
+                                {item.results.length} persona{item.results.length !== 1 ? 's' : ''}
+                              </Badge>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {showAssetHistory && assetHistory.length === 0 && (
+                    <p className="mt-4 text-sm text-center text-muted-foreground">
+                      No previous analyses found
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
