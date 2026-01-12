@@ -2172,6 +2172,30 @@ async def get_asset_analysis_history(
     }
 
 
+@app.delete("/api/assets/cache/clear")
+async def clear_asset_analysis_cache(
+    db: Session = Depends(get_db)
+):
+    """
+    Clear all cached asset analysis results.
+    Useful when API keys change or for testing fresh analyses.
+    """
+    try:
+        # Delete all cached analysis records
+        deleted_count = db.query(models.CachedAssetAnalysis).delete()
+        db.commit()
+        logger.info(f"🗑️ Cleared {deleted_count} cached asset analysis records")
+        return {
+            "success": True,
+            "message": f"Cleared {deleted_count} cached analysis records",
+            "deleted_count": deleted_count
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error clearing cache: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+
+
 # === Knowledge Graph API Endpoints ===
 
 @app.get("/api/knowledge/brands/{brand_id}/nodes")

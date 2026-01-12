@@ -305,6 +305,45 @@ export function Analytics() {
                 <Activity className="mr-2 h-5 w-5" />
                 Go to Simulation Hub
               </Button>
+              
+              {/* Show saved simulations history if any exist */}
+              {savedSimulations.length > 0 && (
+                <div className="mt-10 pt-8 border-t border-gray-200 dark:border-gray-700">
+                  <h4 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-4 flex items-center justify-center gap-2">
+                    <History className="h-5 w-5" />
+                    Or load from history
+                  </h4>
+                  <div className="flex flex-wrap justify-center gap-3 max-w-2xl mx-auto">
+                    {savedSimulations.slice(0, 6).map((sim) => (
+                      <Button
+                        key={sim.id}
+                        variant="outline"
+                        size="sm"
+                        className="bg-white/50 hover:bg-primary/10 transition-colors"
+                        onClick={() => handleLoadSimulation(sim.id.toString())}
+                      >
+                        {sim.name}
+                      </Button>
+                    ))}
+                    {savedSimulations.length > 6 && (
+                      <div className="w-full mt-2">
+                        <Select onValueChange={handleLoadSimulation}>
+                          <SelectTrigger className="w-[250px] mx-auto">
+                            <SelectValue placeholder={`+ ${savedSimulations.length - 6} more simulations`} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {savedSimulations.slice(6).map((sim) => (
+                              <SelectItem key={sim.id} value={sim.id.toString()}>
+                                {sim.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
