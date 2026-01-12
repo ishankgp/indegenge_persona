@@ -501,13 +501,48 @@ def generate_llm_powered_insights_and_suggestions(individual_responses: List[Dic
         }
 
 
+def _extract_metric_value(resp: Dict[str, Any], metric_name: str) -> Any:
+    """
+    Extract a metric value from a response dict, handling both regular cohort analysis
+    ('responses' key) and multimodal analysis ('metrics' key) formats.
+    """
+    # Try regular cohort format first
+    if 'responses' in resp:
+        value = resp['responses'].get(metric_name)
+        if value is not None:
+            return value
+    
+    # Try multimodal format
+    if 'metrics' in resp:
+        metric_data = resp['metrics'].get(metric_name)
+        if metric_data is not None:
+            # Multimodal format may return dict with 'score' key or direct value
+            if isinstance(metric_data, dict):
+                return metric_data.get('score', metric_data.get('value'))
+            return metric_data
+    
+    return None
+
+
 def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulus_text: str) -> List[str]:
-    """Generates insights from the cohort analysis."""
+    """Generates insights from the cohort analysis.
+    
+    Works with both regular cohort analysis ('responses' key) and 
+    multimodal analysis ('metrics' key) response formats.
+    """
     
     insights = []
     
-    # Analyze intent patterns
-    intent_scores = [resp['responses'].get('intent_to_action') for resp in individual_responses if resp['responses'].get('intent_to_action')]
+    # Analyze intent patterns - check both canonical and legacy names
+    intent_scores = []
+    for resp in individual_responses:
+        # Try canonical name first, then legacy alias
+        value = _extract_metric_value(resp, 'intent_to_action')
+        if value is None:
+            value = _extract_metric_value(resp, 'purchase_intent')
+        if value is not None and isinstance(value, (int, float)):
+            intent_scores.append(float(value))
+    
     if intent_scores:
         avg_intent = sum(intent_scores) / len(intent_scores)
         if avg_intent >= 7:
@@ -518,7 +553,14 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
             insights.append("Moderate request/prescribe intent - message shows potential but may need refinement.")
     
     # Analyze sentiment patterns
-    sentiments = [resp['responses'].get('emotional_response') for resp in individual_responses if resp['responses'].get('emotional_response')]
+    sentiments = []
+    for resp in individual_responses:
+        value = _extract_metric_value(resp, 'emotional_response')
+        if value is None:
+            value = _extract_metric_value(resp, 'sentiment')
+        if value is not None and isinstance(value, (int, float)):
+            sentiments.append(float(value))
+    
     if sentiments:
         avg_sentiment = sum(sentiments) / len(sentiments)
         if avg_sentiment >= 0.5:
@@ -529,7 +571,14 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
             insights.append("Neutral sentiment - message is well-received but may need emotional enhancement.")
     
     # Analyze trust patterns
-    trust_scores = [resp['responses'].get('brand_trust') for resp in individual_responses if resp['responses'].get('brand_trust')]
+    trust_scores = []
+    for resp in individual_responses:
+        value = _extract_metric_value(resp, 'brand_trust')
+        if value is None:
+            value = _extract_metric_value(resp, 'trust_in_brand')
+        if value is not None and isinstance(value, (int, float)):
+            trust_scores.append(float(value))
+    
     if trust_scores:
         avg_trust = sum(trust_scores) / len(trust_scores)
         if avg_trust >= 7:
@@ -538,14 +587,24 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
             insights.append("Low brand trust impact - consider adding more credibility elements.")
     
     # Analyze message clarity
-    clarity_scores = [resp['responses'].get('message_clarity') for resp in individual_responses if resp['responses'].get('message_clarity')]
+    clarity_scores = []
+    for resp in individual_responses:
+        value = _extract_metric_value(resp, 'message_clarity')
+        if value is not None and isinstance(value, (int, float)):
+            clarity_scores.append(float(value))
+    
     if clarity_scores:
         avg_clarity = sum(clarity_scores) / len(clarity_scores)
         if avg_clarity <= 6:
             insights.append("Message clarity concerns detected - consider simplifying language or adding explanations.")
     
     # Analyze common concerns
-    concerns = [resp['responses'].get('key_concerns') for resp in individual_responses if resp['responses'].get('key_concerns')]
+    concerns = []
+    for resp in individual_responses:
+        value = _extract_metric_value(resp, 'key_concerns')
+        if value is not None and isinstance(value, str):
+            concerns.append(value)
+    
     if concerns:
         # Find most common concern patterns
         concern_text = ' '.join(concerns).lower()
@@ -670,6 +729,19 @@ def create_multimodal_analysis_prompt(
     if questions:
         formatted_questions = "\n".join([f"- Q{idx+1}: {q}" for idx, q in enumerate(questions)])
         question_block = f"\nQUALITATIVE QUESTIONS:\n{formatted_questions}\n"
+    
+    # Build metric weights instruction block
+    weights_instruction = ""
+    if metric_weights:
+        normalized_weights = {normalize_metric(k): v for k, v in metric_weights.items()}
+        weights_list = ", ".join([f"{k}={v}" for k, v in normalized_weights.items() if v])
+        if weights_list:
+            weights_instruction = f"""
+METRIC WEIGHTS (for weighted scoring):
+The following weights indicate relative importance: {weights_list}
+When calculating the "weighted_composite_score", multiply each metric score by its weight and sum them.
+Metrics without explicit weights should use weight=1.0.
+"""
 
     prompt = f"""
 You are analyzing how a specific pharmaceutical persona responds to marketing content. 
@@ -694,14 +766,17 @@ Analyze how this specific persona would respond to the provided content. Conside
 For each of the following metrics, provide your analysis (use the JSON keys exactly as listed):
 
 {metric_guidance}
+{weights_instruction}
 
 RESPONSE FORMAT:
 Provide a JSON response with the following structure:
 {{
     "analysis_summary": "Brief overview of how this persona responds to the content",
     "metrics": {{
-        // For each requested metric, provide the score and reasoning
+        // For each requested metric, provide an object with "score" and "reasoning"
+        // Example: "intent_to_action": {{"score": 7, "reasoning": "The persona shows..."}}
     }},
+    "weighted_composite_score": <number or null>,  // Sum of (score * weight) for all metrics, if weights provided
     "answers": [
         // If qualitative questions were provided, include one answer per question in order.
     ],

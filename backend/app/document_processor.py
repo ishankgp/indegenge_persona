@@ -15,7 +15,21 @@ _openai_client: Optional[OpenAI] = None
 
 
 def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[str]:
-    """Simple text chunker to break long passages into overlapping chunks."""
+    """Simple text chunker to break long passages into overlapping chunks.
+    
+    Args:
+        text: The text to chunk.
+        chunk_size: Maximum size of each chunk in characters.
+        overlap: Number of characters to overlap between chunks.
+        
+    Returns:
+        List of text chunks.
+        
+    Note:
+        To prevent pathological cases where overlap is very close to chunk_size
+        (e.g., chunk_size=100, overlap=99 creating 100x more chunks than expected),
+        the effective increment is enforced to be at least 10% of chunk_size or 50 chars.
+    """
     if not text:
         return []
 
@@ -26,6 +40,20 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[str
     if overlap >= chunk_size:
         logger.warning("Overlap must be smaller than chunk size; using non-overlapping chunks.")
         overlap = 0
+    
+    # Calculate minimum increment to prevent pathological cases
+    # Minimum is 10% of chunk_size or 50 chars, whichever is larger (but capped at chunk_size)
+    min_increment = min(chunk_size, max(50, chunk_size // 10))
+    
+    # If overlap would cause increment below minimum, reduce overlap
+    effective_overlap = overlap
+    if chunk_size - overlap < min_increment:
+        effective_overlap = chunk_size - min_increment
+        if effective_overlap != overlap:
+            logger.warning(
+                f"Overlap {overlap} too close to chunk_size {chunk_size}; "
+                f"reduced to {effective_overlap} for minimum increment of {min_increment}."
+            )
 
     chunks: List[str] = []
     start = 0
@@ -36,8 +64,8 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[str
         chunk = text[start:end].strip()
         if chunk:
             chunks.append(chunk)
-        # Ensure we always advance by at least 1 to prevent infinite loop
-        increment = max(1, chunk_size - overlap)
+        # Use the effective overlap to ensure reasonable increment
+        increment = max(min_increment, chunk_size - effective_overlap)
         start += increment
 
     return chunks
