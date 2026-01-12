@@ -1131,7 +1131,7 @@ def extract_mbt_from_text(document_text: str, max_chars: int = 6000) -> List[Dic
             model=MODEL_NAME,
             messages=extraction_request,
             response_format={"type": "json_object"},
-            max_tokens=900,
+            max_completion_tokens=900,
         )
         content = response.choices[0].message.content or "{}"
         parsed = json.loads(content)

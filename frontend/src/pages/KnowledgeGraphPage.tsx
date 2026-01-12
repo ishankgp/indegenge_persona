@@ -44,26 +44,29 @@ export function KnowledgeGraphPage() {
     const selectedBrand = brands.find(b => b.id.toString() === selectedBrandId)
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
+        <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950/50">
             {/* Header */}
-            <div className="bg-gradient-to-r from-[hsl(262,60%,38%)] via-[hsl(262,60%,42%)] to-[hsl(280,60%,45%)]">
-                <div className="max-w-7xl mx-auto px-8 py-6">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="bg-white dark:bg-gray-900 border-b relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-violet-500/10 via-purple-500/10 to-blue-500/10" />
+                <div className="absolute inset-0 bg-grid-pattern opacity-[0.03]" />
+
+                <div className="max-w-7xl mx-auto px-6 py-6 relative">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                         <div className="flex items-center gap-4">
-                            <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
-                                <Network className="h-8 w-8 text-white" />
+                            <div className="p-3 bg-violet-100 dark:bg-violet-900/30 rounded-xl shadow-sm ring-1 ring-violet-200 dark:ring-violet-800">
+                                <Network className="h-7 w-7 text-violet-600 dark:text-violet-400" />
                             </div>
                             <div>
-                                <h1 className="text-3xl font-bold text-white tracking-tight">Knowledge Graph</h1>
-                                <p className="text-white/80 mt-1">
-                                    Visualize connections between brand pillars, market insights, and patient needs
+                                <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Knowledge Graph</h1>
+                                <p className="text-muted-foreground mt-1 text-sm">
+                                    Interactive visualization of brand insights, market dynamics, and patient needs
                                 </p>
                             </div>
                         </div>
 
                         <div className="flex items-center gap-3">
                             <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
-                                <SelectTrigger className="w-[200px] bg-white/10 text-white border-white/20">
+                                <SelectTrigger className="w-[240px] h-10 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-sm transition-all hover:bg-gray-50">
                                     <SelectValue placeholder="Select Brand" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -77,20 +80,22 @@ export function KnowledgeGraphPage() {
                 </div>
             </div>
 
-            <div className="max-w-7xl mx-auto px-8 py-8">
+            <div className="max-w-[1600px] mx-auto px-6 py-8">
                 {!loading && brands.length === 0 ? (
-                    <Card className="border-0 shadow-xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
-                        <CardContent className="flex flex-col items-center justify-center py-12">
-                            <AlertCircle className="h-12 w-12 text-gray-400 mb-4" />
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">No Brands Found</h3>
-                            <p className="text-gray-500 text-center max-w-sm mt-2">
-                                Create a brand in the Brand Library to start visualizing its knowledge graph.
+                    <Card className="border-dashed border-2 shadow-none bg-transparent">
+                        <CardContent className="flex flex-col items-center justify-center py-20 text-center">
+                            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                                <AlertCircle className="h-8 w-8 text-muted-foreground" />
+                            </div>
+                            <h3 className="text-xl font-semibold mb-2">No Brands Available</h3>
+                            <p className="text-muted-foreground max-w-sm mx-auto">
+                                Get started by creating your first brand persona in the Brand Library.
                             </p>
                         </CardContent>
                     </Card>
                 ) : (
                     selectedBrandId && (
-                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="animate-in fade-in zoom-in-95 duration-500">
                             <KnowledgeGraphView
                                 brandId={parseInt(selectedBrandId)}
                                 brandName={selectedBrand?.name}

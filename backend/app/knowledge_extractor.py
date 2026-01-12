@@ -226,7 +226,11 @@ async def extract_knowledge_from_document(
             # Handle potential wrapper object
             parsed = json.loads(content)
             if isinstance(parsed, dict):
-                nodes_data = parsed.get("nodes", parsed.get("items", []))
+                # Check if the dict itself is a node (has 'text') or looks like an error
+                if "text" in parsed or "node_type" in parsed:
+                    nodes_data = [parsed]
+                else:
+                    nodes_data = parsed.get("nodes", parsed.get("items", []))
             else:
                 nodes_data = parsed
         except json.JSONDecodeError as e:

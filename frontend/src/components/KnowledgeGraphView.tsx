@@ -12,11 +12,12 @@ import ReactFlow, {
 } from 'reactflow'
 import type { Node, Edge } from 'reactflow'
 import 'reactflow/dist/style.css'
+import dagre from 'dagre'
 import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Loader2, RefreshCw, Network, AlertTriangle, CheckCircle, Filter, X } from 'lucide-react'
+import { Loader2, RefreshCw, Network, AlertTriangle, CheckCircle, Filter, X, Layout } from 'lucide-react'
 import {
     Select,
     SelectContent,
@@ -24,99 +25,21 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import CustomNode from './CustomNode'
 
-// Node type color mapping
-const NODE_TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-    // Brand Pillars - Purple shades
-    key_message: { bg: '#f3e8ff', border: '#a855f7', text: '#7e22ce' },
-    value_proposition: { bg: '#fae8ff', border: '#d946ef', text: '#a21caf' },
-    differentiator: { bg: '#ede9fe', border: '#8b5cf6', text: '#6d28d9' },
-    proof_point: { bg: '#e0e7ff', border: '#6366f1', text: '#4338ca' },
-
-    // Disease Knowledge - Blue shades
-    epidemiology: { bg: '#dbeafe', border: '#3b82f6', text: '#1d4ed8' },
-    symptom_burden: { bg: '#cffafe', border: '#06b6d4', text: '#0891b2' },
-    treatment_landscape: { bg: '#ccfbf1', border: '#14b8a6', text: '#0d9488' },
-    unmet_need: { bg: '#fef3c7', border: '#f59e0b', text: '#b45309' },
-
-    // Patient Insights - Green shades
-    patient_motivation: { bg: '#dcfce7', border: '#22c55e', text: '#16a34a' },
-    patient_belief: { bg: '#d1fae5', border: '#10b981', text: '#059669' },
-    patient_tension: { bg: '#fee2e2', border: '#ef4444', text: '#dc2626' },
-    journey_insight: { bg: '#fef9c3', border: '#eab308', text: '#ca8a04' },
-
-    // HCP Insights - Orange shades
-    prescribing_driver: { bg: '#fed7aa', border: '#f97316', text: '#ea580c' },
-    clinical_concern: { bg: '#fecaca', border: '#f87171', text: '#dc2626' },
-    practice_constraint: { bg: '#fce7f3', border: '#ec4899', text: '#db2777' },
-
-    // Market - Gray shades
-    competitor_position: { bg: '#e5e7eb', border: '#6b7280', text: '#374151' },
-    market_barrier: { bg: '#fecdd3', border: '#fb7185', text: '#e11d48' },
-}
-
-// Relationship type colors
-const RELATION_COLORS: Record<string, string> = {
-    addresses: '#22c55e',
-    supports: '#3b82f6',
-    contradicts: '#ef4444',
-    triggers: '#f59e0b',
-    influences: '#8b5cf6',
-    resonates: '#ec4899',
-}
-
-// Custom node component
-const KnowledgeNodeComponent = ({ data }: { data: any }) => {
-    const colors = NODE_TYPE_COLORS[data.node_type] || { bg: '#f3f4f6', border: '#9ca3af', text: '#4b5563' }
-
-    return (
-        <div
-            className="px-4 py-3 rounded-lg shadow-md min-w-[180px] max-w-[280px] border-2 transition-all hover:shadow-lg"
-            style={{
-                backgroundColor: colors.bg,
-                borderColor: colors.border,
-            }}
-        >
-            <div className="flex items-center justify-between mb-2">
-                <Badge
-                    variant="outline"
-                    className="text-[10px] font-medium"
-                    style={{ borderColor: colors.border, color: colors.text }}
-                >
-                    {data.node_type.replace(/_/g, ' ')}
-                </Badge>
-                {data.verified && (
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                )}
-            </div>
-            <p className="text-sm font-medium" style={{ color: colors.text }}>
-                {data.label}
-            </p>
-            {data.segment && (
-                <p className="text-xs text-gray-500 mt-1">
-                    {data.segment}
-                </p>
-            )}
-            {data.confidence && (
-                <div className="mt-2">
-                    <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                            className="h-1 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full"
-                            style={{ width: `${data.confidence * 100}%` }}
-                        />
-                    </div>
-                    <p className="text-[10px] text-gray-400 mt-0.5">
-                        {Math.round(data.confidence * 100)}% confidence
-                    </p>
-                </div>
-            )}
-        </div>
-    )
-}
-
-// Node types for React Flow
+// Register safe default
 const nodeTypes = {
-    knowledgeNode: KnowledgeNodeComponent,
+    knowledgeNode: CustomNode,
+}
+
+// Relationship type colors with better visibility
+const RELATION_COLORS: Record<string, string> = {
+    addresses: '#10b981', // green-500
+    supports: '#3b82f6',  // blue-500
+    contradicts: '#ef4444', // red-500
+    triggers: '#f59e0b',  // amber-500
+    influences: '#8b5cf6', // violet-500
+    resonates: '#ec4899', // pink-500
 }
 
 interface KnowledgeGraphViewProps {
@@ -139,49 +62,44 @@ export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: Knowled
     const [selectedNode, setSelectedNode] = useState<any>(null)
     const [filterType, setFilterType] = useState<string>('all')
 
-    // Layout algorithm - simple force-directed positioning
-    const layoutNodes = useCallback((graphNodes: any[], graphEdges: any[]) => {
-        const typeGroups: Record<string, string[]> = {
-            brand: ['key_message', 'value_proposition', 'differentiator', 'proof_point'],
-            disease: ['epidemiology', 'symptom_burden', 'treatment_landscape', 'unmet_need'],
-            patient: ['patient_motivation', 'patient_belief', 'patient_tension', 'journey_insight'],
-            hcp: ['prescribing_driver', 'clinical_concern', 'practice_constraint'],
-            market: ['competitor_position', 'market_barrier'],
-        }
+    // Dagre Layout
+    const getLayoutedElements = useCallback((nodes: Node[], edges: Edge[], direction = 'TB') => {
+        const dagreGraph = new dagre.graphlib.Graph()
+        dagreGraph.setDefaultEdgeLabel(() => ({}))
 
-        // Calculate positions based on node type groups
-        const positions: Record<string, { x: number; y: number }> = {}
-        const groupPositions = {
-            brand: { x: 0, y: 0 },
-            disease: { x: 500, y: 0 },
-            patient: { x: 0, y: 400 },
-            hcp: { x: 500, y: 400 },
-            market: { x: 250, y: 200 },
-        }
-
-        graphNodes.forEach((node, index) => {
-            let group = 'market'
-            for (const [groupName, types] of Object.entries(typeGroups)) {
-                if (types.includes(node.data.node_type)) {
-                    group = groupName
-                    break
-                }
-            }
-
-            const basePos = groupPositions[group as keyof typeof groupPositions] || groupPositions.market
-            const typeIndex = typeGroups[group]?.indexOf(node.data.node_type) || 0
-            const countInType = graphNodes.filter(n => n.data.node_type === node.data.node_type).indexOf(node)
-
-            positions[node.id] = {
-                x: basePos.x + (typeIndex * 200) + (Math.random() * 50),
-                y: basePos.y + (countInType * 100) + (Math.random() * 30),
-            }
+        // Set direction and spacing
+        const isHorizontal = direction === 'LR'
+        dagreGraph.setGraph({
+            rankdir: direction,
+            nodesep: 100, // Horizontal spacing between nodes
+            ranksep: 180  // Vertical spacing between ranks
         })
 
-        return graphNodes.map(node => ({
-            ...node,
-            position: positions[node.id] || { x: Math.random() * 800, y: Math.random() * 600 },
-        }))
+        nodes.forEach((node) => {
+            dagreGraph.setNode(node.id, { width: 300, height: 160 }) // Approximate card size
+        })
+
+        edges.forEach((edge) => {
+            dagreGraph.setEdge(edge.source, edge.target)
+        })
+
+        dagre.layout(dagreGraph)
+
+        return {
+            nodes: nodes.map((node) => {
+                const nodeWithPosition = dagreGraph.node(node.id)
+                return {
+                    ...node,
+                    targetPosition: isHorizontal ? Position.Left : Position.Top,
+                    sourcePosition: isHorizontal ? Position.Right : Position.Bottom,
+                    position: {
+                        x: nodeWithPosition.x - 150, // Center offset
+                        y: nodeWithPosition.y - 80,
+                    },
+                }
+            }),
+            edges,
+        }
     }, [])
 
     // Fetch graph data
@@ -191,26 +109,39 @@ export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: Knowled
 
         try {
             const response = await api.get(`/api/knowledge/brands/${brandId}/graph`)
-            const { nodes: graphNodes, edges: graphEdges, stats: graphStats } = response.data
+            const { nodes: rawNodes, edges: rawEdges, stats: graphStats } = response.data
 
-            // Apply layout
-            const positionedNodes = layoutNodes(graphNodes, graphEdges)
+            // Transform nodes for React Flow
+            const flowNodes: Node[] = rawNodes.map((n: any) => ({
+                id: n.id,
+                type: 'knowledgeNode',
+                data: { ...n, label: n.text }, // Use text as label for custom node
+                position: { x: 0, y: 0 } // Layout will set this
+            }))
 
             // Style edges
-            const styledEdges = graphEdges.map((edge: any) => ({
-                ...edge,
+            const flowEdges: Edge[] = rawEdges.map((edge: any) => ({
+                id: edge.id || `${edge.source}-${edge.target}`,
+                source: edge.source,
+                target: edge.target,
+                type: 'smoothstep', // Smoother curves
+                animated: true,
                 style: {
                     stroke: RELATION_COLORS[edge.data?.relation_type] || '#9ca3af',
-                    strokeWidth: edge.data?.strength > 0.7 ? 2 : 1,
+                    strokeWidth: 2,
+                    opacity: 0.6,
                 },
                 markerEnd: {
                     type: MarkerType.ArrowClosed,
                     color: RELATION_COLORS[edge.data?.relation_type] || '#9ca3af',
                 },
+                data: edge.data
             }))
 
-            setNodes(positionedNodes)
-            setEdges(styledEdges)
+            const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(flowNodes, flowEdges)
+
+            setNodes(layoutedNodes)
+            setEdges(layoutedEdges)
             setStats(graphStats)
         } catch (err: any) {
             console.error('Failed to fetch knowledge graph:', err)
@@ -218,16 +149,22 @@ export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: Knowled
         } finally {
             setLoading(false)
         }
-    }, [brandId, layoutNodes, setNodes, setEdges])
+    }, [brandId, getLayoutedElements, setNodes, setEdges])
 
     useEffect(() => {
         fetchGraph()
     }, [fetchGraph])
 
-    // Filter nodes by type
+    // Filter logic
     const filteredNodes = useMemo(() => {
-        if (filterType === 'all') return nodes
-        return nodes.filter(n => n.data.node_type === filterType)
+        const visibleNodes = filterType === 'all'
+            ? nodes
+            : nodes.filter(n => n.data.node_type === filterType)
+
+        // Re-run layout on filtered subset? 
+        // For simplicity, we just hide/show but keep positions to prevent jumping
+        // OR we could re-layout. Let's return filtered list, ReactFlow handles hiding if not present.
+        return visibleNodes
     }, [nodes, filterType])
 
     const filteredEdges = useMemo(() => {
@@ -243,10 +180,10 @@ export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: Knowled
 
     if (loading) {
         return (
-            <Card className="h-[600px] flex items-center justify-center">
+            <Card className="h-[600px] flex items-center justify-center border-0 bg-white/50 backdrop-blur-sm">
                 <div className="text-center">
                     <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-                    <p className="mt-2 text-sm text-muted-foreground">Loading knowledge graph...</p>
+                    <p className="mt-2 text-sm text-muted-foreground">Mapping knowledge network...</p>
                 </div>
             </Card>
         )
@@ -254,7 +191,7 @@ export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: Knowled
 
     if (error) {
         return (
-            <Card className="h-[600px] flex items-center justify-center">
+            <Card className="h-[600px] flex items-center justify-center border-dashed">
                 <div className="text-center">
                     <AlertTriangle className="h-8 w-8 mx-auto text-amber-500" />
                     <p className="mt-2 text-sm text-red-600">{error}</p>
@@ -269,13 +206,14 @@ export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: Knowled
 
     if (nodes.length === 0) {
         return (
-            <Card className="h-[600px] flex items-center justify-center">
+            <Card className="h-[600px] flex items-center justify-center border-dashed">
                 <div className="text-center max-w-md">
-                    <Network className="h-12 w-12 mx-auto text-gray-400" />
-                    <h3 className="mt-4 text-lg font-semibold">No Knowledge Graph Yet</h3>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                        Upload and process brand documents to build the knowledge graph.
-                        The graph visualizes insights extracted from your documents.
+                    <div className="bg-gray-50 rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                        <Network className="h-8 w-8 text-gray-400" />
+                    </div>
+                    <h3 className="text-lg font-semibold">Knowledge Graph Empty</h3>
+                    <p className="mt-2 text-sm text-muted-foreground mb-6">
+                        No insights extracted yet. Upload brand documents to generate the knowledge graph.
                     </p>
                 </div>
             </Card>
@@ -283,27 +221,26 @@ export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: Knowled
     }
 
     return (
-        <Card className="h-[700px] overflow-hidden">
-            <CardHeader className="border-b pb-4">
+        <Card className="h-[800px] border-0 shadow-2xl overflow-hidden bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl ring-1 ring-black/5">
+            <CardHeader className="border-b pb-4 bg-white/50 dark:bg-gray-900/50">
                 <div className="flex items-center justify-between">
                     <div>
-                        <CardTitle className="flex items-center gap-2">
-                            <Network className="h-5 w-5" />
-                            Knowledge Graph {brandName && `- ${brandName}`}
+                        <CardTitle className="flex items-center gap-2 text-xl">
+                            <Network className="h-5 w-5 text-indigo-600" />
+                            Knowledge Graph
                         </CardTitle>
                         <CardDescription className="mt-1">
-                            Visualize connections between brand insights, patient needs, and market dynamics
+                            {stats?.total_nodes} insights connected by {stats?.total_edges} relationships
                         </CardDescription>
                     </div>
                     <div className="flex items-center gap-3">
-                        {/* Filter */}
                         <Select value={filterType} onValueChange={setFilterType}>
-                            <SelectTrigger className="w-[180px]">
-                                <Filter className="h-4 w-4 mr-2" />
-                                <SelectValue placeholder="Filter by type" />
+                            <SelectTrigger className="w-[200px] bg-white">
+                                <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
+                                <SelectValue placeholder="All Categories" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">All Types</SelectItem>
+                                <SelectItem value="all">All Categories</SelectItem>
                                 {stats?.node_types && Object.keys(stats.node_types).map(type => (
                                     <SelectItem key={type} value={type}>
                                         {type.replace(/_/g, ' ')} ({stats.node_types[type]})
@@ -312,136 +249,102 @@ export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: Knowled
                             </SelectContent>
                         </Select>
 
-                        <Button variant="outline" size="sm" onClick={fetchGraph}>
+                        <div className="h-8 w-px bg-gray-200 mx-2" />
+
+                        <Button variant="outline" size="sm" onClick={fetchGraph} className="bg-white">
                             <RefreshCw className="h-4 w-4 mr-2" />
                             Refresh
                         </Button>
                     </div>
                 </div>
-
-                {/* Stats Row */}
-                {stats && (
-                    <div className="flex items-center gap-4 mt-4">
-                        <Badge variant="secondary" className="px-3 py-1">
-                            {stats.total_nodes} Nodes
-                        </Badge>
-                        <Badge variant="secondary" className="px-3 py-1">
-                            {stats.total_edges} Connections
-                        </Badge>
-                        {stats.contradictions > 0 && (
-                            <Badge variant="destructive" className="px-3 py-1">
-                                <AlertTriangle className="h-3 w-3 mr-1" />
-                                {stats.contradictions} Contradictions
-                            </Badge>
-                        )}
-                    </div>
-                )}
             </CardHeader>
 
-            <CardContent className="p-0 h-[calc(100%-120px)]">
-                <div className="flex h-full">
-                    {/* Graph Area */}
-                    <div className="flex-1">
-                        <ReactFlow
-                            nodes={filteredNodes}
-                            edges={filteredEdges}
-                            onNodesChange={onNodesChange}
-                            onEdgesChange={onEdgesChange}
-                            onNodeClick={onNodeClick}
-                            nodeTypes={nodeTypes}
-                            fitView
-                            minZoom={0.3}
-                            maxZoom={1.5}
-                        >
-                            <Background />
-                            <Controls />
-                            <MiniMap
-                                nodeStrokeColor={(n) => {
-                                    const colors = NODE_TYPE_COLORS[n.data?.node_type]
-                                    return colors?.border || '#9ca3af'
-                                }}
-                                nodeColor={(n) => {
-                                    const colors = NODE_TYPE_COLORS[n.data?.node_type]
-                                    return colors?.bg || '#f3f4f6'
-                                }}
-                            />
-                        </ReactFlow>
-                    </div>
+            <CardContent className="p-0 h-[calc(100%-80px)] relative">
+                <ReactFlow
+                    nodes={filteredNodes}
+                    edges={filteredEdges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onNodeClick={onNodeClick}
+                    nodeTypes={nodeTypes}
+                    fitView
+                    minZoom={0.2}
+                    maxZoom={2}
+                    className="bg-dots-pattern"
+                >
+                    <Background color="#94a3b8" gap={20} size={1} style={{ opacity: 0.1 }} />
+                    <Controls showInteractive={false} className="bg-white shadow-lg border-0 rounded-lg overflow-hidden" />
+                    <MiniMap
+                        className="!bottom-4 !right-4 rounded-lg overflow-hidden border shadow-lg"
+                        zoomable
+                        pannable
+                        nodeColor={(n) => {
+                            // Simple mapping for minimap
+                            return n.data?.node_type?.includes('patient') ? '#10b981' :
+                                n.data?.node_type?.includes('disease') ? '#3b82f6' :
+                                    n.data?.node_type?.includes('hcp') ? '#f97316' : '#8b5cf6'
+                        }}
+                    />
+                </ReactFlow>
 
-                    {/* Detail Panel */}
-                    {selectedNode && (
-                        <div className="w-80 border-l bg-gray-50 dark:bg-gray-900 p-4 overflow-y-auto">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="font-semibold">Node Details</h3>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setSelectedNode(null)}
-                                >
-                                    <X className="h-4 w-4" />
-                                </Button>
+                {/* Floating Detail Panel */}
+                {selectedNode && (
+                    <div className="absolute top-4 right-4 w-80 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md shadow-2xl rounded-xl border border-white/20 p-5 animate-in slide-in-from-right-10 duration-200">
+                        <div className="flex items-start justify-between mb-4">
+                            <div>
+                                <h3 className="font-semibold text-lg leading-tight">Insight Details</h3>
+                                <p className="text-xs text-muted-foreground mt-1">ID: {selectedNode.id?.substring(0, 8)}...</p>
+                            </div>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 rounded-full hover:bg-gray-100"
+                                onClick={() => setSelectedNode(null)}
+                            >
+                                <X className="h-4 w-4" />
+                            </Button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-100 dark:border-gray-800">
+                                <Badge variant="outline" className="mb-2 bg-white dark:bg-gray-900">
+                                    {selectedNode.node_type?.replace(/_/g, ' ')}
+                                </Badge>
+                                <p className="text-sm font-medium leading-relaxed">
+                                    {selectedNode.text}
+                                </p>
                             </div>
 
-                            <div className="space-y-4">
+                            {selectedNode.source_quote && (
                                 <div>
-                                    <label className="text-xs text-muted-foreground uppercase">Type</label>
-                                    <Badge className="mt-1 block w-fit">
-                                        {selectedNode.node_type?.replace(/_/g, ' ')}
-                                    </Badge>
-                                </div>
-
-                                <div>
-                                    <label className="text-xs text-muted-foreground uppercase">Text</label>
-                                    <p className="mt-1 text-sm">{selectedNode.text}</p>
-                                </div>
-
-                                {selectedNode.segment && (
-                                    <div>
-                                        <label className="text-xs text-muted-foreground uppercase">Segment</label>
-                                        <p className="mt-1 text-sm">{selectedNode.segment}</p>
+                                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Source Evidence</label>
+                                    <div className="mt-1.5 pl-3 border-l-2 border-indigo-500 italic text-sm text-gray-600 dark:text-gray-400">
+                                        "{selectedNode.source_quote}"
                                     </div>
-                                )}
+                                </div>
+                            )}
 
-                                {selectedNode.source_quote && (
-                                    <div>
-                                        <label className="text-xs text-muted-foreground uppercase">Source Quote</label>
-                                        <p className="mt-1 text-sm italic text-gray-600 dark:text-gray-400">
-                                            "{selectedNode.source_quote}"
-                                        </p>
-                                    </div>
-                                )}
-
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="text-xs text-muted-foreground uppercase">Confidence</label>
-                                    <div className="mt-1 flex items-center gap-2">
-                                        <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Segment</label>
+                                    <p className="text-sm mt-1">{selectedNode.segment || "General"}</p>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Confidence</label>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                             <div
-                                                className="h-2 bg-blue-500 rounded-full"
+                                                className="h-full bg-green-500 rounded-full"
                                                 style={{ width: `${(selectedNode.confidence || 0.7) * 100}%` }}
                                             />
                                         </div>
-                                        <span className="text-sm font-medium">
-                                            {Math.round((selectedNode.confidence || 0.7) * 100)}%
-                                        </span>
+                                        <span className="text-xs font-mono">{Math.round((selectedNode.confidence || 0.7) * 100)}%</span>
                                     </div>
-                                </div>
-
-                                <div className="flex items-center gap-2 pt-2 border-t">
-                                    {selectedNode.verified ? (
-                                        <Badge variant="outline" className="text-green-600 border-green-600">
-                                            <CheckCircle className="h-3 w-3 mr-1" />
-                                            Verified
-                                        </Badge>
-                                    ) : (
-                                        <Badge variant="outline" className="text-amber-600 border-amber-600">
-                                            Unverified
-                                        </Badge>
-                                    )}
                                 </div>
                             </div>
                         </div>
-                    )}
-                </div>
+                    </div>
+                )}
             </CardContent>
         </Card>
     )

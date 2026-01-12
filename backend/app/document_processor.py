@@ -211,10 +211,17 @@ def generate_vector_embeddings(
     
     try:
         # 1. Create a Vector Store
-        # For simplicity in this revert, we create a new store for each document batch or use the brand's store logic if we had it.
-        # Based on previous code analysis, we were creating a store per document.
-        vs_name = f"brand-{brand_id}-{safe_filename}"
-        vector_store = client.beta.vector_stores.create(name=vs_name)
+        try:
+            # Check if beta.vector_stores exists on the client
+            if not hasattr(client, 'beta') or not hasattr(client.beta, 'vector_stores'):
+                logger.warning("OpenAI client does not support beta.vector_stores. Skipping vector store creation.")
+                return None, None, []
+            
+            vs_name = f"brand-{brand_id}-{safe_filename}"
+            vector_store = client.beta.vector_stores.create(name=vs_name)
+        except Exception as e:
+            logger.warning(f"Failed to create OpenAI Vector Store (feature might be unavailable): {e}")
+            return None, None, []
         
         # 2. Upload File (Stream the text content as a file)
         # We need to recreate the file content from chunks or use the original file if we had the path.
@@ -235,11 +242,12 @@ def generate_vector_embeddings(
                 )
                 logger.info(f"Uploaded file batch status: {file_batch.status}")
                 logger.info(f"File counts: {file_batch.file_counts}")
-
+ 
             return None, vector_store.id, []
             
         finally:
-            os.remove(tmp_path)
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
     except Exception as e:
         logger.error(f"Failed to ingest into OpenAI Vector Store: {e}")
