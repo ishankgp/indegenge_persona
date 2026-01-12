@@ -74,7 +74,7 @@ Required:
 
 Optional:
 - `DATABASE_URL` - PostgreSQL connection string (defaults to SQLite in dev)
-- `OPENAI_MODEL` - Model name (default: `gpt-4o`)
+- `OPENAI_MODEL` - Model name (default: `gpt-5.2`)
 - `OPENAI_MODEL_MAX_TOKENS` - Max tokens (default: 32768)
 
 ### Frontend
@@ -85,25 +85,35 @@ Optional:
 ## Project Structure
 
 ```
-indegenge_persona/
+pharmapersonasim/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # FastAPI endpoints
+│   │   ├── main.py               # FastAPI endpoints
 │   │   ├── models.py             # SQLAlchemy models
-│   │   ├── persona_engine.py    # Persona generation agent
-│   │   ├── cohort_engine.py     # Cohort analysis agent
-│   │   ├── asset_analyzer.py    # Image annotation agent
+│   │   ├── schemas.py            # Pydantic schemas
+│   │   ├── crud.py               # Database operations
+│   │   ├── database.py           # DB connection setup
+│   │   ├── persona_engine.py     # Persona generation agent
+│   │   ├── cohort_engine.py      # Cohort analysis agent
+│   │   ├── coverage_engine.py    # Persona coverage gap analysis
+│   │   ├── asset_analyzer.py     # Image annotation agent
 │   │   ├── image_improvement.py  # Image improvement agent
 │   │   ├── avatar_engine.py      # Avatar generation agent
-│   │   ├── document_processor.py # Document processing
-│   │   └── vector_search.py      # RAG/search agent
-│   ├── scripts/                  # Utility scripts
+│   │   ├── document_processor.py # Document processing & chunking
+│   │   ├── vector_search.py      # RAG/search agent
+│   │   ├── knowledge_extractor.py # Knowledge graph extraction
+│   │   ├── similarity_service.py # Persona similarity matching
+│   │   ├── auto_enrichment.py    # Auto-enrichment pipeline
+│   │   ├── disease_packs.py      # Condition-specific MBT packs
+│   │   └── archetypes.py         # Persona archetype definitions
+│   ├── scripts/                  # Utility & migration scripts
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
 │   │   ├── pages/               # React pages
 │   │   ├── components/          # React components
-│   │   └── lib/                 # Utilities and API client
+│   │   ├── lib/                 # Utilities and API client
+│   │   └── types/               # TypeScript type definitions
 │   └── package.json
 ├── run_app.py                   # Full-stack launcher
 ├── README.md                    # Human-readable docs
@@ -134,8 +144,29 @@ indegenge_persona/
 
 ### Thread Safety
 - **Critical**: SQLAlchemy ORM objects cannot be passed to worker threads
-- Always serialize persona data before `ThreadPoolExecutor` (see `cohort_engine.py` lines 878-926)
+- Always serialize persona data before `ThreadPoolExecutor` (see `cohort_engine.py` lines 960-985)
 - Use plain dictionaries, not ORM objects, in parallel workers
+
+### OpenAI Client Initialization
+- All AI engines use lazy, thread-safe client initialization
+- Pattern: Use `threading.Lock()` to protect singleton creation
+- Reference implementation in `cohort_engine.py`, `persona_engine.py`, `coverage_engine.py`
+- Example:
+  ```python
+  import threading
+  _openai_client: Optional[OpenAI] = None
+  _client_lock = threading.Lock()
+
+  def get_openai_client() -> Optional[OpenAI]:
+      api_key = os.getenv("OPENAI_API_KEY")
+      if not api_key:
+          return None
+      global _openai_client
+      with _client_lock:
+          if _openai_client is None:
+              _openai_client = OpenAI(api_key=api_key)
+      return _openai_client
+  ```
 
 ## Common Tasks
 
@@ -154,7 +185,10 @@ indegenge_persona/
 
 ### Adding a New AI Agent
 1. Create new file in `backend/app/` (e.g., `new_agent.py`)
-2. Follow pattern from existing agents (lazy client initialization, error handling)
+2. Follow pattern from existing agents:
+   - Use thread-safe lazy client initialization (see OpenAI Client Initialization section)
+   - Default model: `MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-5.2")`
+   - Proper error handling with consistent response structures
 3. Document in `AI_AGENTS.md`
 4. Add endpoint in `backend/app/main.py` if needed
 
@@ -188,7 +222,12 @@ indegenge_persona/
 ### SQLAlchemy Threading
 - **Issue**: ORM objects detached in worker threads
 - **Solution**: Serialize data before passing to `ThreadPoolExecutor`
-- **See**: `backend/app/cohort_engine.py` for reference implementation
+- **See**: `backend/app/cohort_engine.py` lines 960-985 for reference implementation
+
+### Response Structure Consistency
+- **Issue**: Error responses must match success response structure
+- **Solution**: Always include all expected keys (e.g., `'answers': []`) in error responses
+- **See**: `backend/app/cohort_engine.py` error handlers for examples
 
 ### Environment Variables
 - **Issue**: `.env` file location confusion
@@ -209,5 +248,5 @@ indegenge_persona/
 
 ---
 
-**Last Updated**: 2025-01-27  
+**Last Updated**: 2026-01-12  
 **Maintainer**: PharmaPersonaSim Team

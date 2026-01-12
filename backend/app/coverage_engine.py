@@ -27,17 +27,24 @@ logger = logging.getLogger(__name__)
 
 MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-5.2")
 
-# Lazy-loaded OpenAI client
+# Lazy-loaded OpenAI client with thread-safe initialization
+import threading
+
 _openai_client: Optional[OpenAI] = None
+_client_lock = threading.Lock()
 
 
 def get_openai_client() -> Optional[OpenAI]:
     """Return a configured OpenAI client when an API key is present."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+
     global _openai_client
-    if _openai_client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if api_key:
+    with _client_lock:
+        if _openai_client is None:
             _openai_client = OpenAI(api_key=api_key)
+
     return _openai_client
 
 

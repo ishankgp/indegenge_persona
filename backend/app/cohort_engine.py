@@ -21,7 +21,7 @@ import threading
 
 _openai_client: Optional[OpenAI] = None
 _client_lock = threading.Lock()
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")  # Use gpt-4o for vision capabilities
+MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-5.2")  # Use gpt-5.2 for vision capabilities
 
 
 def get_openai_client() -> Optional[OpenAI]:
@@ -917,6 +917,7 @@ def _process_persona_multimodal(
             'condition': persona_data.get('condition'),
             'analysis_summary': f"Error in analysis: {str(e)}",
             'metrics': {},
+            'answers': [],
             'key_insights': [],
             'behavioral_prediction': 'Unable to generate prediction due to error',
             'error': str(e)
@@ -1027,6 +1028,7 @@ def run_multimodal_cohort_analysis(
                     'condition': persona_condition,
                     'analysis_summary': f"Processing error: {str(e)}",
                     'metrics': {},
+                    'answers': [],
                     'key_insights': [],
                     'behavioral_prediction': 'Unable to generate prediction due to processing error',
                     'error': str(e)

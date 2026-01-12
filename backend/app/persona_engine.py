@@ -18,7 +18,7 @@ load_dotenv(env_path)
 # when the key is absent (for example in local development or during unit
 # tests).
 _openai_client: Optional[OpenAI] = None
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
+MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-5.2")
 
 import threading
 
