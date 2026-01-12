@@ -1,7 +1,60 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Float, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Float, ForeignKey, Boolean, Enum
 from sqlalchemy.sql import func
 from .database import Base
 import datetime
+import enum
+
+
+# === Document Type Classification ===
+class DocumentType(enum.Enum):
+    """Classification of brand documents for knowledge extraction."""
+    BRAND_MESSAGING = "brand_messaging"
+    DISEASE_LITERATURE = "disease_literature"
+    INTERVIEW_TRANSCRIPT = "interview_transcript"
+    COMPETITIVE_INTEL = "competitive_intel"
+
+
+# === Knowledge Graph Node Types (Pharma-specific) ===
+class NodeType(enum.Enum):
+    """Types of knowledge nodes tailored for pharma marketing."""
+    # Brand Pillars
+    KEY_MESSAGE = "key_message"
+    VALUE_PROPOSITION = "value_proposition"
+    DIFFERENTIATOR = "differentiator"
+    PROOF_POINT = "proof_point"
+    
+    # Disease Knowledge
+    EPIDEMIOLOGY = "epidemiology"
+    SYMPTOM_BURDEN = "symptom_burden"
+    TREATMENT_LANDSCAPE = "treatment_landscape"
+    UNMET_NEED = "unmet_need"
+    
+    # Patient Insights
+    PATIENT_MOTIVATION = "patient_motivation"
+    PATIENT_BELIEF = "patient_belief"
+    PATIENT_TENSION = "patient_tension"
+    JOURNEY_INSIGHT = "journey_insight"
+    
+    # HCP Insights
+    PRESCRIBING_DRIVER = "prescribing_driver"
+    CLINICAL_CONCERN = "clinical_concern"
+    PRACTICE_CONSTRAINT = "practice_constraint"
+    
+    # Market
+    COMPETITOR_POSITION = "competitor_position"
+    MARKET_BARRIER = "market_barrier"
+
+
+# === Knowledge Graph Relationship Types ===
+class RelationType(enum.Enum):
+    """Types of relationships between knowledge nodes."""
+    ADDRESSES = "addresses"        # Message addresses a tension
+    SUPPORTS = "supports"          # Evidence supports a claim
+    CONTRADICTS = "contradicts"    # Insight contradicts messaging
+    TRIGGERS = "triggers"          # Symptom triggers emotion
+    INFLUENCES = "influences"      # Factor influences decision
+    RESONATES_WITH = "resonates"   # Message resonates with motivation
+
 
 class Persona(Base):
     __tablename__ = "personas"
@@ -65,6 +118,7 @@ class BrandDocument(Base):
     brand_id = Column(Integer, index=True)
     filename = Column(String)
     file_type = Column(String)
+    document_type = Column(String, default="brand_messaging")  # DocumentType enum value
     upload_date = Column(DateTime, default=datetime.datetime.utcnow)
     vector_store_id = Column(String) # OpenAI Vector Store ID
     extracted_insights = Column(JSON, nullable=True)
@@ -85,3 +139,52 @@ class CachedAssetAnalysis(Base):
     asset_name = Column(String, nullable=True)  # Original filename
     result_json = Column(JSON)  # Annotated image + text summary
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+# === Knowledge Graph Models ===
+
+class KnowledgeNode(Base):
+    """Represents a knowledge node extracted from documents."""
+    __tablename__ = "knowledge_nodes"
+    
+    id = Column(String, primary_key=True)  # UUID
+    brand_id = Column(Integer, ForeignKey("brands.id"), index=True)
+    node_type = Column(String, index=True)  # NodeType enum value
+    
+    # Content
+    text = Column(Text, nullable=False)
+    summary = Column(String(200), nullable=True)  # Short version for graph labels
+    
+    # Targeting (who does this apply to?)
+    segment = Column(String, nullable=True)  # "Elderly Patients", "Endocrinologists", "All"
+    journey_stage = Column(String, nullable=True)  # "Awareness", "Consideration", "Treatment"
+    
+    # Provenance
+    source_document_id = Column(Integer, ForeignKey("brand_documents.id"), nullable=True)
+    source_quote = Column(Text, nullable=True)  # Exact quote from document
+    confidence = Column(Float, default=0.7)
+    
+    # Metadata
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    verified_by_user = Column(Boolean, default=False)
+
+
+class KnowledgeRelation(Base):
+    """Represents a relationship between two knowledge nodes."""
+    __tablename__ = "knowledge_relations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    brand_id = Column(Integer, ForeignKey("brands.id"), index=True)
+    
+    from_node_id = Column(String, ForeignKey("knowledge_nodes.id"), index=True)
+    to_node_id = Column(String, ForeignKey("knowledge_nodes.id"), index=True)
+    relation_type = Column(String)  # RelationType enum value
+    
+    # Strength and context
+    strength = Column(Float, default=0.7)  # How strong is this relationship?
+    context = Column(Text, nullable=True)  # Why does this relationship exist?
+    
+    # Provenance
+    inferred_by = Column(String, default="llm")  # "llm" or "user"
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
