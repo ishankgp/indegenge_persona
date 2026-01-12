@@ -40,17 +40,9 @@ import {
   Filter,
   History,
   Clock,
-  ChevronDown,
   FolderOpen,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 
 // API base managed via shared client
 
@@ -133,6 +125,7 @@ export function SimulationHub() {
   // Asset History
   const [assetHistory, setAssetHistory] = useState<AssetHistoryItem[]>([])
   const [loadingAssetHistory, setLoadingAssetHistory] = useState(false)
+  const [assetRightPanelView, setAssetRightPanelView] = useState<"results" | "history">("history")
 
   // Handle pre-filled message from Analytics page (for message variants)
   const location = useLocation()
@@ -159,6 +152,20 @@ export function SimulationHub() {
       window.history.replaceState({}, document.title)
     }
   }, [location.state])
+
+  // Auto-load asset history when switching to asset mode
+  useEffect(() => {
+    if (simulationMode === "asset" && assetHistory.length === 0 && !loadingAssetHistory) {
+      loadAssetHistory()
+    }
+  }, [simulationMode])
+
+  // Switch to results view when analysis completes
+  useEffect(() => {
+    if (assetAnalysisResults.length > 0) {
+      setAssetRightPanelView("results")
+    }
+  }, [assetAnalysisResults])
 
   const handleRecruit = async () => {
     if (!recruitmentPrompt.trim()) return
@@ -905,102 +912,22 @@ export function SimulationHub() {
             {/* Asset Upload */}
             <Card className="card-base overflow-hidden">
               <CardHeader className="border-b border-border/50 bg-muted/30 pb-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="p-2 bg-primary/10 rounded-md">
-                      <ImageIcon className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <CardTitle className="text-lg font-semibold">Asset Intelligence</CardTitle>
-                        <Badge variant="outline" className="text-xs font-normal bg-amber-100 text-amber-800 border-amber-300">
-                          <Sparkles className="h-3 w-3 mr-1" />
-                          Nano Banana Pro
-                        </Badge>
-                      </div>
-                      <CardDescription className="mt-1">
-                        Upload a marketing asset to get persona-driven red-lining feedback
-                      </CardDescription>
-                    </div>
+                <div className="flex items-center space-x-4">
+                  <div className="p-2 bg-primary/10 rounded-md">
+                    <ImageIcon className="h-5 w-5 text-primary" />
                   </div>
-                  
-                  {/* History Dropdown */}
-                  <DropdownMenu onOpenChange={(open) => open && loadAssetHistory()}>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="gap-2">
-                        <History className="h-4 w-4" />
-                        History
-                        <ChevronDown className="h-3 w-3 opacity-50" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-80">
-                      <DropdownMenuLabel className="flex items-center gap-2">
-                        <FolderOpen className="h-4 w-4" />
-                        Previous Analyses
-                      </DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      
-                      {loadingAssetHistory && (
-                        <div className="flex items-center justify-center py-6">
-                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                        </div>
-                      )}
-                      
-                      {!loadingAssetHistory && assetHistory.length === 0 && (
-                        <div className="py-6 text-center text-sm text-muted-foreground">
-                          <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                          No previous analyses
-                        </div>
-                      )}
-                      
-                      {!loadingAssetHistory && assetHistory.length > 0 && (
-                        <div className="max-h-[400px] overflow-y-auto">
-                          {assetHistory.map((item, idx) => (
-                            <button
-                              key={item.image_hash || idx}
-                              onClick={() => loadHistoricalAsset(item)}
-                              className="w-full flex items-start gap-3 p-3 hover:bg-muted/50 transition-colors text-left border-b border-border/30 last:border-0"
-                            >
-                              {/* Thumbnail */}
-                              <div className="flex-shrink-0 w-16 h-16 rounded-md overflow-hidden bg-muted border">
-                                {item.results[0]?.annotated_image ? (
-                                  <img
-                                    src={item.results[0].annotated_image}
-                                    alt={item.asset_name || 'Asset'}
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center">
-                                    <ImageIcon className="h-6 w-6 text-muted-foreground/50" />
-                                  </div>
-                                )}
-                              </div>
-                              
-                              {/* Details */}
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium truncate">
-                                  {item.asset_name || 'Unnamed Asset'}
-                                </p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <Badge variant="secondary" className="text-[10px] h-5">
-                                    {item.results.length} persona{item.results.length !== 1 ? 's' : ''}
-                                  </Badge>
-                                  <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                    <Clock className="h-3 w-3" />
-                                    {formatRelativeTime(item.created_at)}
-                                  </span>
-                                </div>
-                                {/* Show persona names preview */}
-                                <p className="text-xs text-muted-foreground mt-1 truncate">
-                                  {item.results.map(r => r.persona_name).join(', ')}
-                                </p>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <CardTitle className="text-lg font-semibold">Asset Intelligence</CardTitle>
+                      <Badge variant="outline" className="text-xs font-normal bg-amber-100 text-amber-800 border-amber-300">
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        Nano Banana Pro
+                      </Badge>
+                    </div>
+                    <CardDescription className="mt-1">
+                      Upload a marketing asset to get persona-driven red-lining feedback
+                    </CardDescription>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-6">
@@ -1066,13 +993,139 @@ export function SimulationHub() {
                     </Button>
                   </div>
 
-                  {/* Results Panel */}
-                  <div>
-                    <AnnotatedAssetViewer
-                      results={assetAnalysisResults}
-                      originalAssetUrl={assetPreview || undefined}
-                      isLoading={assetAnalyzing}
-                    />
+                  {/* Right Panel - Results or History */}
+                  <div className="space-y-3">
+                    {/* Tab Toggle - only show when there are results */}
+                    {assetAnalysisResults.length > 0 && (
+                      <div className="flex gap-1 p-1 bg-muted/50 rounded-lg w-fit">
+                        <button
+                          onClick={() => setAssetRightPanelView("results")}
+                          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                            assetRightPanelView === "results"
+                              ? "bg-white shadow-sm text-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <Eye className="h-3.5 w-3.5 inline mr-1.5" />
+                          Results
+                        </button>
+                        <button
+                          onClick={() => setAssetRightPanelView("history")}
+                          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                            assetRightPanelView === "history"
+                              ? "bg-white shadow-sm text-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <History className="h-3.5 w-3.5 inline mr-1.5" />
+                          History
+                          {assetHistory.length > 0 && (
+                            <Badge variant="secondary" className="ml-1.5 text-[10px] h-4 px-1.5">
+                              {assetHistory.length}
+                            </Badge>
+                          )}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Results View */}
+                    {assetRightPanelView === "results" && assetAnalysisResults.length > 0 && (
+                      <AnnotatedAssetViewer
+                        results={assetAnalysisResults}
+                        originalAssetUrl={assetPreview || undefined}
+                        isLoading={assetAnalyzing}
+                      />
+                    )}
+
+                    {/* History View (default when no results) */}
+                    {(assetRightPanelView === "history" || assetAnalysisResults.length === 0) && (
+                      <div className="rounded-lg border bg-card">
+                        <div className="p-3 border-b bg-muted/30">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-medium flex items-center gap-2">
+                              <History className="h-4 w-4 text-muted-foreground" />
+                              Previous Analyses
+                            </h4>
+                            {assetHistory.length > 0 && (
+                              <Badge variant="outline" className="text-xs">
+                                {assetHistory.length} saved
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Loading State */}
+                        {loadingAssetHistory && (
+                          <div className="p-8 text-center">
+                            <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                            <p className="text-sm text-muted-foreground mt-2">Loading history...</p>
+                          </div>
+                        )}
+                        
+                        {/* Empty State */}
+                        {!loadingAssetHistory && assetHistory.length === 0 && (
+                          <div className="p-8 text-center">
+                            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
+                              <FolderOpen className="h-6 w-6 text-muted-foreground" />
+                            </div>
+                            <p className="text-sm font-medium">No previous analyses</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Upload an asset and run analysis to see it here
+                            </p>
+                          </div>
+                        )}
+                        
+                        {/* History Grid */}
+                        {!loadingAssetHistory && assetHistory.length > 0 && (
+                          <div className="p-3 grid grid-cols-2 gap-3 max-h-[400px] overflow-y-auto">
+                            {assetHistory.map((item, idx) => (
+                              <button
+                                key={item.image_hash || idx}
+                                onClick={() => loadHistoricalAsset(item)}
+                                className="group relative rounded-lg border border-border/50 hover:border-primary/50 hover:shadow-md p-2 text-left transition-all bg-background"
+                              >
+                                {/* Thumbnail */}
+                                <div className="aspect-video rounded-md overflow-hidden bg-muted mb-2">
+                                  {item.results[0]?.annotated_image ? (
+                                    <img
+                                      src={item.results[0].annotated_image}
+                                      alt={item.asset_name || 'Asset'}
+                                      className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                      <ImageIcon className="h-8 w-8 text-muted-foreground/30" />
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                {/* Details */}
+                                <p className="text-xs font-medium truncate">
+                                  {item.asset_name || 'Unnamed Asset'}
+                                </p>
+                                <div className="flex items-center justify-between mt-1">
+                                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                                    {item.results.length} persona{item.results.length !== 1 ? 's' : ''}
+                                  </Badge>
+                                  <span className="text-[10px] text-muted-foreground">
+                                    {formatRelativeTime(item.created_at)}
+                                  </span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Analyzing State - show in results area */}
+                    {assetAnalyzing && assetRightPanelView === "results" && (
+                      <AnnotatedAssetViewer
+                        results={[]}
+                        originalAssetUrl={assetPreview || undefined}
+                        isLoading={true}
+                      />
+                    )}
                   </div>
                 </div>
               </CardContent>
