@@ -63,6 +63,7 @@ test_*.py
 *.tmp
 temp/
 tmp/
+backend/uploads/
 .vercel
 *.pid
 backend_uvicorn.pid

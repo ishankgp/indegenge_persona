@@ -1542,7 +1542,33 @@ async def upload_brand_document(
         chunk_ids=chunk_ids or None,
     )
 
-    return crud.upsert_brand_document(db, doc_create)
+    new_doc = crud.upsert_brand_document(db, doc_create)
+
+    # Trigger Knowledge Graph Extraction
+    try:
+        from . import knowledge_extractor
+        logger.info(f"🧠 Starting knowledge extraction for document {new_doc.id}")
+        nodes = await knowledge_extractor.extract_knowledge_from_document(
+            document_id=new_doc.id,
+            document_text=text,
+            document_type=category or "brand_messaging",
+            brand_id=brand_id,
+            brand_name=brand.name,
+            db=db
+        )
+        
+        if nodes:
+            logger.info(f"🧠 Inferring relationships for brand {brand_id}")
+            await knowledge_extractor.infer_relationships(
+                brand_id=brand_id,
+                new_nodes=nodes,
+                db=db
+            )
+    except Exception as e:
+        logger.error(f"❌ Knowledge extraction failed for document {new_doc.id}: {e}")
+        # We don't fail the request, just log the error
+
+    return new_doc
 
 @app.get("/api/brands/{brand_id}/documents", response_model=List[schemas.BrandDocument])
 async def get_brand_documents(brand_id: int, db: Session = Depends(get_db)):
@@ -1722,6 +1748,29 @@ async def seed_brand_documents(brand_id: int, db: Session = Depends(get_db)):
         new_doc = crud.upsert_brand_document(db, doc_create)
         created_docs.append(new_doc)
         
+        # Trigger Knowledge Graph Extraction for this document
+        try:
+            from . import knowledge_extractor
+            logger.info(f"🧠 Starting knowledge extraction for seeded document {new_doc.id}")
+            nodes = await knowledge_extractor.extract_knowledge_from_document(
+                document_id=new_doc.id,
+                document_text=text,
+                document_type="brand_messaging", # Default for mock data
+                brand_id=brand_id,
+                brand_name=brand.name,
+                db=db
+            )
+            
+            if nodes:
+                # We can infer relationships cumulatively
+                await knowledge_extractor.infer_relationships(
+                    brand_id=brand_id,
+                    new_nodes=nodes,
+                    db=db
+                )
+        except Exception as e:
+            logger.error(f"❌ Knowledge extraction failed for seeded document {new_doc.id}: {e}")
+
     return created_docs
 
 # --- Veeva CRM Integration Simulation Endpoints ---

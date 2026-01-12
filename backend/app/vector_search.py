@@ -31,7 +31,15 @@ def search_brand_chunks(
         return None
         
     # Aggregate vector store IDs
-    vector_store_ids = [d.get('vector_store_id') for d in documents if d.get('vector_store_id')]
+    vector_store_ids = []
+    for d in documents:
+        if isinstance(d, dict):
+            vs_id = d.get('vector_store_id')
+        else:
+            vs_id = getattr(d, 'vector_store_id', None)
+            
+        if vs_id:
+            vector_store_ids.append(vs_id)
     
     if not vector_store_ids:
         logger.info("No vector stores to search.")

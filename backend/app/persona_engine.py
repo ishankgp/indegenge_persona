@@ -740,7 +740,7 @@ def generate_persona_from_attributes(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
-            max_tokens=1600,
+            max_completion_tokens=1600,
         )
 
         content = response.choices[0].message.content or "{}"
@@ -2146,7 +2146,7 @@ def extract_mbt_from_transcript_llm(transcript: str) -> Dict[str, Any]:
                 {"role": "user", "content": _create_mbt_extraction_prompt(transcript)}
             ],
             response_format={"type": "json_object"},
-            max_tokens=1500,
+            max_completion_tokens=1500,
         )
         content = response.choices[0].message.content or "{}"
         return json.loads(content)
@@ -2168,7 +2168,7 @@ def extract_decision_drivers_from_transcript(transcript: str) -> Dict[str, Any]:
                 {"role": "user", "content": _create_decision_drivers_prompt(transcript)}
             ],
             response_format={"type": "json_object"},
-            max_tokens=1000,
+            max_completion_tokens=1000,
         )
         content = response.choices[0].message.content or "{}"
         return json.loads(content)
@@ -2190,7 +2190,7 @@ def extract_objections_from_transcript(transcript: str) -> Dict[str, Any]:
                 {"role": "user", "content": _create_objections_prompt(transcript)}
             ],
             response_format={"type": "json_object"},
-            max_tokens=1000,
+            max_completion_tokens=1000,
         )
         content = response.choices[0].message.content or "{}"
         return json.loads(content)
@@ -2212,7 +2212,7 @@ def extract_messaging_hooks_from_transcript(transcript: str) -> Dict[str, Any]:
                 {"role": "user", "content": _create_messaging_hooks_prompt(transcript)}
             ],
             response_format={"type": "json_object"},
-            max_tokens=1000,
+            max_completion_tokens=1000,
         )
         content = response.choices[0].message.content or "{}"
         return json.loads(content)
@@ -2234,7 +2234,7 @@ def extract_channel_behavior_from_transcript(transcript: str) -> Dict[str, Any]:
                 {"role": "user", "content": _create_channel_behavior_prompt(transcript)}
             ],
             response_format={"type": "json_object"},
-            max_tokens=1000,
+            max_completion_tokens=1000,
         )
         content = response.choices[0].message.content or "{}"
         return json.loads(content)

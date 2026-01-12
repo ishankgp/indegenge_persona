@@ -148,7 +148,7 @@ def classify_document(text: str) -> str:
                 {"role": "user", "content": prompt}
             ],
             temperature=0.0,
-            max_tokens=50
+            max_completion_tokens=50
         )
         category = response.choices[0].message.content.strip()
         

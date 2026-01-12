@@ -215,10 +215,11 @@ async def extract_knowledge_from_document(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
-            max_tokens=2000,
+            max_completion_tokens=2000,
         )
         
         content = response.choices[0].message.content or "[]"
+        print(f"DEBUG: Raw OpenAI content for doc {document_id}: {content[:500]}...") # Debug log
         
         # Parse the response
         try:
@@ -320,7 +321,7 @@ async def infer_relationships(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
-            max_tokens=1500,
+            max_completion_tokens=1500,
         )
         
         content = response.choices[0].message.content or "[]"
@@ -454,7 +455,7 @@ Return ONLY the category name (e.g., "brand_messaging"), nothing else."""
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=50,
+            max_completion_tokens=50,
         )
         
         result = response.choices[0].message.content.strip().lower()
