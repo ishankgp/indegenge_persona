@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { BrandsAPI } from "@/lib/api"
-import { KnowledgeGraphView } from "@/components/KnowledgeGraphView"
+import { KnowledgeGraphWorkspace } from "@/components/KnowledgeGraphWorkspace"
 import { NodeMergePanel } from "@/components/NodeMergePanel"
-import { Network, AlertCircle, Settings2 } from "lucide-react"
+import { Network, AlertCircle, Settings2, ShieldCheck, ChevronRight, Loader2 } from "lucide-react"
 import {
     Select,
     SelectContent,
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
 
 interface Brand {
     id: number
@@ -35,6 +36,7 @@ export function KnowledgeGraphPage() {
             const data = await BrandsAPI.list()
             setBrands(data)
             if (data.length > 0) {
+                // If we have a stored preference or parameter, use it? For now defaulting to first.
                 setSelectedBrandId(data[0].id.toString())
             }
         } catch (err) {
@@ -46,86 +48,103 @@ export function KnowledgeGraphPage() {
 
     const selectedBrand = brands.find(b => b.id.toString() === selectedBrandId)
 
+    // Empty State
+    if (!loading && brands.length === 0) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+                <Card className="max-w-md w-full border-dashed border-2 shadow-sm bg-white/50">
+                    <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                            <AlertCircle className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                        <h3 className="text-xl font-semibold mb-2">No Brands Available</h3>
+                        <p className="text-muted-foreground mb-6">
+                            Get started by creating your first brand persona in the Brand Library.
+                        </p>
+                        <Button variant="outline">Go to Brand Library</Button>
+                    </CardContent>
+                </Card>
+            </div>
+        )
+    }
+
     return (
-        <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950/50">
-            {/* Header */}
-            <div className="bg-white dark:bg-gray-900 border-b relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-r from-violet-500/10 via-purple-500/10 to-blue-500/10" />
-                <div className="absolute inset-0 bg-grid-pattern opacity-[0.03]" />
-
-                <div className="max-w-7xl mx-auto px-6 py-6 relative">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                        <div className="flex items-center gap-4">
-                            <div className="p-3 bg-violet-100 dark:bg-violet-900/30 rounded-xl shadow-sm ring-1 ring-violet-200 dark:ring-violet-800">
-                                <Network className="h-7 w-7 text-violet-600 dark:text-violet-400" />
-                            </div>
-                            <div>
-                                <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Knowledge Graph</h1>
-                                <p className="text-muted-foreground mt-1 text-sm">
-                                    Interactive visualization of brand insights, market dynamics, and patient needs
-                                </p>
-                            </div>
+        <div className="flex flex-col h-screen w-full bg-background overflow-hidden relative animate-in fade-in duration-500">
+            {/* Slim Application Header */}
+            <div className="h-14 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between px-4 shrink-0 z-30 shadow-sm">
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 text-violet-600 font-semibold text-lg">
+                        <div className="bg-violet-100 p-1.5 rounded-lg">
+                            <Network className="h-4 w-4" />
                         </div>
-
-                        <div className="flex items-center gap-3">
-                            {/* View Toggle Tabs */}
-                            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'graph' | 'admin')}>
-                                <TabsList className="bg-gray-100">
-                                    <TabsTrigger value="graph" className="gap-2">
-                                        <Network className="h-4 w-4" />
-                                        Graph
-                                    </TabsTrigger>
-                                    <TabsTrigger value="admin" className="gap-2">
-                                        <Settings2 className="h-4 w-4" />
-                                        Admin
-                                    </TabsTrigger>
-                                </TabsList>
-                            </Tabs>
-
-                            <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
-                                <SelectTrigger className="w-[240px] h-10 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-sm transition-all hover:bg-gray-50">
-                                    <SelectValue placeholder="Select Brand" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {brands.map(b => (
-                                        <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                        Knowledge Graph
                     </div>
+
+                    <div className="h-6 w-px bg-border/60" />
+
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground hidden sm:inline">Active Brand:</span>
+                        <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
+                            <SelectTrigger className="w-[200px] h-9 bg-muted/30 border-muted-foreground/20 hover:bg-muted/50 transition-colors focus:ring-violet-500">
+                                <SelectValue placeholder="Select Brand" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {brands.map(b => (
+                                    <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                    <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'graph' | 'admin')} className="h-9">
+                        <TabsList className="h-9 bg-muted/50 p-1">
+                            <TabsTrigger value="graph" className="h-7 text-xs px-3 data-[state=active]:bg-white data-[state=active]:text-violet-700 data-[state=active]:shadow-sm">
+                                <Network className="h-3 w-3 mr-1.5" />
+                                Visualization
+                            </TabsTrigger>
+                            <TabsTrigger value="admin" className="h-7 text-xs px-3 data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm">
+                                <Settings2 className="h-3 w-3 mr-1.5" />
+                                Data Management
+                            </TabsTrigger>
+                        </TabsList>
+                    </Tabs>
                 </div>
             </div>
 
-            <div className="max-w-[1600px] mx-auto px-6 py-8">
-                {!loading && brands.length === 0 ? (
-                    <Card className="border-dashed border-2 shadow-none bg-transparent">
-                        <CardContent className="flex flex-col items-center justify-center py-20 text-center">
-                            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                                <AlertCircle className="h-8 w-8 text-muted-foreground" />
-                            </div>
-                            <h3 className="text-xl font-semibold mb-2">No Brands Available</h3>
-                            <p className="text-muted-foreground max-w-sm mx-auto">
-                                Get started by creating your first brand persona in the Brand Library.
-                            </p>
-                        </CardContent>
-                    </Card>
-                ) : (
-                    selectedBrandId && (
-                        <div className="animate-in fade-in zoom-in-95 duration-500">
-                            {activeTab === 'graph' ? (
-                                <KnowledgeGraphView
-                                    brandId={parseInt(selectedBrandId)}
-                                    brandName={selectedBrand?.name}
-                                />
-                            ) : (
+            {/* Main Content Area */}
+            <div className="flex-1 overflow-hidden relative">
+                {selectedBrandId ? (
+                    activeTab === 'graph' ? (
+                        <div className="h-full w-full">
+                            <KnowledgeGraphWorkspace
+                                brandId={parseInt(selectedBrandId)}
+                                brandName={selectedBrand?.name}
+                            />
+                        </div>
+                    ) : (
+                        <div className="h-full w-full overflow-y-auto bg-slate-50/50 dark:bg-slate-950/50 p-6">
+                            <div className="max-w-6xl mx-auto space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h2 className="text-2xl font-bold tracking-tight">Graph Data Management</h2>
+                                        <p className="text-muted-foreground">Review duplicate insights and optimize graph topology</p>
+                                    </div>
+                                    <Button variant="outline" size="sm" onClick={() => setActiveTab('graph')}>
+                                        Return to Graph <ChevronRight className="h-4 w-4 ml-1" />
+                                    </Button>
+                                </div>
                                 <NodeMergePanel brandId={parseInt(selectedBrandId)} />
-                            )}
+                            </div>
                         </div>
                     )
+                ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                        <Loader2 className="h-8 w-8 animate-spin" />
+                    </div>
                 )}
             </div>
         </div>
     )
 }
-

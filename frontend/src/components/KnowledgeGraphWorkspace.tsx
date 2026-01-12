@@ -1,0 +1,545 @@
+'use client'
+
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import ReactFlow, {
+    Background,
+    Controls,
+    MiniMap,
+    useNodesState,
+    useEdgesState,
+    MarkerType,
+    Position,
+} from 'reactflow'
+import type { Node, Edge } from 'reactflow'
+import 'reactflow/dist/style.css'
+import dagre from 'dagre'
+import { api } from '@/lib/api'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Loader2, RefreshCw, Network, AlertTriangle, Filter, X, Search, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
+import CustomNode from './CustomNode'
+
+// Register safe default
+const nodeTypes = {
+    knowledgeNode: CustomNode,
+}
+
+// Relationship type colors with better visibility
+const RELATION_COLORS: Record<string, string> = {
+    addresses: '#10b981', // green-500
+    supports: '#3b82f6',  // blue-500
+    contradicts: '#ef4444', // red-500
+    triggers: '#f59e0b',  // amber-500
+    influences: '#8b5cf6', // violet-500
+    resonates: '#ec4899', // pink-500
+}
+
+interface KnowledgeGraphWorkspaceProps {
+    brandId: number
+    brandName?: string
+    onNodeSelect?: (nodeId: string) => void
+}
+
+export function KnowledgeGraphWorkspace({ brandId, onNodeSelect }: KnowledgeGraphWorkspaceProps) {
+    const [nodes, setNodes, onNodesChange] = useNodesState([])
+    const [edges, setEdges, onEdgesChange] = useEdgesState([])
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+    const [stats, setStats] = useState<{
+        total_nodes: number
+        total_edges: number
+        contradictions: number
+        node_types: Record<string, number>
+    } | null>(null)
+    const [selectedNode, setSelectedNode] = useState<any>(null)
+    const [filterType, setFilterType] = useState<string>('all')
+    const [filterRelation, setFilterRelation] = useState<string>('all')
+    const [filterSegment, setFilterSegment] = useState<string>('all')
+    const [focusNodeId, setFocusNodeId] = useState<string | null>(null)
+
+    // Dagre Layout
+    const getLayoutedElements = useCallback((nodes: Node[], edges: Edge[], direction = 'TB') => {
+        const dagreGraph = new dagre.graphlib.Graph()
+        dagreGraph.setDefaultEdgeLabel(() => ({}))
+
+        // Set direction and spacing
+        const isHorizontal = direction === 'LR'
+        dagreGraph.setGraph({
+            rankdir: direction,
+            nodesep: 100, // Horizontal spacing between nodes
+            ranksep: 180  // Vertical spacing between ranks
+        })
+
+        nodes.forEach((node) => {
+            dagreGraph.setNode(node.id, { width: 300, height: 160 }) // Approximate card size
+        })
+
+        edges.forEach((edge) => {
+            dagreGraph.setEdge(edge.source, edge.target)
+        })
+
+        dagre.layout(dagreGraph)
+
+        return {
+            nodes: nodes.map((node) => {
+                const nodeWithPosition = dagreGraph.node(node.id)
+                return {
+                    ...node,
+                    targetPosition: isHorizontal ? Position.Left : Position.Top,
+                    sourcePosition: isHorizontal ? Position.Right : Position.Bottom,
+                    position: {
+                        x: nodeWithPosition.x - 150, // Center offset
+                        y: nodeWithPosition.y - 80,
+                    },
+                }
+            }),
+            edges,
+        }
+    }, [])
+
+    // Fetch graph data
+    const fetchGraph = useCallback(async () => {
+        setLoading(true)
+        setError(null)
+
+        try {
+            const response = await api.get(`/api/knowledge/brands/${brandId}/graph`)
+            const { nodes: rawNodes, edges: rawEdges, stats: graphStats } = response.data
+
+            const flowNodes: Node[] = rawNodes.map((n: any) => ({
+                id: n.id,
+                type: 'knowledgeNode',
+                data: n.data,
+                position: n.position || { x: 0, y: 0 }
+            }))
+
+            const flowEdges: Edge[] = rawEdges.map((edge: any) => {
+                const relationType = edge.data?.relation_type || edge.label || 'related'
+                const color = RELATION_COLORS[relationType] || '#6b7280'
+
+                return {
+                    id: edge.id || `${edge.source}-${edge.target}`,
+                    source: String(edge.source),
+                    target: String(edge.target),
+                    type: 'smoothstep',
+                    animated: relationType === 'contradicts',
+                    label: relationType.replace(/_/g, ' ').toUpperCase(),
+                    labelStyle: {
+                        fill: color,
+                        fontWeight: 700,
+                        fontSize: 10,
+                        textTransform: 'uppercase' as const,
+                    },
+                    labelBgStyle: {
+                        fill: '#ffffff',
+                        fillOpacity: 0.9,
+                        rx: 4,
+                        ry: 4,
+                    },
+                    labelBgPadding: [6, 4] as [number, number],
+                    style: {
+                        stroke: color,
+                        strokeWidth: 2,
+                        strokeDasharray: relationType === 'contradicts' ? '5,5' : undefined,
+                    },
+                    markerEnd: {
+                        type: MarkerType.ArrowClosed,
+                        color: color,
+                        width: 20,
+                        height: 20,
+                    },
+                    data: edge.data
+                }
+            })
+
+            const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(flowNodes, flowEdges)
+
+            setNodes(layoutedNodes)
+            setEdges(layoutedEdges)
+            setStats(graphStats)
+        } catch (err: any) {
+            console.error('Failed to fetch knowledge graph:', err)
+            setError(err.message || 'Failed to load knowledge graph')
+        } finally {
+            setLoading(false)
+        }
+    }, [brandId, getLayoutedElements, setNodes, setEdges])
+
+    useEffect(() => {
+        fetchGraph()
+    }, [fetchGraph])
+
+    // Get unique relationship types for filter dropdown
+    const relationTypes = useMemo(() => {
+        const types = new Set<string>()
+        edges.forEach(e => {
+            const relType = e.data?.relation_type || (e.label as string)?.toLowerCase() || 'related'
+            types.add(relType)
+        })
+        return Array.from(types)
+    }, [edges])
+
+    // Find all connected nodes for focus mode
+    const getConnectedNodeIds = useCallback((nodeId: string): Set<string> => {
+        const connected = new Set<string>([nodeId])
+        const toProcess = [nodeId]
+
+        while (toProcess.length > 0) {
+            const current = toProcess.pop()!
+            edges.forEach(e => {
+                if (e.source === current && !connected.has(e.target)) {
+                    connected.add(e.target)
+                    toProcess.push(e.target)
+                }
+                if (e.target === current && !connected.has(e.source)) {
+                    connected.add(e.source)
+                    toProcess.push(e.source)
+                }
+            })
+        }
+        return connected
+    }, [edges])
+
+    // Filter logic
+    const { filteredNodes, filteredEdges } = useMemo(() => {
+        let visibleEdges = edges
+
+        if (filterRelation !== 'all') {
+            visibleEdges = edges.filter(e => {
+                const relType = e.data?.relation_type || (e.label as string)?.toLowerCase() || 'related'
+                return relType === filterRelation
+            })
+        }
+
+        const connectedByEdges = new Set<string>()
+        visibleEdges.forEach(e => {
+            connectedByEdges.add(e.source)
+            connectedByEdges.add(e.target)
+        })
+
+        let visibleNodes = [...nodes]
+
+        if (filterSegment !== 'all') {
+            visibleNodes = visibleNodes.filter(n => {
+                const segment = (n.data.segment || '').toLowerCase()
+                if (filterSegment === 'hcp') {
+                    return segment.includes('hcp') || segment.includes('physician') || segment.includes('doctor')
+                } else if (filterSegment === 'patient') {
+                    return segment.includes('patient') || segment.includes('all') || segment === ''
+                }
+                return true
+            })
+        }
+
+        if (filterType !== 'all') {
+            visibleNodes = visibleNodes.filter(n => n.data.node_type === filterType)
+        }
+
+        if (filterRelation !== 'all') {
+            visibleNodes = visibleNodes.filter(n => connectedByEdges.has(n.id))
+        }
+
+        if (focusNodeId) {
+            const connectedIds = getConnectedNodeIds(focusNodeId)
+            visibleNodes = visibleNodes.map(n => ({
+                ...n,
+                style: {
+                    ...n.style,
+                    opacity: connectedIds.has(n.id) ? 1 : 0.15,
+                }
+            }))
+            visibleEdges = visibleEdges.map(e => ({
+                ...e,
+                style: {
+                    ...e.style,
+                    opacity: (connectedIds.has(e.source) && connectedIds.has(e.target)) ? 1 : 0.1,
+                }
+            }))
+        }
+
+        const visibleNodeIds = new Set(visibleNodes.map(n => n.id))
+        visibleEdges = visibleEdges.filter(e => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target))
+
+        return { filteredNodes: visibleNodes, filteredEdges: visibleEdges }
+    }, [nodes, edges, filterType, filterRelation, filterSegment, focusNodeId, getConnectedNodeIds])
+
+    const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+        setSelectedNode(node.data)
+        onNodeSelect?.(node.id)
+        setFocusNodeId(prev => prev === node.id ? null : node.id)
+    }, [onNodeSelect])
+
+    // Render Logic
+    if (loading) {
+        return (
+            <div className="flex h-full w-full items-center justify-center bg-gray-50/50">
+                <div className="text-center">
+                    <Loader2 className="h-10 w-10 animate-spin mx-auto text-indigo-500" />
+                    <p className="mt-3 text-sm text-muted-foreground">Mapping knowledge network...</p>
+                </div>
+            </div>
+        )
+    }
+
+    if (error) {
+        return (
+            <div className="flex h-full w-full items-center justify-center bg-red-50/50">
+                <div className="text-center">
+                    <AlertTriangle className="h-10 w-10 mx-auto text-red-500" />
+                    <p className="mt-3 text-sm text-red-600 font-medium">{error}</p>
+                    <Button variant="outline" onClick={fetchGraph} className="mt-4">
+                        <RefreshCw className="h-4 w-4 mr-2" /> Retry
+                    </Button>
+                </div>
+            </div>
+        )
+    }
+
+    if (nodes.length === 0) {
+        return (
+            <div className="flex h-full w-full items-center justify-center bg-gray-50/50">
+                <div className="text-center max-w-md">
+                    <div className="bg-gray-100 rounded-full p-6 w-20 h-20 mx-auto mb-6 flex items-center justify-center">
+                        <Network className="h-10 w-10 text-gray-400" />
+                    </div>
+                    <h3 className="text-xl font-semibold">Knowledge Graph Empty</h3>
+                    <p className="mt-2 text-muted-foreground mb-6">
+                        No insights extracted yet. Upload brand documents to generate the knowledge graph.
+                    </p>
+                </div>
+            </div>
+        )
+    }
+
+    return (
+        <div className="flex h-full w-full bg-background overflow-hidden border-t">
+            {/* LEFT SIDEBAR: Filters & Legend */}
+            <div className="w-80 flex-shrink-0 border-r bg-muted/10 flex flex-col z-20">
+                <div className="p-4 border-b">
+                    <h2 className="font-semibold flex items-center gap-2">
+                        <Filter className="h-4 w-4 text-violet-500" />
+                        Graph Controls
+                    </h2>
+                </div>
+
+                <ScrollArea className="flex-1">
+                    <div className="p-4 space-y-6">
+                        {/* Filters */}
+                        <div className="space-y-3">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase">View By</label>
+
+                            <Select value={filterType} onValueChange={setFilterType}>
+                                <SelectTrigger className="w-full bg-background">
+                                    <SelectValue placeholder="All Categories" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Categories</SelectItem>
+                                    {stats?.node_types && Object.keys(stats.node_types).map(type => (
+                                        <SelectItem key={type} value={type}>
+                                            {type.replace(/_/g, ' ')} ({stats.node_types[type]})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <Select value={filterSegment} onValueChange={(val) => { setFilterSegment(val); setFocusNodeId(null); }}>
+                                <SelectTrigger className="w-full bg-background">
+                                    <SelectValue placeholder="All Segments" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">👥 All Segments</SelectItem>
+                                    <SelectItem value="patient">😷 Patients</SelectItem>
+                                    <SelectItem value="hcp">🩺 HCPs</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            <Select value={filterRelation} onValueChange={(val) => { setFilterRelation(val); setFocusNodeId(null); }}>
+                                <SelectTrigger className="w-full bg-background">
+                                    <SelectValue placeholder="All Relations" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Relations</SelectItem>
+                                    {relationTypes.map(type => (
+                                        <SelectItem key={type} value={type}>
+                                            {type.replace(/_/g, ' ').toUpperCase()}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Quick Views */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase">Story Views</label>
+                            <div className="grid grid-cols-1 gap-1">
+                                <Button variant="ghost" size="sm" className="justify-start h-8 font-normal"
+                                    onClick={() => { setFilterType('all'); setFilterRelation('all'); setFocusNodeId(null); }}>
+                                    🔍 Full Graph
+                                </Button>
+                                <Button variant="ghost" size="sm" className="justify-start h-8 font-normal text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                                    onClick={() => { setFilterType('patient_tension'); setFilterRelation('all'); setFocusNodeId(null); }}>
+                                    😰 Patient Tensions
+                                </Button>
+                                <Button variant="ghost" size="sm" className="justify-start h-8 font-normal text-purple-700 hover:bg-purple-50 hover:text-purple-800"
+                                    onClick={() => { setFilterType('key_message'); setFilterRelation('all'); setFocusNodeId(null); }}>
+                                    💬 Key Messages
+                                </Button>
+                                <Button variant="ghost" size="sm" className="justify-start h-8 font-normal text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                                    onClick={() => { setFilterType('all'); setFilterRelation('addresses'); setFocusNodeId(null); }}>
+                                    🎯 Messages → Tensions
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Legend */}
+                        <div>
+                            <label className="text-xs font-semibold text-muted-foreground uppercase mb-2 block">Legend</label>
+                            <div className="space-y-2 bg-background p-3 rounded-lg border text-xs">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                                    <span>Addresses (Solution)</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-full bg-blue-500" />
+                                    <span>Supports (Reinforce)</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-full bg-red-500" />
+                                    <span>Contradicts (Conflict)</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-full bg-amber-500" />
+                                    <span>Triggers (Cause)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </ScrollArea>
+
+                <div className="p-4 border-t bg-background">
+                    <Button variant="outline" className="w-full" onClick={fetchGraph}>
+                        <RefreshCw className="h-4 w-4 mr-2" /> Refresh Data
+                    </Button>
+                </div>
+            </div>
+
+            {/* CENTER: Canvas */}
+            <div className="flex-1 bg-dots-pattern relative overflow-hidden flex flex-col">
+                <ReactFlow
+                    nodes={filteredNodes}
+                    edges={filteredEdges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onNodeClick={onNodeClick}
+                    nodeTypes={nodeTypes}
+                    fitView
+                    minZoom={0.2}
+                    maxZoom={2}
+                    className="bg-gray-50/50"
+                >
+                    <Background color="#94a3b8" gap={20} size={1} style={{ opacity: 0.15 }} />
+                    <Controls showInteractive={false} className="bg-white shadow border rounded-lg" />
+                    <MiniMap
+                        className="!bottom-4 !right-4 rounded-lg overflow-hidden border shadow-lg"
+                        zoomable
+                        pannable
+                        nodeColor={(n) => {
+                            return n.data?.node_type?.includes('patient') ? '#10b981' :
+                                n.data?.node_type?.includes('disease') ? '#3b82f6' :
+                                    n.data?.node_type?.includes('hcp') ? '#f97316' : '#8b5cf6'
+                        }}
+                    />
+                </ReactFlow>
+
+                {/* Overlay Focus Indicator */}
+                {focusNodeId && (
+                    <div className="absolute top-4 left-4 z-10 w-auto">
+                        <Badge variant="secondary" className="px-3 py-1.5 bg-indigo-100 text-indigo-700 shadow-sm border-indigo-200 flex items-center gap-2">
+                            <span>Focus Mode Active</span>
+                            <button onClick={() => setFocusNodeId(null)} className="hover:text-indigo-900"><X className="h-3 w-3" /></button>
+                        </Badge>
+                    </div>
+                )}
+            </div>
+
+            {/* RIGHT SIDEBAR: Details */}
+            <div className="w-96 flex-shrink-0 border-l bg-background flex flex-col shadow-xl z-20">
+                {selectedNode ? (
+                    <>
+                        <div className="p-4 border-b bg-muted/10 flex items-start justify-between">
+                            <div>
+                                <Badge variant="outline" className="mb-2 bg-background border-primary/20 text-primary">
+                                    {selectedNode.node_type?.replace(/_/g, ' ')}
+                                </Badge>
+                                <h3 className="font-semibold text-lg leading-tight">Insight Details</h3>
+                            </div>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedNode(null)}>
+                                <X className="h-4 w-4" />
+                            </Button>
+                        </div>
+                        <ScrollArea className="flex-1 p-6">
+                            <div className="space-y-6">
+                                <div>
+                                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Content</label>
+                                    <div className="mt-2 p-3 bg-muted/30 rounded-lg border text-sm leading-relaxed">
+                                        {selectedNode.text}
+                                    </div>
+                                </div>
+
+                                {selectedNode.source_quote && (
+                                    <div>
+                                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Source Evidence</label>
+                                        <div className="mt-2 pl-3 border-l-2 border-indigo-500 italic text-sm text-gray-600">
+                                            "{selectedNode.source_quote}"
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-4 pt-2">
+                                    <div>
+                                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Segment</label>
+                                        <p className="text-sm mt-1 font-medium">{selectedNode.segment || "General"}</p>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Confidence</label>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full bg-green-500 rounded-full"
+                                                    style={{ width: `${(selectedNode.confidence || 0.7) * 100}%` }}
+                                                />
+                                            </div>
+                                            <span className="text-xs font-mono">{Math.round((selectedNode.confidence || 0.7) * 100)}%</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="pt-4 border-t">
+                                    <p className="text-xs text-muted-foreground">ID: {selectedNode.id}</p>
+                                </div>
+                            </div>
+                        </ScrollArea>
+                    </>
+                ) : (
+                    <div className="flex flex-col items-center justify-center p-8 text-center h-full text-muted-foreground">
+                        <div className="bg-muted/30 p-4 rounded-full mb-4">
+                            <Search className="h-8 w-8 opacity-50" />
+                        </div>
+                        <h3 className="font-medium text-lg text-foreground">No Insight Selected</h3>
+                        <p className="text-sm mt-2 max-w-[200px]">
+                            Click on any node in the graph to view detailed insights, segmentation, and source quotes.
+                        </p>
+                    </div>
+                )}
+            </div>
+        </div>
+    )
+}
