@@ -95,8 +95,8 @@ def get_gemini_client():
     return _gemini_client
 
 
-def build_annotation_prompt(persona: Dict[str, Any]) -> str:
-    """Build the annotation prompt using persona attributes."""
+def build_annotation_prompt(persona: Dict[str, Any], knowledge_section: Optional[str] = None) -> str:
+    """Build the annotation prompt using persona attributes and optional knowledge graph context."""
     
     # Extract persona attributes
     name = persona.get("name", "Healthcare Professional")
@@ -134,30 +134,58 @@ def build_annotation_prompt(persona: Dict[str, Any]) -> str:
     decision_style = persona.get("decision_style", "")
     archetype = persona.get("persona_subtype", decision_style if decision_style else "Analytical")
     
-    prompt = f"""You are a pharmaceutical marketing reviewer role-playing as: {name}.
+    prompt = f"""You are {name}, a pharmaceutical marketing reviewer. 
 
-Persona Profile:
-- Archetype: {archetype}
-- Core Beliefs: {beliefs_str}
-- Key Tensions/Concerns: {tensions_str}
+Your Profile:
+- Type: {archetype}
+- Beliefs: {beliefs_str}
+- Concerns: {tensions_str}
 
-TASK: Create a visually annotated version of this marketing asset with hand-drawn style feedback markups.
+**CRITICAL: YOU MUST RETURN AN ANNOTATED IMAGE**
 
-VISUAL ANNOTATION REQUIREMENTS (VERY IMPORTANT - YOU MUST DRAW ON THE IMAGE):
-1. Draw RED CIRCLES around 3-5 areas that concern this persona
-2. Draw ARROWS pointing to specific elements with handwritten-style comments
-3. Add SHORT MARGIN NOTES in a casual handwriting style (e.g., "Too clinical!", "Where's the data?", "Love this!", "Confusing!")
-4. Use RED/ORANGE for concerns, GREEN checkmarks for positives
-5. Add emotion indicators where relevant (e.g., "?" for confusion, "!" for strong reaction)
+== PART 1: DRAW ON THE IMAGE (REQUIRED) ==
+YOU MUST draw these annotations directly on the marketing asset image:
 
-ANNOTATION STYLE - Make it look like a real person marked up a printed document:
-- Casual, handwritten text labels (not typed/formal)
-- Organic hand-drawn circles and arrows (not perfect geometric shapes)
-- Brief reactions that reflect this persona's viewpoint
+1. Use LARGE, VISIBLE annotations:
+   - RED circles/underlines for problems (make them BOLD and VISIBLE)
+   - GREEN checkmarks for positives
+   - Draw arrows pointing to key elements
+   
+2. Add SHORT handwritten-style labels near each annotation:
+   - "Too clinical!" / "Needs data" / "Love this!" / "Confusing"
+   - "Missing evidence" / "Great visual!" / "Wrong tone"
+   
+3. Add margin comments like a real reviewer would:
+   - Exclamation marks (!) for strong reactions
+   - Question marks (?) for confusion
+   - Underline important phrases
 
-Based on {name}'s perspective, identify what would catch their eye, concern them, or resonate with them.
+4. Aim for 4-6 annotations spread across the asset
 
-OUTPUT: Return the original image with all visual annotations drawn directly on it."""
+== PART 2: TEXT FEEDBACK ==
+After the image, provide:
+
+**Key Concerns:**
+- [List 2-3 main issues with brief explanation]
+
+**What Works:**  
+- [List 1-2 positives]
+
+**Score:** X/10
+
+Based on {name}'s unique perspective and concerns.
+"""
+
+    # Append knowledge graph context if available
+    if knowledge_section:
+        prompt += f"""
+{knowledge_section}
+
+Reference [ID] codes in text feedback where relevant.
+"""
+
+    prompt += """
+**REMINDER: An annotated image is REQUIRED. Draw visible feedback directly on the image before providing text feedback.**"""
 
     return prompt
 
@@ -165,7 +193,8 @@ OUTPUT: Return the original image with all visual annotations drawn directly on 
 async def analyze_image_with_nano_banana(
     image_bytes: bytes,
     persona: Dict[str, Any],
-    mime_type: str = "image/png"
+    mime_type: str = "image/png",
+    knowledge_section: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Analyze an image using Nano Banana Pro (Gemini 3 Pro Image Preview).
@@ -177,9 +206,10 @@ async def analyze_image_with_nano_banana(
         image_bytes: Raw bytes of the image to analyze
         persona: Dictionary containing persona attributes
         mime_type: MIME type of the image
+        knowledge_section: Optional knowledge graph context for research-backed feedback
         
     Returns:
-        Dictionary with 'annotated_image' (base64) and 'text_summary'
+        Dictionary with 'annotated_image' (base64), 'text_summary', and 'citations'
     """
     
     client = get_gemini_client()
@@ -191,12 +221,12 @@ async def analyze_image_with_nano_banana(
         }
     
     try:
-        # Build persona-specific prompt
-        prompt = build_annotation_prompt(persona)
+        # Build persona-specific prompt WITH knowledge context
+        prompt = build_annotation_prompt(persona, knowledge_section)
         
         # Use Gemini 3 Pro Image for visual annotation
         model_name = "gemini-3-pro-image-preview"
-        logger.info(f"Using model: {model_name} for persona: {persona.get('name', 'Unknown')}")
+        logger.info(f"Using model: {model_name} for persona: {persona.get('name', 'Unknown')}, with_knowledge={bool(knowledge_section)}")
         
         annotated_image_b64 = None
         text_summary = ""

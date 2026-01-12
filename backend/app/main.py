@@ -2051,6 +2051,7 @@ async def import_personas_from_crm(request: dict, db: Session = Depends(get_db))
 async def analyze_asset_with_personas(
     file: UploadFile = File(...),
     persona_ids: str = Form(...),
+    brand_id: Optional[int] = Form(None),
     db: Session = Depends(get_db)
 ):
     """
@@ -2059,12 +2060,15 @@ async def analyze_asset_with_personas(
     Uses Nano Banana Pro (Gemini 3.0 Pro Image) to generate annotated images
     with professional red-lining feedback for each persona.
     
+    Now includes Knowledge Graph integration for research-backed, attributable feedback.
+    
     Results are cached based on image hash + persona hash. If a persona's
     attributes change, the cache is automatically invalidated.
     
     Args:
         file: The marketing asset image to analyze
         persona_ids: Comma-separated list of persona IDs
+        brand_id: Optional brand ID to fetch knowledge graph context for research-backed feedback
         
     Returns:
         List of analysis results, one per persona, each containing:
@@ -2072,9 +2076,11 @@ async def analyze_asset_with_personas(
         - persona_name: Name of the persona
         - annotated_image: Base64 encoded annotated image
         - text_summary: Text summary of the feedback
+        - citations: Research citations from knowledge graph (if brand_id provided)
         - cached: Whether result was from cache
     """
     import hashlib
+    from . import knowledge_alignment
     
     # Parse persona IDs
     try:
@@ -2096,13 +2102,35 @@ async def analyze_asset_with_personas(
                 "persona_type": persona.persona_type,
                 "persona_subtype": persona.persona_subtype,
                 "decision_style": persona.decision_style,
-                "full_persona_json": persona.full_persona_json
+                "full_persona_json": persona.full_persona_json,
+                "brand_id": persona.brand_id  # Include brand_id from persona
             })
         else:
             logger.warning(f"Persona with id {persona_id} not found, skipping.")
     
     if not personas:
         raise HTTPException(status_code=404, detail="No valid personas found for the provided IDs.")
+    
+    # Determine brand_id (from parameter or from first persona)
+    effective_brand_id = brand_id
+    if not effective_brand_id and personas:
+        effective_brand_id = personas[0].get("brand_id")
+    
+    # Fetch knowledge graph context if brand_id is available
+    knowledge_section = None
+    knowledge_context = None
+    if effective_brand_id:
+        knowledge_context = knowledge_alignment.get_brand_knowledge_context(
+            brand_id=effective_brand_id,
+            persona_type=personas[0].get("persona_type", "patient"),
+            db=db
+        )
+        if knowledge_context.get("has_knowledge"):
+            knowledge_section = knowledge_alignment.build_knowledge_enriched_prompt_section(
+                knowledge_context=knowledge_context,
+                persona_type=personas[0].get("persona_type", "patient")
+            )
+            logger.info(f"📚 Knowledge context loaded for brand {effective_brand_id}: {len(knowledge_context.get('key_messages', []))} messages, {len(knowledge_context.get('patient_tensions', []))} tensions")
     
     # Read the uploaded file
     try:
@@ -2116,7 +2144,7 @@ async def analyze_asset_with_personas(
     image_hash = hashlib.sha256(image_bytes).hexdigest()
     asset_name = file.filename
     
-    logger.info(f"🎨 Analyzing asset '{asset_name}' (hash: {image_hash[:12]}...) for {len(personas)} personas")
+    logger.info(f"🎨 Analyzing asset '{asset_name}' (hash: {image_hash[:12]}...) for {len(personas)} personas, with_knowledge={bool(knowledge_section)}")
     
     results = []
     cache_hits = 0
@@ -2144,13 +2172,27 @@ async def analyze_asset_with_personas(
             logger.info(f"❌ Cache MISS for persona {persona['id']} ({persona['name']}) - running analysis")
             cache_misses += 1
             
-            # Run analysis
+            # Run analysis with knowledge context
             result = await asset_analyzer.analyze_image_with_nano_banana(
                 image_bytes=image_bytes,
                 persona=persona,
-                mime_type=mime_type
+                mime_type=mime_type,
+                knowledge_section=knowledge_section
             )
             result["cached"] = False
+            
+            # Analyze response for citations if we have knowledge context
+            if knowledge_context and knowledge_context.get("has_knowledge"):
+                citation_analysis = knowledge_alignment.analyze_response_for_citations(
+                    text_summary=result.get("text_summary", ""),
+                    knowledge_context=knowledge_context
+                )
+                result["citations"] = citation_analysis.get("citations", [])
+                result["research_alignment_score"] = citation_analysis.get("research_alignment_score")
+                result["alignment_summary"] = knowledge_alignment.generate_alignment_summary(
+                    citations=citation_analysis.get("citations", []),
+                    knowledge_context=knowledge_context
+                )
             
             # Save to cache
             crud.create_cached_analysis(
@@ -2167,12 +2209,15 @@ async def analyze_asset_with_personas(
     # Log response details before returning
     for i, result in enumerate(results):
         img = result.get('annotated_image')
-        logger.info(f"📸 Result {i} ({result.get('persona_name')}): has_image={bool(img)}, cached={result.get('cached')}")
+        citations = result.get('citations', [])
+        logger.info(f"📸 Result {i} ({result.get('persona_name')}): has_image={bool(img)}, citations={len(citations)}, cached={result.get('cached')}")
     
     return {
         "success": True,
         "asset_filename": file.filename,
         "image_hash": image_hash,
+        "brand_id": effective_brand_id,
+        "knowledge_enabled": bool(knowledge_section),
         "personas_analyzed": len(results),
         "cache_hits": cache_hits,
         "cache_misses": cache_misses,
