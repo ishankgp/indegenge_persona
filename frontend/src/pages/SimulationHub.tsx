@@ -40,8 +40,17 @@ import {
   Filter,
   History,
   Clock,
+  ChevronDown,
+  FolderOpen,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 // API base managed via shared client
 
@@ -123,7 +132,6 @@ export function SimulationHub() {
   
   // Asset History
   const [assetHistory, setAssetHistory] = useState<AssetHistoryItem[]>([])
-  const [showAssetHistory, setShowAssetHistory] = useState(false)
   const [loadingAssetHistory, setLoadingAssetHistory] = useState(false)
 
   // Handle pre-filled message from Analytics page (for message variants)
@@ -563,17 +571,12 @@ export function SimulationHub() {
 
   // Asset History handlers
   const loadAssetHistory = async () => {
-    if (assetHistory.length > 0) {
-      // Already loaded, just toggle visibility
-      setShowAssetHistory(!showAssetHistory)
-      return
-    }
+    if (loadingAssetHistory) return
     
     setLoadingAssetHistory(true)
     try {
       const response = await AssetIntelligenceAPI.getHistory()
       setAssetHistory(response.assets)
-      setShowAssetHistory(true)
     } catch (error) {
       console.error('Failed to load asset history:', error)
     } finally {
@@ -587,7 +590,22 @@ export function SimulationHub() {
     // Clear current upload preview since we're loading from history
     setAssetFile(null)
     setAssetPreview(null)
-    setShowAssetHistory(false)
+  }
+  
+  // Format relative time for history items
+  const formatRelativeTime = (dateStr: string) => {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+    
+    if (diffMins < 1) return 'Just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    if (diffDays < 7) return `${diffDays}d ago`
+    return date.toLocaleDateString()
   }
 
 
@@ -887,22 +905,102 @@ export function SimulationHub() {
             {/* Asset Upload */}
             <Card className="card-base overflow-hidden">
               <CardHeader className="border-b border-border/50 bg-muted/30 pb-4">
-                <div className="flex items-center space-x-4">
-                  <div className="p-2 bg-primary/10 rounded-md">
-                    <ImageIcon className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-3">
-                      <CardTitle className="text-lg font-semibold">Asset Intelligence</CardTitle>
-                      <Badge variant="outline" className="text-xs font-normal bg-amber-100 text-amber-800 border-amber-300">
-                        <Sparkles className="h-3 w-3 mr-1" />
-                        Nano Banana Pro
-                      </Badge>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="p-2 bg-primary/10 rounded-md">
+                      <ImageIcon className="h-5 w-5 text-primary" />
                     </div>
-                    <CardDescription className="mt-1">
-                      Upload a marketing asset to get persona-driven red-lining feedback
-                    </CardDescription>
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <CardTitle className="text-lg font-semibold">Asset Intelligence</CardTitle>
+                        <Badge variant="outline" className="text-xs font-normal bg-amber-100 text-amber-800 border-amber-300">
+                          <Sparkles className="h-3 w-3 mr-1" />
+                          Nano Banana Pro
+                        </Badge>
+                      </div>
+                      <CardDescription className="mt-1">
+                        Upload a marketing asset to get persona-driven red-lining feedback
+                      </CardDescription>
+                    </div>
                   </div>
+                  
+                  {/* History Dropdown */}
+                  <DropdownMenu onOpenChange={(open) => open && loadAssetHistory()}>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-2">
+                        <History className="h-4 w-4" />
+                        History
+                        <ChevronDown className="h-3 w-3 opacity-50" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-80">
+                      <DropdownMenuLabel className="flex items-center gap-2">
+                        <FolderOpen className="h-4 w-4" />
+                        Previous Analyses
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      
+                      {loadingAssetHistory && (
+                        <div className="flex items-center justify-center py-6">
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        </div>
+                      )}
+                      
+                      {!loadingAssetHistory && assetHistory.length === 0 && (
+                        <div className="py-6 text-center text-sm text-muted-foreground">
+                          <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          No previous analyses
+                        </div>
+                      )}
+                      
+                      {!loadingAssetHistory && assetHistory.length > 0 && (
+                        <div className="max-h-[400px] overflow-y-auto">
+                          {assetHistory.map((item, idx) => (
+                            <button
+                              key={item.image_hash || idx}
+                              onClick={() => loadHistoricalAsset(item)}
+                              className="w-full flex items-start gap-3 p-3 hover:bg-muted/50 transition-colors text-left border-b border-border/30 last:border-0"
+                            >
+                              {/* Thumbnail */}
+                              <div className="flex-shrink-0 w-16 h-16 rounded-md overflow-hidden bg-muted border">
+                                {item.results[0]?.annotated_image ? (
+                                  <img
+                                    src={item.results[0].annotated_image}
+                                    alt={item.asset_name || 'Asset'}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <ImageIcon className="h-6 w-6 text-muted-foreground/50" />
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {/* Details */}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">
+                                  {item.asset_name || 'Unnamed Asset'}
+                                </p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <Badge variant="secondary" className="text-[10px] h-5">
+                                    {item.results.length} persona{item.results.length !== 1 ? 's' : ''}
+                                  </Badge>
+                                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {formatRelativeTime(item.created_at)}
+                                  </span>
+                                </div>
+                                {/* Show persona names preview */}
+                                <p className="text-xs text-muted-foreground mt-1 truncate">
+                                  {item.results.map(r => r.persona_name).join(', ')}
+                                </p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </CardHeader>
               <CardContent className="pt-6">
@@ -976,69 +1074,6 @@ export function SimulationHub() {
                       isLoading={assetAnalyzing}
                     />
                   </div>
-                </div>
-                
-                {/* History Toggle Button */}
-                <div className="mt-4 pt-4 border-t border-border/50">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={loadAssetHistory}
-                    disabled={loadingAssetHistory}
-                    className="w-full justify-center"
-                  >
-                    {loadingAssetHistory ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <History className="h-4 w-4 mr-2" />
-                    )}
-                    {showAssetHistory ? 'Hide History' : 'Load Previous Analyses'}
-                  </Button>
-                  
-                  {/* History Grid */}
-                  {showAssetHistory && assetHistory.length > 0 && (
-                    <div className="mt-4 space-y-3">
-                      <p className="text-sm font-medium text-muted-foreground">
-                        Previous Asset Analyses ({assetHistory.length})
-                      </p>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[300px] overflow-y-auto">
-                        {assetHistory.map((item, idx) => (
-                          <button
-                            key={item.image_hash || idx}
-                            onClick={() => loadHistoricalAsset(item)}
-                            className="group relative rounded-lg border border-border/50 hover:border-primary/50 p-2 text-left transition-all hover:bg-muted/30"
-                          >
-                            {/* Thumbnail from first result's annotated image */}
-                            {item.results[0]?.annotated_image && (
-                              <img
-                                src={item.results[0].annotated_image}
-                                alt={item.asset_name || 'Asset'}
-                                className="w-full h-24 object-cover rounded mb-2 opacity-80 group-hover:opacity-100 transition-opacity"
-                              />
-                            )}
-                            <div className="space-y-1">
-                              <p className="text-xs font-medium truncate">
-                                {item.asset_name || 'Unnamed Asset'}
-                              </p>
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Clock className="h-3 w-3" />
-                                <span>{new Date(item.created_at).toLocaleDateString()}</span>
-                              </div>
-                              <Badge variant="secondary" className="text-[10px]">
-                                {item.results.length} persona{item.results.length !== 1 ? 's' : ''}
-                              </Badge>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {showAssetHistory && assetHistory.length === 0 && (
-                    <p className="mt-4 text-sm text-center text-muted-foreground">
-                      No previous analyses found
-                    </p>
-                  )}
                 </div>
               </CardContent>
             </Card>
