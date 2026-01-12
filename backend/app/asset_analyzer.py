@@ -134,46 +134,35 @@ def build_annotation_prompt(persona: Dict[str, Any], knowledge_section: Optional
     decision_style = persona.get("decision_style", "")
     archetype = persona.get("persona_subtype", decision_style if decision_style else "Analytical")
     
-    prompt = f"""You are {name}, a pharmaceutical marketing reviewer. 
+    prompt = f"""You are a pharmaceutical marketing reviewer role-playing as: {name}.
 
-Your Profile:
-- Type: {archetype}
-- Beliefs: {beliefs_str}
-- Concerns: {tensions_str}
+Persona Profile:
+- Archetype: {archetype}
+- Core Beliefs: {beliefs_str}
+- Key Tensions/Concerns: {tensions_str}
 
-**CRITICAL: YOU MUST RETURN AN ANNOTATED IMAGE**
+TASK: Create a visually annotated version of this marketing asset with hand-drawn style feedback markups.
 
-== PART 1: DRAW ON THE IMAGE (REQUIRED) ==
-YOU MUST draw these annotations directly on the marketing asset image:
+VISUAL ANNOTATION REQUIREMENTS (VERY IMPORTANT - YOU MUST DRAW ON THE IMAGE):
+1. Draw RED CIRCLES around areas that concern this persona
+2. Draw ARROWS pointing to specific elements with handwritten-style comments
+3. Add handwritten MARGIN NOTES throughout the image with your reactions:
+   - Questions: "Where's the data?", "No treatment mention?"
+   - Concerns: "Too clinical!", "Misses the point!", "Generic"
+   - Strong reactions: "This won't help me!", "PA burden?"
+   - Positives: "Love this!", "Great visual!"
+4. Use RED/ORANGE for concerns, GREEN checkmarks for positives
+5. Add emotion indicators: "?" for confusion, "!" for strong reaction, "X" for rejection
+6. SPREAD annotations across the ENTIRE image - don't cluster them
+7. Aim for 8-12 annotation points covering different areas
 
-1. Use LARGE, VISIBLE annotations:
-   - RED circles/underlines for problems (make them BOLD and VISIBLE)
-   - GREEN checkmarks for positives
-   - Draw arrows pointing to key elements
-   
-2. Add SHORT handwritten-style labels near each annotation:
-   - "Too clinical!" / "Needs data" / "Love this!" / "Confusing"
-   - "Missing evidence" / "Great visual!" / "Wrong tone"
-   
-3. Add margin comments like a real reviewer would:
-   - Exclamation marks (!) for strong reactions
-   - Question marks (?) for confusion
-   - Underline important phrases
+ANNOTATION STYLE - Make it look like a real clinician/patient marked up a printed document:
+- Casual, handwritten text labels (not typed/formal)
+- Organic hand-drawn circles, underlines and arrows
+- Brief but specific reactions that reflect {name}'s unique viewpoint and concerns
+- Include specific clinical/therapeutic language where relevant
 
-4. Aim for 4-6 annotations spread across the asset
-
-== PART 2: TEXT FEEDBACK ==
-After the image, provide:
-
-**Key Concerns:**
-- [List 2-3 main issues with brief explanation]
-
-**What Works:**  
-- [List 1-2 positives]
-
-**Score:** X/10
-
-Based on {name}'s unique perspective and concerns.
+Based on {name}'s perspective, identify what would catch their eye, concern them, or resonate with them.
 """
 
     # Append knowledge graph context if available
@@ -181,11 +170,11 @@ Based on {name}'s unique perspective and concerns.
         prompt += f"""
 {knowledge_section}
 
-Reference [ID] codes in text feedback where relevant.
+When writing annotations, you may reference research findings. For example, if something doesn't address a known patient tension, note it.
 """
 
     prompt += """
-**REMINDER: An annotated image is REQUIRED. Draw visible feedback directly on the image before providing text feedback.**"""
+OUTPUT: Return the original image with ALL visual annotations drawn directly on it. Make the feedback rich and detailed."""
 
     return prompt
 
@@ -231,24 +220,59 @@ async def analyze_image_with_nano_banana(
         annotated_image_b64 = None
         text_summary = ""
         
+
         try:
-            # Use Gemini 3 Pro Image for visual annotation with image output
-            # CRITICAL: Must include response_modalities=["IMAGE", "TEXT"] for image output
-            response = client.models.generate_content(
-                model=model_name,
-                contents=[
-                    # Include the original image
-                    types.Part.from_bytes(
-                        data=image_bytes,
-                        mime_type=mime_type
-                    ),
-                    # Include the annotation prompt
-                    prompt
-                ],
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"]
-                )
-            )
+            # Try up to 2 times to get an image
+            MAX_RETRIES = 2
+            
+            for attempt in range(1, MAX_RETRIES + 1):
+                try:
+                    logger.info(f"🎨 Generating content (Attempt {attempt}/{MAX_RETRIES})...")
+                    
+                    # Use Gemini 3 Pro Image for visual annotation with image output
+                    # CRITICAL: Must include response_modalities=["IMAGE", "TEXT"] for image output
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[
+                            # Include the original image
+                            types.Part.from_bytes(
+                                data=image_bytes,
+                                mime_type=mime_type
+                            ),
+                            # Include the annotation prompt
+                            prompt
+                        ],
+                        config=types.GenerateContentConfig(
+                            # Increase temperature slightly on retry to get different result
+                            temperature=0.4 if attempt == 1 else 0.7,
+                            response_modalities=["IMAGE", "TEXT"]
+                        )
+                    )
+                    
+                    # Check if we got an image (simplified check before full processing)
+                    has_image_output = False
+                    if hasattr(response, 'candidates') and response.candidates:
+                        parts = response.candidates[0].content.parts
+                        for part in parts:
+                            if hasattr(part, 'inline_data') and part.inline_data:
+                                has_image_output = True
+                                break
+                                
+                    if has_image_output:
+                        logger.info("✅ Got image output from model")
+                        # Break loop to process this successful response
+                        break
+                    else:
+                        logger.warning(f"⚠️ Attempt {attempt}: Model returned text only (no image).")
+                        if attempt < MAX_RETRIES:
+                            logger.info("Retrying...")
+                            prompt += "\n\nIMPORTANT: You FAILED to return an image in the previous attempt. YOU MUST DRAW ON THE IMAGE."
+                
+                except Exception as e:
+                    logger.error(f"Error in attempt {attempt}: {e}")
+                    if attempt == MAX_RETRIES:
+                        raise e
+
             
             # Extract annotated image and text from response
             # Handle different SDK response formats

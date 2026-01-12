@@ -25,14 +25,36 @@ def get_brand_knowledge_context(
     Get knowledge graph context for asset analysis.
     
     Returns organized knowledge for prompt enrichment.
+    Filters by persona_type to ensure HCP/Patient separation.
     """
-    # Get all knowledge nodes for this brand
+    from sqlalchemy import or_
+    
+    # Normalize persona_type
+    persona_lower = persona_type.lower() if persona_type else "patient"
+    
+    # Determine segment keywords based on persona type
+    if persona_lower in ["hcp", "physician", "doctor", "prescriber"]:
+        segment_keywords = ["hcp", "physician", "doctor", "prescriber", "clinician", "healthcare professional"]
+    else:
+        segment_keywords = ["patient", "caregiver", "consumer"]
+    
+    # Build segment filter - include matching segments + "All" + NULL
+    segment_filters = [
+        models.KnowledgeNode.segment == None,
+        models.KnowledgeNode.segment == "",
+        models.KnowledgeNode.segment.ilike("%all%"),
+    ]
+    for keyword in segment_keywords:
+        segment_filters.append(models.KnowledgeNode.segment.ilike(f"%{keyword}%"))
+    
+    # Get filtered knowledge nodes for this brand
     nodes = db.query(models.KnowledgeNode).filter(
-        models.KnowledgeNode.brand_id == brand_id
+        models.KnowledgeNode.brand_id == brand_id,
+        or_(*segment_filters)
     ).all()
     
     if not nodes:
-        return {"has_knowledge": False, "message": "No knowledge graph data available"}
+        return {"has_knowledge": False, "message": "No knowledge graph data available for this segment"}
     
     # Categorize nodes by type
     context = {
@@ -75,10 +97,19 @@ def get_brand_knowledge_context(
     ).all()
     
     for rel in contradictions:
+        # Extract recommended_approach if present in context string
+        context_text = rel.context
+        recommendation = None
+        if " | Recommended: " in context_text:
+            parts = context_text.split(" | Recommended: ")
+            context_text = parts[0]
+            recommendation = parts[1]
+            
         context["contradictions"].append({
             "from_id": rel.from_node_id[:8],
             "to_id": rel.to_node_id[:8],
-            "context": rel.context
+            "context": context_text,
+            "recommended_approach": recommendation
         })
     
     # Get ADDRESSES relationships (key messages that address tensions)
@@ -92,7 +123,8 @@ def get_brand_knowledge_context(
             "from_id": rel.from_node_id[:8],
             "to_id": rel.to_node_id[:8],
             "strength": rel.strength,
-            "context": rel.context
+            "context": rel.context,
+            "type": rel.relation_type
         }
         for rel in addresses
     ]
@@ -127,11 +159,24 @@ def build_knowledge_enriched_prompt_section(
         tension_list = "\n".join([f"  [{t['id']}] \"{t['text'][:100]}...\"" for t in tensions])
         sections.append(f"**KNOWN PATIENT TENSIONS (flag if asset ignores/addresses these):**\n{tension_list}")
     
-    # Contradictions (critical!)
+    # Contradictions (critical!) with Recommended Approach
     contradictions = knowledge_context.get("contradictions", [])
     if contradictions:
-        contra_list = "\n".join([f"  [{c['from_id']}] contradicts [{c['to_id']}]: {c.get('context', '')[:50]}" for c in contradictions])
-        sections.append(f"**⚠️ KNOWN CONTRADICTIONS (alert if asset triggers these):**\n{contra_list}")
+        contra_items = []
+        for c in contradictions:
+            item = f"  ⚠️ [{c['from_id']}] contradicts [{c['to_id']}]: {c.get('context', '')[:50]}"
+            if c.get("recommended_approach"):
+                item += f"\n     -> RECOMMENDED APPROACH: {c['recommended_approach']}"
+            contra_items.append(item)
+            
+        contra_list = "\n".join(contra_items)
+        sections.append(f"**KNOWN CONTRADICTIONS & HANDLING (alert if asset triggers these):**\n{contra_list}")
+    
+    # ADDRESSES Relationships (Solution Mapping)
+    addresses = knowledge_context.get("addresses_relationships", [])
+    if addresses:
+        addr_list = "\n".join([f"  ✅ Message [{a['from_id']}] {a['type'].upper()} tension/need [{a['to_id']}]" for a in addresses[:5]])
+        sections.append(f"**PROVEN MESSAGE-TENSION MAPPINGS (check if used):**\n{addr_list}")
     
     # Patient beliefs
     beliefs = knowledge_context.get("patient_beliefs", [])[:3]
@@ -160,9 +205,10 @@ def analyze_response_for_citations(
     knowledge_context: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    Post-process analysis response to extract and enrich citations.
+    Post-process analysis response to find research references.
     
-    Returns enhanced feedback with full citation details.
+    Instead of relying on regex for [ID] patterns, we match actual
+    knowledge node text snippets against the response using fuzzy matching.
     """
     if not knowledge_context.get("has_knowledge"):
         return {
@@ -171,49 +217,67 @@ def analyze_response_for_citations(
             "research_alignment_score": None
         }
     
-    import re
-    
-    # Find citation patterns like [abc123] or [ID: abc123]
-    citation_pattern = r'\[([a-f0-9]{8})\]|\[ID:\s*([a-f0-9]{8})\]'
-    matches = re.findall(citation_pattern, text_summary)
-    
-    # Flatten matches (each match is a tuple from the alternation)
-    cited_ids = set()
-    for match in matches:
-        for m in match:
-            if m:
-                cited_ids.add(m)
-    
-    # Look up full details for cited nodes
-    citations = []
+    # Get all nodes and their text
     all_nodes = knowledge_context.get("all_nodes_by_id", {})
+    text_lower = text_summary.lower()
     
-    for short_id in cited_ids:
-        # Find full ID that starts with this short ID
-        for full_id, node_data in all_nodes.items():
-            if full_id.startswith(short_id):
-                citations.append({
-                    "id": short_id,
-                    "full_id": full_id,
-                    "text": node_data["text"],
-                    "source_quote": node_data.get("source_quote"),
-                    "confidence": node_data.get("confidence")
-                })
-                break
+    # Find which knowledge nodes are referenced in the response
+    citations = []
     
-    # Calculate a rough alignment score
+    for full_id, node_data in all_nodes.items():
+        node_text = node_data.get("text", "")
+        if not node_text:
+            continue
+        
+        # Extract key phrases from the node (first 5-8 significant words)
+        words = [w for w in node_text.split() if len(w) > 3][:8]
+        key_phrase = " ".join(words[:5]).lower()
+        
+        # Check if key phrase or significant portion appears in response
+        match_score = 0
+        
+        # Method 1: Check for direct key phrase match
+        if key_phrase and key_phrase in text_lower:
+            match_score = 0.9
+        
+        # Method 2: Check if multiple key words appear close together
+        if match_score == 0 and len(words) >= 3:
+            words_found = sum(1 for w in words if w.lower() in text_lower)
+            if words_found >= 3:
+                match_score = 0.6 + (0.1 * min(words_found - 3, 3))
+        
+        # Method 3: Check for [ID] pattern (fallback)
+        if match_score == 0:
+            short_id = full_id[:8]
+            if f"[{short_id}]" in text_summary or f"[{short_id[:6]}]" in text_summary:
+                match_score = 1.0
+        
+        if match_score >= 0.6:
+            citations.append({
+                "id": full_id[:8],
+                "full_id": full_id,
+                "text": node_data["text"],
+                "source_quote": node_data.get("source_quote"),
+                "confidence": node_data.get("confidence"),
+                "match_score": round(match_score, 2)
+            })
+    
+    # Sort by match score
+    citations.sort(key=lambda x: x.get("match_score", 0), reverse=True)
+    
+    # Calculate alignment score based on how much research is reflected
     key_message_count = len(knowledge_context.get("key_messages", []))
     tension_count = len(knowledge_context.get("patient_tensions", []))
     total_relevant = key_message_count + tension_count
     
     alignment_score = None
-    if total_relevant > 0 and citations:
-        # Score based on: how many citations vs how much research exists
-        alignment_score = min(1.0, len(citations) / max(3, total_relevant / 2))
+    if total_relevant > 0:
+        # Score based on how many citations found vs how much research exists
+        alignment_score = min(1.0, len(citations) / max(2, total_relevant * 0.3))
     
     return {
         "original_summary": text_summary,
-        "citations": citations,
+        "citations": citations[:10],  # Limit to top 10
         "citation_count": len(citations),
         "research_alignment_score": round(alignment_score * 100) if alignment_score else None,
         "knowledge_coverage": {

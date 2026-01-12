@@ -491,6 +491,16 @@ export interface AssetAnalysisResult {
   annotated_image: string | null; // Base64 encoded
   text_summary: string;
   error: string | null;
+  // Knowledge Graph fields
+  citations?: Array<{
+    id: string;
+    text: string;
+    source_quote?: string;
+    confidence?: number;
+  }>;
+  research_alignment_score?: number;
+  alignment_summary?: string;
+  knowledge_enabled?: boolean;
 }
 
 export interface AssetAnalysisResponse {

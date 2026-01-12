@@ -43,15 +43,77 @@ def get_openai_client() -> Optional[OpenAI]:
 
 # === Text Similarity Functions ===
 
-def compute_text_similarity(text1: str, text2: str) -> float:
+# === Embedding Cache for Semantic Similarity ===
+_embedding_cache: Dict[str, List[float]] = {}
+
+
+def get_text_embedding(text: str) -> Optional[List[float]]:
     """
-    Compute similarity between two texts using Jaccard similarity on word sets.
+    Get OpenAI embedding for text. Uses cache to avoid redundant API calls.
+    Returns None if embedding fails.
+    """
+    if not text:
+        return None
+    
+    # Check cache first
+    cache_key = text[:200]  # Use first 200 chars as key
+    if cache_key in _embedding_cache:
+        return _embedding_cache[cache_key]
+    
+    client = get_openai_client()
+    if not client:
+        return None
+    
+    try:
+        response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=text[:2000]  # Limit text length
+        )
+        embedding = response.data[0].embedding
+        _embedding_cache[cache_key] = embedding
+        return embedding
+    except Exception as e:
+        logger.warning(f"Failed to get embedding: {e}")
+        return None
+
+
+def compute_cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
+    """Compute cosine similarity between two vectors."""
+    import math
+    
+    dot_product = sum(a * b for a, b in zip(vec1, vec2))
+    norm1 = math.sqrt(sum(a * a for a in vec1))
+    norm2 = math.sqrt(sum(b * b for b in vec2))
+    
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+    
+    return dot_product / (norm1 * norm2)
+
+
+def compute_text_similarity(text1: str, text2: str, use_semantic: bool = True) -> float:
+    """
+    Compute similarity between two texts.
+    
+    Uses semantic (embedding-based) similarity when available,
+    falls back to Jaccard similarity on word sets.
+    
     Returns a value between 0 and 1.
     """
     if not text1 or not text2:
         return 0.0
     
-    # Normalize texts
+    # Try semantic similarity first
+    if use_semantic:
+        emb1 = get_text_embedding(text1)
+        emb2 = get_text_embedding(text2)
+        
+        if emb1 and emb2:
+            similarity = compute_cosine_similarity(emb1, emb2)
+            logger.debug(f"Semantic similarity: {similarity:.2f}")
+            return similarity
+    
+    # Fallback to Jaccard similarity
     words1 = set(text1.lower().split())
     words2 = set(text2.lower().split())
     
@@ -61,7 +123,9 @@ def compute_text_similarity(text1: str, text2: str) -> float:
     intersection = words1.intersection(words2)
     union = words1.union(words2)
     
-    return len(intersection) / len(union) if union else 0.0
+    jaccard = len(intersection) / len(union) if union else 0.0
+    logger.debug(f"Jaccard similarity (fallback): {jaccard:.2f}")
+    return jaccard
 
 
 def find_similar_node(
@@ -69,17 +133,20 @@ def find_similar_node(
     text: str,
     node_type: str,
     db: Session,
-    threshold: float = 0.75
+    threshold: float = 0.65  # Lowered from 0.75 for semantic similarity
 ) -> Optional[models.KnowledgeNode]:
     """
     Find an existing node with similar text for deduplication.
+    
+    Uses semantic similarity (OpenAI embeddings) for accurate matching.
+    Threshold of 0.65 works well for semantic similarity (equivalent to ~75% Jaccard).
     
     Args:
         brand_id: Brand ID to search within
         text: Text of the new node
         node_type: Type of the new node (only compare same types)
         db: Database session
-        threshold: Similarity threshold (default 0.75 = 75%)
+        threshold: Similarity threshold (default 0.65 for semantic)
         
     Returns:
         Existing similar node if found, None otherwise
@@ -99,7 +166,7 @@ def find_similar_node(
             best_match = node
     
     if best_match:
-        logger.info(f"🔄 Found similar node (similarity={best_similarity:.2f}): {best_match.id[:8]}...")
+        logger.info(f"🔄 Found similar node (semantic similarity={best_similarity:.2f}): {best_match.id[:8]}...")
     
     return best_match
 
@@ -185,14 +252,21 @@ RELATIONSHIP_PROMPT = """You are analyzing relationships between knowledge nodes
     "to_node_id": "<id of target node>",
     "relation_type": "ADDRESSES",
     "strength": 0.85,
-    "context": "Brief explanation of why this relationship exists"
+    "context": "Brief explanation of why this relationship exists",
+    "recommended_approach": "(ONLY for CONTRADICTS) How messaging should handle this conflict"
   }}
 ]
 ```
 
+**For CONTRADICTS relationships, you MUST include recommended_approach. Choose one of:**
+- "educate_with_evidence": Patient has a factual misconception - use clinical data gently
+- "validate_then_redirect": Patient has emotional resistance - acknowledge the feeling first
+- "counter_with_testimonials": Patient's belief is based on anecdotes - use broader patient stories
+- "build_credibility_first": Patient doesn't trust the source - establish authority before claims
+
 **Rules:**
 1. Focus on the most meaningful relationships (max 15)
-2. CONTRADICTS relationships are critical - always flag these
+2. CONTRADICTS relationships are critical - always flag these with recommended_approach
 3. Higher strength (0.8-1.0) for direct, explicit connections
 4. Lower strength (0.5-0.7) for inferred connections
 
@@ -487,13 +561,20 @@ async def infer_relationships(
                     logger.warning(f"⚠️ Unusual relationship type: {from_node.node_type} -[{relation_type}]-> {to_node.node_type}")
             
             # Create validated relationship
+            # For CONTRADICTS, combine context with recommended_approach
+            context_text = rel_data.get("context", "")
+            if relation_type == "contradicts":
+                recommended = rel_data.get("recommended_approach", "")
+                if recommended:
+                    context_text = f"{context_text} | Recommended: {recommended}"
+            
             relation = models.KnowledgeRelation(
                 brand_id=brand_id,
                 from_node_id=from_id,
                 to_node_id=to_id,
                 relation_type=relation_type,
                 strength=strength,
-                context=rel_data.get("context"),
+                context=context_text,
                 inferred_by="llm"
             )
             db.add(relation)
