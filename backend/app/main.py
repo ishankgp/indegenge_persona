@@ -2639,7 +2639,107 @@ async def get_coverage_suggestions(
     }
 
 
+# === Knowledge Graph Node Management Endpoints ===
+
+@app.get("/api/knowledge/brands/{brand_id}/duplicates")
+async def get_duplicate_nodes(
+    brand_id: int,
+    threshold: float = 0.60,
+    db: Session = Depends(get_db)
+):
+    """
+    Find duplicate/similar knowledge nodes for review.
+    
+    Returns pairs of nodes with similarity >= threshold.
+    """
+    from . import knowledge_merger
+    
+    candidates = knowledge_merger.find_duplicate_candidates(
+        brand_id=brand_id,
+        db=db,
+        threshold=threshold
+    )
+    
+    return {
+        "brand_id": brand_id,
+        "threshold": threshold,
+        "duplicate_count": len(candidates),
+        "duplicates": candidates
+    }
+
+
+@app.post("/api/knowledge/nodes/merge")
+async def merge_knowledge_nodes(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Merge multiple nodes into a primary node.
+    
+    Payload:
+        - primary_id: ID of node to keep
+        - secondary_ids: List of node IDs to merge into primary
+    """
+    from . import knowledge_merger
+    
+    primary_id = payload.get("primary_id")
+    secondary_ids = payload.get("secondary_ids", [])
+    
+    if not primary_id or not secondary_ids:
+        raise HTTPException(status_code=400, detail="primary_id and secondary_ids required")
+    
+    result = knowledge_merger.merge_nodes(
+        primary_id=primary_id,
+        secondary_ids=secondary_ids,
+        db=db
+    )
+    
+    if result.get("error"):
+        raise HTTPException(status_code=404, detail=result["error"])
+    
+    return result
+
+
+@app.delete("/api/knowledge/nodes/{node_id}")
+async def delete_knowledge_node(
+    node_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a single knowledge node and its relationships.
+    """
+    from . import knowledge_merger
+    
+    result = knowledge_merger.delete_node(node_id, db)
+    
+    if result.get("error"):
+        raise HTTPException(status_code=404, detail=result["error"])
+    
+    return result
+
+
+@app.post("/api/knowledge/brands/{brand_id}/auto-merge")
+async def auto_merge_duplicate_nodes(
+    brand_id: int,
+    threshold: float = 0.85,
+    db: Session = Depends(get_db)
+):
+    """
+    Automatically merge nodes with very high similarity (>= threshold).
+    
+    Use with caution - this is a destructive operation.
+    """
+    from . import knowledge_merger
+    
+    result = knowledge_merger.auto_merge_duplicates(
+        brand_id=brand_id,
+        db=db,
+        threshold=threshold
+    )
+    
+    return result
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
 

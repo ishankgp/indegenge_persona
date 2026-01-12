@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react"
 import { BrandsAPI } from "@/lib/api"
 import { KnowledgeGraphView } from "@/components/KnowledgeGraphView"
-import { Network, AlertCircle } from "lucide-react"
+import { NodeMergePanel } from "@/components/NodeMergePanel"
+import { Network, AlertCircle, Settings2 } from "lucide-react"
 import {
     Select,
     SelectContent,
@@ -12,6 +13,7 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface Brand {
     id: number
@@ -22,6 +24,7 @@ export function KnowledgeGraphPage() {
     const [brands, setBrands] = useState<Brand[]>([])
     const [selectedBrandId, setSelectedBrandId] = useState<string>("")
     const [loading, setLoading] = useState(true)
+    const [activeTab, setActiveTab] = useState<'graph' | 'admin'>('graph')
 
     useEffect(() => {
         fetchBrands()
@@ -65,6 +68,20 @@ export function KnowledgeGraphPage() {
                         </div>
 
                         <div className="flex items-center gap-3">
+                            {/* View Toggle Tabs */}
+                            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'graph' | 'admin')}>
+                                <TabsList className="bg-gray-100">
+                                    <TabsTrigger value="graph" className="gap-2">
+                                        <Network className="h-4 w-4" />
+                                        Graph
+                                    </TabsTrigger>
+                                    <TabsTrigger value="admin" className="gap-2">
+                                        <Settings2 className="h-4 w-4" />
+                                        Admin
+                                    </TabsTrigger>
+                                </TabsList>
+                            </Tabs>
+
                             <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
                                 <SelectTrigger className="w-[240px] h-10 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-sm transition-all hover:bg-gray-50">
                                     <SelectValue placeholder="Select Brand" />
@@ -96,10 +113,14 @@ export function KnowledgeGraphPage() {
                 ) : (
                     selectedBrandId && (
                         <div className="animate-in fade-in zoom-in-95 duration-500">
-                            <KnowledgeGraphView
-                                brandId={parseInt(selectedBrandId)}
-                                brandName={selectedBrand?.name}
-                            />
+                            {activeTab === 'graph' ? (
+                                <KnowledgeGraphView
+                                    brandId={parseInt(selectedBrandId)}
+                                    brandName={selectedBrand?.name}
+                                />
+                            ) : (
+                                <NodeMergePanel brandId={parseInt(selectedBrandId)} />
+                            )}
                         </div>
                     )
                 )}
@@ -107,3 +128,4 @@ export function KnowledgeGraphPage() {
         </div>
     )
 }
+

@@ -17,7 +17,7 @@ import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Loader2, RefreshCw, Network, AlertTriangle, CheckCircle, Filter, X, Layout } from 'lucide-react'
+import { Loader2, RefreshCw, Network, AlertTriangle, Filter, X } from 'lucide-react'
 import {
     Select,
     SelectContent,
@@ -48,7 +48,7 @@ interface KnowledgeGraphViewProps {
     onNodeSelect?: (nodeId: string) => void
 }
 
-export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: KnowledgeGraphViewProps) {
+export function KnowledgeGraphView({ brandId, onNodeSelect }: KnowledgeGraphViewProps) {
     const [nodes, setNodes, onNodesChange] = useNodesState([])
     const [edges, setEdges, onEdgesChange] = useEdgesState([])
     const [loading, setLoading] = useState(true)
@@ -61,6 +61,9 @@ export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: Knowled
     } | null>(null)
     const [selectedNode, setSelectedNode] = useState<any>(null)
     const [filterType, setFilterType] = useState<string>('all')
+    const [filterRelation, setFilterRelation] = useState<string>('all')
+    const [filterSegment, setFilterSegment] = useState<string>('all')
+    const [focusNodeId, setFocusNodeId] = useState<string | null>(null)
 
     // Dagre Layout
     const getLayoutedElements = useCallback((nodes: Node[], edges: Edge[], direction = 'TB') => {
@@ -120,24 +123,45 @@ export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: Knowled
                 position: n.position || { x: 0, y: 0 }
             }))
 
-            // Style edges
-            const flowEdges: Edge[] = rawEdges.map((edge: any) => ({
-                id: edge.id || `${edge.source}-${edge.target}`,
-                source: edge.source,
-                target: edge.target,
-                type: 'smoothstep', // Smoother curves
-                animated: true,
-                style: {
-                    stroke: RELATION_COLORS[edge.data?.relation_type] || '#9ca3af',
-                    strokeWidth: 2,
-                    opacity: 0.6,
-                },
-                markerEnd: {
-                    type: MarkerType.ArrowClosed,
-                    color: RELATION_COLORS[edge.data?.relation_type] || '#9ca3af',
-                },
-                data: edge.data
-            }))
+            // Style edges with visible labels
+            const flowEdges: Edge[] = rawEdges.map((edge: any) => {
+                const relationType = edge.data?.relation_type || edge.label || 'related'
+                const color = RELATION_COLORS[relationType] || '#6b7280'
+
+                return {
+                    id: edge.id || `${edge.source}-${edge.target}`,
+                    source: String(edge.source),
+                    target: String(edge.target),
+                    type: 'smoothstep',
+                    animated: relationType === 'contradicts',
+                    label: relationType.replace(/_/g, ' ').toUpperCase(),
+                    labelStyle: {
+                        fill: color,
+                        fontWeight: 700,
+                        fontSize: 10,
+                        textTransform: 'uppercase' as const,
+                    },
+                    labelBgStyle: {
+                        fill: '#ffffff',
+                        fillOpacity: 0.9,
+                        rx: 4,
+                        ry: 4,
+                    },
+                    labelBgPadding: [6, 4] as [number, number],
+                    style: {
+                        stroke: color,
+                        strokeWidth: 2,
+                        strokeDasharray: relationType === 'contradicts' ? '5,5' : undefined,
+                    },
+                    markerEnd: {
+                        type: MarkerType.ArrowClosed,
+                        color: color,
+                        width: 20,
+                        height: 20,
+                    },
+                    data: edge.data
+                }
+            })
 
             const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(flowNodes, flowEdges)
 
@@ -156,27 +180,114 @@ export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: Knowled
         fetchGraph()
     }, [fetchGraph])
 
-    // Filter logic
-    const filteredNodes = useMemo(() => {
-        const visibleNodes = filterType === 'all'
-            ? nodes
-            : nodes.filter(n => n.data.node_type === filterType)
+    // Get unique relationship types for filter dropdown
+    const relationTypes = useMemo(() => {
+        const types = new Set<string>()
+        edges.forEach(e => {
+            const relType = e.data?.relation_type || (e.label as string)?.toLowerCase() || 'related'
+            types.add(relType)
+        })
+        return Array.from(types)
+    }, [edges])
 
-        // Re-run layout on filtered subset? 
-        // For simplicity, we just hide/show but keep positions to prevent jumping
-        // OR we could re-layout. Let's return filtered list, ReactFlow handles hiding if not present.
-        return visibleNodes
-    }, [nodes, filterType])
+    // Find all connected nodes for focus mode
+    const getConnectedNodeIds = useCallback((nodeId: string): Set<string> => {
+        const connected = new Set<string>([nodeId])
+        const toProcess = [nodeId]
 
-    const filteredEdges = useMemo(() => {
-        const visibleNodeIds = new Set(filteredNodes.map(n => n.id))
-        return edges.filter(e => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target))
-    }, [filteredNodes, edges])
+        while (toProcess.length > 0) {
+            const current = toProcess.pop()!
+            edges.forEach(e => {
+                if (e.source === current && !connected.has(e.target)) {
+                    connected.add(e.target)
+                    toProcess.push(e.target)
+                }
+                if (e.target === current && !connected.has(e.source)) {
+                    connected.add(e.source)
+                    toProcess.push(e.source)
+                }
+            })
+        }
+        return connected
+    }, [edges])
 
-    // Handle node click
-    const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    // Filter logic with relationship type, segment, and focus mode
+    const { filteredNodes, filteredEdges } = useMemo(() => {
+        let visibleEdges = edges
+
+        // Filter by relationship type
+        if (filterRelation !== 'all') {
+            visibleEdges = edges.filter(e => {
+                const relType = e.data?.relation_type || (e.label as string)?.toLowerCase() || 'related'
+                return relType === filterRelation
+            })
+        }
+
+        // Get nodes connected by visible edges
+        const connectedByEdges = new Set<string>()
+        visibleEdges.forEach(e => {
+            connectedByEdges.add(e.source)
+            connectedByEdges.add(e.target)
+        })
+
+        // Start with all nodes
+        let visibleNodes = [...nodes]
+
+        // Filter by segment (HCP vs Patient)
+        if (filterSegment !== 'all') {
+            visibleNodes = visibleNodes.filter(n => {
+                const segment = (n.data.segment || '').toLowerCase()
+                if (filterSegment === 'hcp') {
+                    return segment.includes('hcp') || segment.includes('physician') || segment.includes('doctor')
+                } else if (filterSegment === 'patient') {
+                    return segment.includes('patient') || segment.includes('all') || segment === ''
+                }
+                return true
+            })
+        }
+
+        // Filter nodes by type
+        if (filterType !== 'all') {
+            visibleNodes = visibleNodes.filter(n => n.data.node_type === filterType)
+        }
+
+        // If filtering by relation, only show nodes in those relationships
+        if (filterRelation !== 'all') {
+            visibleNodes = visibleNodes.filter(n => connectedByEdges.has(n.id))
+        }
+
+        // Focus mode: highlight connected path
+        if (focusNodeId) {
+            const connectedIds = getConnectedNodeIds(focusNodeId)
+            visibleNodes = visibleNodes.map(n => ({
+                ...n,
+                style: {
+                    ...n.style,
+                    opacity: connectedIds.has(n.id) ? 1 : 0.15,
+                }
+            }))
+            visibleEdges = visibleEdges.map(e => ({
+                ...e,
+                style: {
+                    ...e.style,
+                    opacity: (connectedIds.has(e.source) && connectedIds.has(e.target)) ? 1 : 0.1,
+                }
+            }))
+        }
+
+        // Final edge filter to only show edges between visible nodes
+        const visibleNodeIds = new Set(visibleNodes.map(n => n.id))
+        visibleEdges = visibleEdges.filter(e => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target))
+
+        return { filteredNodes: visibleNodes, filteredEdges: visibleEdges }
+    }, [nodes, edges, filterType, filterRelation, filterSegment, focusNodeId, getConnectedNodeIds])
+
+    // Handle node click - toggle focus mode
+    const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
         setSelectedNode(node.data)
         onNodeSelect?.(node.id)
+        // Toggle focus mode on double-tap same node, or set new focus
+        setFocusNodeId(prev => prev === node.id ? null : node.id)
     }, [onNodeSelect])
 
     if (loading) {
@@ -250,6 +361,46 @@ export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: Knowled
                             </SelectContent>
                         </Select>
 
+                        {/* Segment Filter (HCP vs Patient) */}
+                        <Select value={filterSegment} onValueChange={(val) => { setFilterSegment(val); setFocusNodeId(null); }}>
+                            <SelectTrigger className="w-[140px] bg-white">
+                                <SelectValue placeholder="All Segments" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">👥 All Segments</SelectItem>
+                                <SelectItem value="patient">😷 Patients</SelectItem>
+                                <SelectItem value="hcp">🩺 HCPs</SelectItem>
+                            </SelectContent>
+                        </Select>
+
+                        {/* Relationship Type Filter */}
+                        <Select value={filterRelation} onValueChange={(val) => { setFilterRelation(val); setFocusNodeId(null); }}>
+                            <SelectTrigger className="w-[180px] bg-white">
+                                <SelectValue placeholder="All Relations" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Relations</SelectItem>
+                                {relationTypes.map(type => (
+                                    <SelectItem key={type} value={type}>
+                                        {type.replace(/_/g, ' ').toUpperCase()}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+
+                        {/* Focus Mode Indicator */}
+                        {focusNodeId && (
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setFocusNodeId(null)}
+                                className="bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                            >
+                                <X className="h-3 w-3 mr-1" />
+                                Clear Focus
+                            </Button>
+                        )}
+
                         <div className="h-8 w-px bg-gray-200 mx-2" />
 
                         <Button variant="outline" size="sm" onClick={fetchGraph} className="bg-white">
@@ -287,6 +438,84 @@ export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: Knowled
                         }}
                     />
                 </ReactFlow>
+
+                {/* Relationship Legend */}
+                <div className="absolute top-4 left-4 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md shadow-lg rounded-lg border p-3 text-xs max-w-[200px]">
+                    <h4 className="font-semibold text-sm mb-2 text-gray-700">Relationship Types</h4>
+                    <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-0.5 bg-emerald-500" />
+                            <span className="text-gray-600">Addresses (solves a tension)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-0.5 bg-blue-500" />
+                            <span className="text-gray-600">Supports (reinforces)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-0.5 bg-red-500 border-dashed border-t-2 border-red-500 bg-transparent" style={{ borderStyle: 'dashed' }} />
+                            <span className="text-gray-600">Contradicts (conflicts)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-0.5 bg-amber-500" />
+                            <span className="text-gray-600">Triggers (causes)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-0.5 bg-violet-500" />
+                            <span className="text-gray-600">Influences</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-0.5 bg-pink-500" />
+                            <span className="text-gray-600">Resonates (aligns with)</span>
+                        </div>
+                    </div>
+
+                    {/* Story Flow Presets */}
+                    <div className="mt-3 pt-3 border-t">
+                        <h4 className="font-semibold text-sm mb-2 text-gray-700">Quick Views</h4>
+                        <div className="space-y-1.5">
+                            <button
+                                onClick={() => { setFilterType('all'); setFilterRelation('all'); setFocusNodeId(null); }}
+                                className={`w-full text-left px-2 py-1 rounded text-xs transition-colors ${filterType === 'all' && filterRelation === 'all' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-gray-100'}`}
+                            >
+                                🔍 Full Graph
+                            </button>
+                            <button
+                                onClick={() => { setFilterType('patient_tension'); setFilterRelation('all'); setFocusNodeId(null); }}
+                                className={`w-full text-left px-2 py-1 rounded text-xs transition-colors ${filterType === 'patient_tension' ? 'bg-rose-100 text-rose-700' : 'hover:bg-gray-100'}`}
+                            >
+                                😰 Patient Tensions
+                            </button>
+                            <button
+                                onClick={() => { setFilterType('key_message'); setFilterRelation('all'); setFocusNodeId(null); }}
+                                className={`w-full text-left px-2 py-1 rounded text-xs transition-colors ${filterType === 'key_message' ? 'bg-purple-100 text-purple-700' : 'hover:bg-gray-100'}`}
+                            >
+                                💬 Key Messages
+                            </button>
+                            <button
+                                onClick={() => { setFilterType('value_proposition'); setFilterRelation('all'); setFocusNodeId(null); }}
+                                className={`w-full text-left px-2 py-1 rounded text-xs transition-colors ${filterType === 'value_proposition' ? 'bg-pink-100 text-pink-700' : 'hover:bg-gray-100'}`}
+                            >
+                                💎 Value Propositions
+                            </button>
+                            <button
+                                onClick={() => { setFilterType('all'); setFilterRelation('addresses'); setFocusNodeId(null); }}
+                                className={`w-full text-left px-2 py-1 rounded text-xs transition-colors ${filterRelation === 'addresses' ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-gray-100'}`}
+                            >
+                                🎯 Messages → Tensions
+                            </button>
+                            <button
+                                onClick={() => { setFilterType('all'); setFilterRelation('triggers'); setFocusNodeId(null); }}
+                                className={`w-full text-left px-2 py-1 rounded text-xs transition-colors ${filterRelation === 'triggers' ? 'bg-amber-100 text-amber-700' : 'hover:bg-gray-100'}`}
+                            >
+                                ⚡ What Triggers What
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="mt-3 pt-2 border-t text-[10px] text-gray-400">
+                        Click nodes for details. Drag to rearrange.
+                    </div>
+                </div>
 
                 {/* Floating Detail Panel */}
                 {selectedNode && (

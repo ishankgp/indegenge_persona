@@ -41,6 +41,69 @@ def get_openai_client() -> Optional[OpenAI]:
     return _openai_client
 
 
+# === Text Similarity Functions ===
+
+def compute_text_similarity(text1: str, text2: str) -> float:
+    """
+    Compute similarity between two texts using Jaccard similarity on word sets.
+    Returns a value between 0 and 1.
+    """
+    if not text1 or not text2:
+        return 0.0
+    
+    # Normalize texts
+    words1 = set(text1.lower().split())
+    words2 = set(text2.lower().split())
+    
+    if not words1 or not words2:
+        return 0.0
+    
+    intersection = words1.intersection(words2)
+    union = words1.union(words2)
+    
+    return len(intersection) / len(union) if union else 0.0
+
+
+def find_similar_node(
+    brand_id: int,
+    text: str,
+    node_type: str,
+    db: Session,
+    threshold: float = 0.75
+) -> Optional[models.KnowledgeNode]:
+    """
+    Find an existing node with similar text for deduplication.
+    
+    Args:
+        brand_id: Brand ID to search within
+        text: Text of the new node
+        node_type: Type of the new node (only compare same types)
+        db: Database session
+        threshold: Similarity threshold (default 0.75 = 75%)
+        
+    Returns:
+        Existing similar node if found, None otherwise
+    """
+    existing_nodes = db.query(models.KnowledgeNode).filter(
+        models.KnowledgeNode.brand_id == brand_id,
+        models.KnowledgeNode.node_type == node_type
+    ).all()
+    
+    best_match = None
+    best_similarity = 0.0
+    
+    for node in existing_nodes:
+        similarity = compute_text_similarity(text, node.text)
+        if similarity >= threshold and similarity > best_similarity:
+            best_similarity = similarity
+            best_match = node
+    
+    if best_match:
+        logger.info(f"🔄 Found similar node (similarity={best_similarity:.2f}): {best_match.id[:8]}...")
+    
+    return best_match
+
+
 # === Node Type Mappings by Document Type ===
 DOCUMENT_TYPE_NODE_MAPPINGS = {
     "brand_messaging": [
@@ -237,17 +300,39 @@ async def extract_knowledge_from_document(
             logger.error(f"Failed to parse extraction response: {e}")
             nodes_data = []
         
-        # Create knowledge nodes
+        # Create knowledge nodes with deduplication
         created_nodes = []
+        skipped_duplicates = 0
+        
         for node_data in nodes_data:
             if not node_data.get("text"):
                 continue
+            
+            node_text = node_data.get("text", "")
+            node_type = node_data.get("node_type", "key_message")
+            
+            # Check for duplicate/similar existing node
+            existing_similar = find_similar_node(
+                brand_id=brand_id,
+                text=node_text,
+                node_type=node_type,
+                db=db,
+                threshold=0.75  # 75% similarity threshold
+            )
+            
+            if existing_similar:
+                # Skip creating duplicate, but still include in return list for relationship inference
+                logger.info(f"⏭️ Skipping duplicate node: '{node_text[:50]}...' -> existing: {existing_similar.id[:8]}")
+                created_nodes.append(existing_similar)
+                skipped_duplicates += 1
+                continue
                 
+            # Create new node
             node = models.KnowledgeNode(
                 id=str(uuid.uuid4()),
                 brand_id=brand_id,
-                node_type=node_data.get("node_type", "key_message"),
-                text=node_data.get("text", ""),
+                node_type=node_type,
+                text=node_text,
                 summary=node_data.get("summary", "")[:200] if node_data.get("summary") else None,
                 segment=node_data.get("segment"),
                 journey_stage=node_data.get("journey_stage"),
@@ -260,7 +345,8 @@ async def extract_knowledge_from_document(
             created_nodes.append(node)
         
         db.commit()
-        logger.info(f"✅ Extracted {len(created_nodes)} knowledge nodes from document {document_id}")
+        new_count = len(created_nodes) - skipped_duplicates
+        logger.info(f"✅ Extracted {new_count} new nodes, reused {skipped_duplicates} existing (from document {document_id})")
         return created_nodes
         
     except Exception as e:
@@ -352,12 +438,61 @@ async def infer_relationships(
             if from_id not in all_node_ids or to_id not in all_node_ids:
                 continue
             
+            relation_type = rel_data.get("relation_type", "relates_to").lower()
+            strength = float(rel_data.get("strength", 0.7))
+            
+            # === Validation Rules ===
+            
+            # Rule 1: Reject self-references
+            if from_id == to_id:
+                logger.debug(f"⚠️ Rejected self-reference: {from_id}")
+                continue
+            
+            # Rule 2: Reject low-strength relationships
+            if strength < 0.5:
+                logger.debug(f"⚠️ Rejected low-strength ({strength}) relationship: {from_id} -> {to_id}")
+                continue
+            
+            # Rule 3: Check for duplicate relationship
+            existing_rel = db.query(models.KnowledgeRelation).filter(
+                models.KnowledgeRelation.brand_id == brand_id,
+                models.KnowledgeRelation.from_node_id == from_id,
+                models.KnowledgeRelation.to_node_id == to_id,
+                models.KnowledgeRelation.relation_type == relation_type
+            ).first()
+            
+            if existing_rel:
+                logger.debug(f"⏭️ Skipping duplicate relationship: {from_id} -[{relation_type}]-> {to_id}")
+                continue
+            
+            # Rule 4: Type compatibility validation (optional - just log warnings for now)
+            # We allow all types but log suspicious combinations
+            from_node = next((n for n in existing_nodes + new_nodes if n.id == from_id), None)
+            to_node = next((n for n in existing_nodes + new_nodes if n.id == to_id), None)
+            
+            if from_node and to_node:
+                valid_combos = {
+                    'addresses': [('key_message', 'patient_tension'), ('value_proposition', 'unmet_need'), ('differentiator', 'patient_tension')],
+                    'supports': [('proof_point', 'key_message'), ('epidemiology', 'unmet_need'), ('key_message', 'value_proposition')],
+                    'triggers': [('symptom_burden', 'patient_tension'), ('epidemiology', 'patient_tension')],
+                    'contradicts': [],  # Any type can contradict another
+                    'influences': [],  # Any type can influence another
+                    'resonates_with': [('key_message', 'patient_motivation'), ('value_proposition', 'patient_motivation')],
+                }
+                
+                pair = (from_node.node_type, to_node.node_type)
+                expected_pairs = valid_combos.get(relation_type, [])
+                
+                if expected_pairs and pair not in expected_pairs:
+                    logger.warning(f"⚠️ Unusual relationship type: {from_node.node_type} -[{relation_type}]-> {to_node.node_type}")
+            
+            # Create validated relationship
             relation = models.KnowledgeRelation(
                 brand_id=brand_id,
                 from_node_id=from_id,
                 to_node_id=to_id,
-                relation_type=rel_data.get("relation_type", "relates_to"),
-                strength=float(rel_data.get("strength", 0.7)),
+                relation_type=relation_type,
+                strength=strength,
                 context=rel_data.get("context"),
                 inferred_by="llm"
             )
@@ -365,7 +500,7 @@ async def infer_relationships(
             created_relations.append(relation)
         
         db.commit()
-        logger.info(f"✅ Inferred {len(created_relations)} relationships for brand {brand_id}")
+        logger.info(f"✅ Created {len(created_relations)} validated relationships for brand {brand_id}")
         return created_relations
         
     except Exception as e:
