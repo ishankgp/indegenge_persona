@@ -112,11 +112,12 @@ export function KnowledgeGraphView({ brandId, brandName, onNodeSelect }: Knowled
             const { nodes: rawNodes, edges: rawEdges, stats: graphStats } = response.data
 
             // Transform nodes for React Flow
+            // Transform nodes for React Flow
             const flowNodes: Node[] = rawNodes.map((n: any) => ({
                 id: n.id,
                 type: 'knowledgeNode',
-                data: { ...n, label: n.text }, // Use text as label for custom node
-                position: { x: 0, y: 0 } // Layout will set this
+                data: n.data, // Backend already returns correct structure
+                position: n.position || { x: 0, y: 0 }
             }))
 
             // Style edges
