@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { CoverageAPI, BrandsAPI, getApiBaseUrl } from "@/lib/api"
+import { CoverageAPI, BrandsAPI } from "@/lib/api"
 import type { CoverageSuggestion } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -12,9 +12,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import {
   PieChart,
   Users,
-  User,
-  Stethoscope,
-  Library,
   AlertTriangle,
   Plus,
   TrendingUp,
@@ -22,12 +19,11 @@ import {
   Sparkles,
   Target,
   CheckCircle,
-  XCircle,
-  ArrowRight,
   Bot,
   Lightbulb,
+  Brain,
+  MapPin,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
 import {
   Select,
   SelectContent,
@@ -44,7 +40,6 @@ interface Brand {
 export function PersonaCoverage() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState<any>(null)
   const [brands, setBrands] = useState<Brand[]>([])
   const [selectedBrandId, setSelectedBrandId] = useState<string>('all')
@@ -85,15 +80,8 @@ export function PersonaCoverage() {
       if (suggestionsResponse && suggestionsResponse.suggestions) {
         setSuggestions(suggestionsResponse.suggestions)
       }
-      setError(null)
     } catch (error: any) {
       console.error("Error fetching coverage data:", error)
-      const apiBaseUrl = getApiBaseUrl() || window.location.origin
-      let errorMessage = "Failed to fetch coverage analysis"
-      if (error?.response) {
-        errorMessage = `API Error (${error.response.status}): ${error.response.data?.detail || error.response.statusText}`
-      }
-      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -299,9 +287,38 @@ export function PersonaCoverage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-8">
-                    <CheckCircle className="h-12 w-12 mx-auto text-emerald-500 mb-2" />
-                    <p className="text-gray-600">Great job! No major gaps detected.</p>
+                  <div className="py-8">
+                    <div className="flex flex-col items-center justify-center text-center mb-8">
+                      <div className="h-16 w-16 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mb-4">
+                        <CheckCircle className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Strong Portfolio Coverage</h3>
+                      <p className="text-gray-500 dark:text-gray-400 max-w-md mt-2">
+                        Your persona library has excellent coverage across key dimensions. No critical gaps were identified.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      {analysis?.chart_data?.map((dim: any, idx: number) => (
+                        <div key={idx} className="p-4 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-xl border border-emerald-100 dark:border-emerald-900/50 flex items-center gap-3">
+                          <div className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+                            {dim.dimension === 'Demographics' && <Users className="h-5 w-5 text-emerald-600" />}
+                            {dim.dimension === 'Conditions' && <Activity className="h-5 w-5 text-emerald-600" />}
+                            {dim.dimension === 'Psychographics' && <Brain className="h-5 w-5 text-emerald-600" />}
+                            {dim.dimension === 'Locations' && <MapPin className="h-5 w-5 text-emerald-600" />}
+                            {!['Demographics', 'Conditions', 'Psychographics', 'Locations'].includes(dim.dimension) &&
+                              <PieChart className="h-5 w-5 text-emerald-600" />}
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">{dim.dimension}</p>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-gray-900 dark:text-gray-100">{dim.coverage}%</span>
+                              <span className="text-xs text-emerald-600 font-medium">Coverage</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </CardContent>

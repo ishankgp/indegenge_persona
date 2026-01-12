@@ -9,6 +9,7 @@ import { SimulationHub } from './pages/SimulationHub';
 import { Analytics } from './pages/Analytics';
 import { PersonaCoverage } from './pages/PersonaCoverage';
 import { ComparePersonas } from './pages/ComparePersonas';
+import { KnowledgeGraphPage } from './pages/KnowledgeGraphPage';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="personas" element={<PersonaLibrary />} />
           <Route path="brand-library" element={<BrandLibrary />} />
+          <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
           <Route path="create-persona" element={<CreatePersona />} />
           <Route path="persona-builder" element={<PersonaBuilder />} />
           <Route path="simulation" element={<SimulationHub />} />
