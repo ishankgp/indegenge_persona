@@ -2,8 +2,6 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import ReactFlow, {
-    Node,
-    Edge,
     Background,
     Controls,
     MiniMap,
@@ -12,6 +10,7 @@ import ReactFlow, {
     MarkerType,
     Position,
 } from 'reactflow'
+import type { Node, Edge } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
