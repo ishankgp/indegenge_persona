@@ -718,7 +718,7 @@ Be specific and consider the persona's unique characteristics in your analysis.
 
 
 def _process_persona_multimodal(
-    persona,
+    persona_dict: Dict[str, Any],  # Changed from ORM object to serialized dict
     stimulus_text: str,
     stimulus_images: List[Dict],
     content_type: str,
@@ -729,30 +729,37 @@ def _process_persona_multimodal(
     """
     Process a single persona for multimodal analysis.
     This function is designed to be called in parallel.
+    
+    Args:
+        persona_dict: Serialized persona data dictionary (not SQLAlchemy ORM object)
+                     to avoid DetachedInstanceError in worker threads
     """
-    logger.info(f"🔄 Processing persona: {persona.name} (ID: {persona.id})")
+    persona_id = persona_dict['id']
+    persona_name = persona_dict['name']
+    logger.info(f"🔄 Processing persona: {persona_name} (ID: {persona_id})")
     
     # Parse the full persona JSON to get all the detailed information
     try:
-        full_persona = json.loads(persona.full_persona_json) if persona.full_persona_json else {}
-        logger.info(f"✅ Parsed persona data for {persona.name}")
+        full_persona = json.loads(persona_dict['full_persona_json']) if persona_dict.get('full_persona_json') else {}
+        logger.info(f"✅ Parsed persona data for {persona_name}")
     except Exception as parse_error:
-        logger.error(f"❌ Error parsing persona JSON for {persona.name}: {parse_error}")
+        logger.error(f"❌ Error parsing persona JSON for {persona_name}: {parse_error}")
         full_persona = {}
     
+    # Build persona_data dict from serialized data
     persona_data = {
-        'id': persona.id,
-        'name': persona.name,
-        'persona_type': persona.persona_type,
-        'age': persona.age,
-        'gender': persona.gender,
-        'condition': persona.condition,
-        'location': persona.location,
+        'id': persona_dict['id'],
+        'name': persona_dict['name'],
+        'persona_type': persona_dict.get('persona_type'),
+        'age': persona_dict.get('age'),
+        'gender': persona_dict.get('gender'),
+        'condition': persona_dict.get('condition'),
+        'location': persona_dict.get('location'),
         'full_persona': full_persona
     }
     
     # Create multimodal prompt
-    logger.info(f"🔄 Creating multimodal prompt for {persona.name}")
+    logger.info(f"🔄 Creating multimodal prompt for {persona_name}")
     prompt = create_multimodal_analysis_prompt(
         persona_data,
         stimulus_text,
@@ -780,7 +787,7 @@ def _process_persona_multimodal(
     
     # Add images if provided
     if stimulus_images and content_type in ['image', 'both']:
-        logger.info(f"🖼️ Adding {len(stimulus_images)} images to analysis for {persona.name}")
+        logger.info(f"🖼️ Adding {len(stimulus_images)} images to analysis for {persona_name}")
         for j, image_info in enumerate(stimulus_images):
             data_url = f"data:{image_info['content_type']};base64,{image_info['data']}"
             logger.info(f"🖼️ Image {j+1}: {image_info['filename']}, type: {image_info['content_type']}, data URL length: {len(data_url)}")
@@ -791,14 +798,14 @@ def _process_persona_multimodal(
                 }
             })
     else:
-        logger.info(f"📝 Text-only analysis for {persona.name}")
+        logger.info(f"📝 Text-only analysis for {persona_name}")
     
     try:
-        logger.info(f"🚀 Calling GPT-5 for {persona.name}...")
+        logger.info(f"🚀 Calling GPT-5 for {persona_name}...")
         logger.info(f"📊 Message content parts: {len(messages[0]['content'])}")
         
         data = _chat_json(messages)
-        logger.info(f"✅ GPT-5 response received for {persona.name}")
+        logger.info(f"✅ GPT-5 response received for {persona_name}")
         logger.info(f"📊 Response keys: {list(data.keys())}")
         
         answers = data.get("answers")
@@ -813,9 +820,9 @@ def _process_persona_multimodal(
             normalized_answers = None
 
         result = {
-            'persona_id': persona.id,
-            'persona_name': persona_data.get('name', f'Persona {persona.id}'),
-            'condition': persona.condition,
+            'persona_id': persona_id,
+            'persona_name': persona_data.get('name', f'Persona {persona_id}'),
+            'condition': persona_data.get('condition'),
             'analysis_summary': data.get('analysis_summary', ''),
             'metrics': data.get('metrics', {}),
             'answers': normalized_answers,
@@ -823,16 +830,16 @@ def _process_persona_multimodal(
             'behavioral_prediction': data.get('behavioral_prediction', ''),
             'raw_response': json.dumps(data)[:500]
         }
-        logger.info(f"✅ Analysis completed for {persona.name}")
+        logger.info(f"✅ Analysis completed for {persona_name}")
         return result
         
     except Exception as e:
-        logger.error(f"❌ Error analyzing persona {persona.id} ({persona.name}): {e}")
+        logger.error(f"❌ Error analyzing persona {persona_id} ({persona_name}): {e}")
         logger.error(f"❌ Full error traceback:", exc_info=True)
         return {
-            'persona_id': persona.id,
-            'persona_name': f"Persona {persona.id}",
-            'condition': persona.condition,
+            'persona_id': persona_id,
+            'persona_name': f"Persona {persona_id}",
+            'condition': persona_data.get('condition'),
             'analysis_summary': f"Error in analysis: {str(e)}",
             'metrics': {},
             'key_insights': [],
@@ -875,44 +882,74 @@ def run_multimodal_cohort_analysis(
     
     logger.info(f"✅ Loaded {len(personas)} valid personas")
     
+    # Serialize persona data BEFORE passing to worker threads
+    # SQLAlchemy ORM objects cannot be accessed across threads (DetachedInstanceError)
+    persona_data_list = []
+    for persona in personas:
+        try:
+            # Extract all needed attributes into a plain dictionary
+            persona_dict = {
+                'id': persona.id,
+                'name': persona.name,
+                'persona_type': persona.persona_type,
+                'age': persona.age,
+                'gender': persona.gender,
+                'condition': persona.condition,
+                'location': persona.location,
+                'full_persona_json': persona.full_persona_json,  # Serialize JSON string
+            }
+            persona_data_list.append(persona_dict)
+            logger.debug(f"✅ Serialized persona {persona.id}: {persona.name}")
+        except Exception as e:
+            logger.error(f"❌ Error serializing persona {persona.id}: {e}")
+            continue
+    
+    if not persona_data_list:
+        logger.error("❌ No valid persona data after serialization")
+        raise ValueError("No valid persona data after serialization")
+    
     # Process all personas in parallel using ThreadPoolExecutor
-    logger.info(f"� Starting parallel processing of {len(personas)} personas...")
+    logger.info(f"🚀 Starting parallel processing of {len(persona_data_list)} personas...")
     individual_responses = []
     
     # Determine the optimal number of workers (max 5 to avoid overwhelming OpenAI API)
-    max_workers = min(5, len(personas))
+    max_workers = min(5, len(persona_data_list))
     logger.info(f"🔧 Using {max_workers} parallel workers for processing")
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all persona processing tasks
-        future_to_persona = {
+        # Submit all persona processing tasks with serialized data
+        future_to_persona_id = {
             executor.submit(
                 _process_persona_multimodal,
-                persona,
+                persona_data,  # Pass serialized dict instead of ORM object
                 stimulus_text,
                 stimulus_images,
                 content_type,
                 metrics,
                 questions,
                 metric_weights,
-            ): persona 
-            for persona in personas
+            ): persona_data['id'] 
+            for persona_data in persona_data_list
         }
         
         # Collect results as they complete
-        for future in concurrent.futures.as_completed(future_to_persona):
-            persona = future_to_persona[future]
+        for future in concurrent.futures.as_completed(future_to_persona_id):
+            persona_id = future_to_persona_id[future]
+            # Find persona name for logging
+            persona_name = next((p['name'] for p in persona_data_list if p['id'] == persona_id), f"ID {persona_id}")
             try:
                 result = future.result()
                 individual_responses.append(result)
-                logger.info(f"✅ Completed processing for {persona.name}")
+                logger.info(f"✅ Completed processing for {persona_name}")
             except Exception as e:
-                logger.error(f"❌ Exception occurred while processing {persona.name}: {e}")
+                logger.error(f"❌ Exception occurred while processing {persona_name}: {e}")
+                # Find persona condition from serialized data
+                persona_condition = next((p.get('condition') for p in persona_data_list if p['id'] == persona_id), None)
                 # Add error response for failed persona
                 individual_responses.append({
-                    'persona_id': persona.id,
-                    'persona_name': f"Persona {persona.id}",
-                    'condition': persona.condition,
+                    'persona_id': persona_id,
+                    'persona_name': persona_name,
+                    'condition': persona_condition,
                     'analysis_summary': f"Processing error: {str(e)}",
                     'metrics': {},
                     'key_insights': [],

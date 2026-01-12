@@ -539,3 +539,51 @@ def delete_brand_document(db: Session, document_id: int, *, brand_id: Optional[i
 
 def get_brand_documents(db: Session, brand_id: int):
     return db.query(models.BrandDocument).filter(models.BrandDocument.brand_id == brand_id).all()
+
+
+# CRUD for Cached Asset Analysis
+def get_cached_analysis(
+    db: Session,
+    image_hash: str,
+    persona_id: int,
+    persona_hash: str
+) -> Optional[models.CachedAssetAnalysis]:
+    """Retrieve a cached analysis if it exists for the given keys."""
+    return db.query(models.CachedAssetAnalysis).filter(
+        models.CachedAssetAnalysis.image_hash == image_hash,
+        models.CachedAssetAnalysis.persona_id == persona_id,
+        models.CachedAssetAnalysis.persona_hash == persona_hash
+    ).first()
+
+
+def create_cached_analysis(
+    db: Session,
+    image_hash: str,
+    persona_id: int,
+    persona_hash: str,
+    asset_name: Optional[str],
+    result_json: Dict[str, Any]
+) -> models.CachedAssetAnalysis:
+    """Create a new cached analysis entry."""
+    db_cached = models.CachedAssetAnalysis(
+        image_hash=image_hash,
+        persona_id=persona_id,
+        persona_hash=persona_hash,
+        asset_name=asset_name,
+        result_json=result_json
+    )
+    db.add(db_cached)
+    db.commit()
+    db.refresh(db_cached)
+    return db_cached
+
+
+def get_asset_history(
+    db: Session,
+    skip: int = 0,
+    limit: int = 50
+) -> List[models.CachedAssetAnalysis]:
+    """Retrieve asset analysis history for the dashboard, newest first."""
+    return db.query(models.CachedAssetAnalysis).order_by(
+        models.CachedAssetAnalysis.created_at.desc()
+    ).offset(skip).limit(limit).all()

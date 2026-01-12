@@ -1897,6 +1897,9 @@ async def analyze_asset_with_personas(
     Uses Nano Banana Pro (Gemini 3.0 Pro Image) to generate annotated images
     with professional red-lining feedback for each persona.
     
+    Results are cached based on image hash + persona hash. If a persona's
+    attributes change, the cache is automatically invalidated.
+    
     Args:
         file: The marketing asset image to analyze
         persona_ids: Comma-separated list of persona IDs
@@ -1907,7 +1910,10 @@ async def analyze_asset_with_personas(
         - persona_name: Name of the persona
         - annotated_image: Base64 encoded annotated image
         - text_summary: Text summary of the feedback
+        - cached: Whether result was from cache
     """
+    import hashlib
+    
     # Parse persona IDs
     try:
         ids = [int(id.strip()) for id in persona_ids.split(",") if id.strip()]
@@ -1944,27 +1950,116 @@ async def analyze_asset_with_personas(
         logger.error(f"Failed to read uploaded file: {e}")
         raise HTTPException(status_code=400, detail="Failed to read uploaded file.")
     
-    # Analyze asset for each persona
-    logger.info(f"🎨 Analyzing asset for {len(personas)} personas using Nano Banana Pro")
-    results = await asset_analyzer.analyze_asset_for_personas(
-        image_bytes=image_bytes,
-        personas=personas,
-        mime_type=mime_type
-    )
+    # Compute image hash for caching
+    image_hash = hashlib.sha256(image_bytes).hexdigest()
+    asset_name = file.filename
+    
+    logger.info(f"🎨 Analyzing asset '{asset_name}' (hash: {image_hash[:12]}...) for {len(personas)} personas")
+    
+    results = []
+    cache_hits = 0
+    cache_misses = 0
+    
+    for persona in personas:
+        # Compute persona hash for cache key
+        persona_hash = asset_analyzer.compute_persona_hash(persona)
+        
+        # Check cache first
+        cached = crud.get_cached_analysis(
+            db=db,
+            image_hash=image_hash,
+            persona_id=persona["id"],
+            persona_hash=persona_hash
+        )
+        
+        if cached:
+            logger.info(f"✅ Cache HIT for persona {persona['id']} ({persona['name']})")
+            cache_hits += 1
+            result = cached.result_json
+            result["cached"] = True
+            results.append(result)
+        else:
+            logger.info(f"❌ Cache MISS for persona {persona['id']} ({persona['name']}) - running analysis")
+            cache_misses += 1
+            
+            # Run analysis
+            result = await asset_analyzer.analyze_image_with_nano_banana(
+                image_bytes=image_bytes,
+                persona=persona,
+                mime_type=mime_type
+            )
+            result["cached"] = False
+            
+            # Save to cache
+            crud.create_cached_analysis(
+                db=db,
+                image_hash=image_hash,
+                persona_id=persona["id"],
+                persona_hash=persona_hash,
+                asset_name=asset_name,
+                result_json=result
+            )
+            
+            results.append(result)
     
     # Log response details before returning
     for i, result in enumerate(results):
         img = result.get('annotated_image')
-        logger.info(f"📸 Result {i} ({result.get('persona_name')}): has_image={bool(img)}, img_length={len(img) if img else 0}, prefix={img[:50] if img else 'None'}...")
+        logger.info(f"📸 Result {i} ({result.get('persona_name')}): has_image={bool(img)}, cached={result.get('cached')}")
     
     return {
         "success": True,
         "asset_filename": file.filename,
+        "image_hash": image_hash,
         "personas_analyzed": len(results),
+        "cache_hits": cache_hits,
+        "cache_misses": cache_misses,
         "results": results
+    }
+
+
+@app.get("/api/assets/history")
+async def get_asset_analysis_history(
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve the history of asset analyses for the dashboard.
+    
+    Returns a list of past analyses with metadata, grouped by asset.
+    """
+    cached_results = crud.get_asset_history(db=db, skip=skip, limit=limit)
+    
+    # Group by image_hash and asset_name for cleaner display
+    history = []
+    seen_assets = {}
+    
+    for cached in cached_results:
+        asset_key = cached.image_hash
+        if asset_key not in seen_assets:
+            seen_assets[asset_key] = {
+                "image_hash": cached.image_hash,
+                "asset_name": cached.asset_name,
+                "first_analyzed": cached.created_at.isoformat() if cached.created_at else None,
+                "personas": []
+            }
+            history.append(seen_assets[asset_key])
+        
+        seen_assets[asset_key]["personas"].append({
+            "persona_id": cached.persona_id,
+            "persona_hash": cached.persona_hash[:12] + "..." if cached.persona_hash else None,
+            "analyzed_at": cached.created_at.isoformat() if cached.created_at else None
+        })
+    
+    return {
+        "total_entries": len(cached_results),
+        "unique_assets": len(history),
+        "history": history
     }
 
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
 

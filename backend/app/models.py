@@ -72,3 +72,16 @@ class BrandDocument(Base):
     chunk_size = Column(Integer, nullable=True)
     chunk_ids = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class CachedAssetAnalysis(Base):
+    """Caches asset analysis results to avoid redundant API calls."""
+    __tablename__ = "cached_asset_analysis"
+
+    id = Column(Integer, primary_key=True, index=True)
+    image_hash = Column(String, index=True)  # SHA256 of image bytes
+    persona_id = Column(Integer, index=True)
+    persona_hash = Column(String, index=True)  # Hash of persona attributes used in prompt
+    asset_name = Column(String, nullable=True)  # Original filename
+    result_json = Column(JSON)  # Annotated image + text summary
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

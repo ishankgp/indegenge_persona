@@ -20,6 +20,41 @@ load_dotenv(env_path)
 
 logger = logging.getLogger(__name__)
 
+
+def compute_persona_hash(persona: Dict[str, Any]) -> str:
+    """
+    Compute a stable hash of persona attributes that affect the annotation prompt.
+    If any of these attributes change, the cache should be invalidated.
+    """
+    import hashlib
+    import json as json_lib
+
+    # Extract the same attributes used in build_annotation_prompt
+    persona_json = persona.get("full_persona_json")
+    if isinstance(persona_json, str):
+        try:
+            persona_json = json_lib.loads(persona_json)
+        except json_lib.JSONDecodeError:
+            persona_json = {}
+    elif persona_json is None:
+        persona_json = {}
+
+    core = persona_json.get("core", {})
+    mbt = core.get("mbt", {})
+
+    # Build a dict of the relevant fields
+    hash_data = {
+        "name": persona.get("name", ""),
+        "archetype": persona.get("persona_subtype", persona.get("decision_style", "")),
+        "beliefs": mbt.get("beliefs", {}).get("core_belief_statements", {}).get("value", []),
+        "main_worry": mbt.get("tension", {}).get("main_worry", {}).get("value", ""),
+        "sensitivity_points": mbt.get("tension", {}).get("sensitivity_points", {}).get("value", []),
+    }
+
+    # Create a stable JSON string and hash it
+    hash_string = json_lib.dumps(hash_data, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(hash_string.encode("utf-8")).hexdigest()
+
 # Check for new SDK availability
 try:
     from google import genai
