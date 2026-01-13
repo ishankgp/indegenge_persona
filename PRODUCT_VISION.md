@@ -19,6 +19,12 @@ PharmaPersonaSim transforms qualitative patient and HCP insights into quantitati
 
 ---
 
+## Feature-Level Timeline
+
+![Feature Gantt Chart 2026](docs/feature_gantt_2026.png)
+
+---
+
 ## Foundation Delivered ✅
 
 | Capability | Description |
@@ -41,51 +47,74 @@ PharmaPersonaSim transforms qualitative patient and HCP insights into quantitati
 
 ---
 
-## 6-Month Roadmap (Q1–Q2 2026)
+## Q1 2026: Asset Intelligence
 
-### Q1 2026: Asset Intelligence
 **Theme**: *"Visual Feedback & Refinement"*
 
-| Deliverable | Description |
-|------------|-------------|
-| **Asset Analysis Engine** | AI-powered visual red-lining of marketing assets |
-| **Persona-Based Annotations** | Asset feedback from persona perspectives |
-| **Caching & Performance** | Response optimization for asset analysis |
-| **Expert Review Cycle** | Feedback integration with John |
+### Asset Analysis Engine
+AI-powered visual red-lining of marketing assets using Gemini 3 Pro Image. Analyzes pharma marketing materials and provides visual annotations highlighting areas of concern or opportunity.
+
+**Status**: ✅ Done
+
+### Persona-Based Annotations
+Asset feedback generated from specific persona perspectives. Each persona reviews the asset based on their beliefs, concerns, and decision-making style.
+
+**Status**: ✅ Done
+
+### Caching & Performance
+Response optimization for asset analysis. Implements persona attribute hashing to cache results and reduce API costs.
+
+**Status**: 🔄 In Progress
+
+### Expert Review Cycle
+Structured feedback integration with John to validate persona behavioral accuracy and clinical relevance.
+
+**Status**: 🔄 In Progress
 
 ---
 
-### Q2 2026: Knowledge Graph
+## Q2 2026: Knowledge Graph
+
 **Theme**: *"Connected Brand Intelligence"*
 
-| Deliverable | Description |
-|------------|-------------|
-| **Knowledge Extraction** | Extract insights from brand documents |
-| **Entity Relationships** | Connect personas to brand knowledge |
-| **Persona Grounding** | Enrich personas from knowledge context |
-| **Alignment Validation** | Ensure persona-brand consistency |
+### Knowledge Extraction
+Extract structured insights from brand documents including key messages, claims, therapeutic areas, and target segments.
+
+**Status**: 🔄 In Progress
+
+### Entity Relationships
+Connect personas to brand knowledge through semantic relationships. Build graph of how personas relate to brand attributes.
+
+**Status**: 🔄 In Progress
+
+### Persona Grounding
+Enrich persona responses using knowledge graph context. Personas reference specific brand knowledge in their feedback.
+
+**Status**: ⏳ Planned
+
+### Alignment Validation
+Ensure persona-brand consistency by validating that persona attributes align with target segment definitions.
+
+**Status**: ⏳ Planned
 
 ---
 
-## Annual View: Directional Themes
+## Q3-Q4 2026: Future Exploration
 
 > [!NOTE]
 > Q3-Q4 items are **directional** and depend on Q1-Q2 outcomes.
 
-| Quarter | Theme | Focus Areas |
-|---------|-------|-------------|
-| **Q1** | Asset Intelligence | Visual red-lining, asset feedback |
-| **Q2** | Knowledge Graph | Brand knowledge, persona grounding |
-| **Q3** | Integration Layer | Veeva sync, external data sources |
-| **Q4** | Scale & Analytics | Multi-brand, coverage analysis |
+### Veeva Integration (Q3)
+Sync with Veeva Vault for content management. Pull approved assets and brand materials directly into the platform.
 
-### Q3-Q4 Exploration Areas
+### Similarity Engine (Q3-Q4)
+Find similar personas and insights across the platform. Enable persona clustering and recommendation.
 
-- **Veeva Integration**: Sync with Veeva Vault for content management
-- **Similarity Engine**: Find similar personas and insights
-- **Coverage Analysis**: Measure knowledge coverage across brands
-- **Auto-Enrichment**: Automated persona updates from new data
-- **Multi-Brand Support**: Platform-level brand isolation
+### Coverage Analysis (Q4)
+Measure knowledge coverage across brands. Identify gaps in brand documentation and persona coverage.
+
+### Auto-Enrichment (Q4)
+Automated persona updates when new brand documents are uploaded. Keep personas current with latest brand context.
 
 ---
 
