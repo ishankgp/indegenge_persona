@@ -114,6 +114,23 @@ export function CreatePersona() {
   const [transcriptLoading, setTranscriptLoading] = useState(false)
   const [recentlyCreated, setRecentlyCreated] = useState<{ ids: number[]; names: string[] }>({ ids: [], names: [] })
 
+  // Similarity check modal state
+  const [similarityModal, setSimilarityModal] = useState<{
+    open: boolean;
+    similarityScore: number;
+    mostSimilar: { id: number; name: string } | null;
+    overlappingTraits: string[];
+    recommendation: string;
+    pendingSubmit: (() => Promise<void>) | null;
+  }>({
+    open: false,
+    similarityScore: 0,
+    mostSimilar: null,
+    overlappingTraits: [],
+    recommendation: '',
+    pendingSubmit: null,
+  })
+
   const manualFieldStatuses = useMemo<FieldStatus[]>(() => {
     const ageValue = parseInt(manualFormData.age)
     const ageValid = !isNaN(ageValue) && ageValue >= 1 && ageValue <= 120
@@ -458,63 +475,94 @@ export function CreatePersona() {
     const ageValid = !isNaN(age) && age >= 1 && age <= 120
     const safeAge = ageValid ? age : undefined
 
-    setGenerating(true)
-    try {
-      // Create manual persona by calling a new API endpoint
-      // Include brand_id directly - the backend now handles automatic grounding
-      const personaData = {
-        name: manualFormData.name,
+    // Build persona data for similarity check and creation
+    const personaData = {
+      name: manualFormData.name,
+      age: safeAge,
+      gender: manualFormData.gender,
+      condition: manualFormData.condition,
+      region: manualFormData.region,
+      brand_id: manualBrandId || undefined,
+      demographics: {
         age: safeAge,
         gender: manualFormData.gender,
-        condition: manualFormData.condition,
-        region: manualFormData.region,
-        brand_id: manualBrandId || undefined,
-        demographics: {
-          age: safeAge,
-          gender: manualFormData.gender,
-          location: manualFormData.region,
-          occupation: manualFormData.occupation
-        },
-        medical_background: manualFormData.medical_background,
-        lifestyle_and_values: manualFormData.lifestyle_and_values,
-        motivations: manualFormData.motivations.filter(m => m.trim() !== ''),
-        beliefs: manualFormData.beliefs.filter(b => b.trim() !== ''),
-        pain_points: manualFormData.pain_points.filter(p => p.trim() !== ''),
-        communication_preferences: manualFormData.communication_preferences
+        location: manualFormData.region,
+        occupation: manualFormData.occupation
+      },
+      medical_background: manualFormData.medical_background,
+      lifestyle_and_values: manualFormData.lifestyle_and_values,
+      motivations: manualFormData.motivations.filter(m => m.trim() !== ''),
+      beliefs: manualFormData.beliefs.filter(b => b.trim() !== ''),
+      pain_points: manualFormData.pain_points.filter(p => p.trim() !== ''),
+      communication_preferences: manualFormData.communication_preferences
+    }
+
+    // Function to actually create the persona
+    const createPersona = async () => {
+      setGenerating(true)
+      try {
+        const newPersona = await PersonasAPI.createManual(personaData)
+        console.log("Created manual persona:", newPersona.id, "with brand_id:", manualBrandId)
+
+        // Reset form
+        setManualFormData({
+          name: "",
+          age: "",
+          gender: "",
+          condition: "",
+          region: "",
+          occupation: "",
+          medical_background: "",
+          lifestyle_and_values: "",
+          pain_points: ["", "", "", ""],
+          motivations: ["", "", "", ""],
+          beliefs: ["", "", "", ""],
+          communication_preferences: {
+            preferred_channels: "",
+            information_style: "",
+            frequency: ""
+          }
+        })
+
+        setRecentlyCreated({ ids: [newPersona.id], names: [newPersona.name || manualFormData.name] })
+      } catch (error: any) {
+        console.error("Error creating manual persona:", error)
+        const errorMessage = error.response?.data?.detail || "An unexpected error occurred. Please check the console and ensure the backend is running."
+        setError(errorMessage)
+        alert(`Creation Failed: ${errorMessage}`)
+      } finally {
+        setGenerating(false)
       }
+    }
 
-      const newPersona = await PersonasAPI.createManual(personaData)
-      console.log("Created manual persona:", newPersona.id, "with brand_id:", manualBrandId)
-
-      // Reset form
-      setManualFormData({
-        name: "",
-        age: "",
-        gender: "",
-        condition: "",
-        region: "",
-        occupation: "",
-        medical_background: "",
-        lifestyle_and_values: "",
-        pain_points: ["", "", "", ""],
-        motivations: ["", "", "", ""],
-        beliefs: ["", "", "", ""],
-        communication_preferences: {
-          preferred_channels: "",
-          information_style: "",
-          frequency: ""
-        }
+    // Check for similar personas before creating
+    setGenerating(true)
+    try {
+      const similarityResult = await PersonasAPI.checkSimilarity({
+        persona_attrs: personaData,
+        brand_id: manualBrandId || undefined,
+        threshold: 0.7
       })
 
-      setRecentlyCreated({ ids: [newPersona.id], names: [newPersona.name || manualFormData.name] })
-
+      if (similarityResult.has_similar && similarityResult.most_similar) {
+        // Show similarity modal instead of creating directly
+        setSimilarityModal({
+          open: true,
+          similarityScore: similarityResult.similarity_score,
+          mostSimilar: similarityResult.most_similar,
+          overlappingTraits: similarityResult.overlapping_traits,
+          recommendation: similarityResult.recommendation,
+          pendingSubmit: createPersona,
+        })
+        setGenerating(false)
+      } else {
+        // No similar personas found, proceed with creation
+        await createPersona()
+      }
     } catch (error: any) {
-      console.error("Error creating manual persona:", error)
-      const errorMessage = error.response?.data?.detail || "An unexpected error occurred. Please check the console and ensure the backend is running."
-      setError(errorMessage)
-      alert(`Creation Failed: ${errorMessage}`)
-    } finally {
-      setGenerating(false)
+      console.error("Similarity check failed, proceeding with creation:", error)
+      // If similarity check fails, still allow creation
+      await createPersona()
     }
   }
 
@@ -594,6 +642,86 @@ export function CreatePersona() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
+      {/* Similarity Warning Modal */}
+      {similarityModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <Card className="w-full max-w-lg mx-4 shadow-2xl">
+            <CardHeader className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border-b">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-100 dark:bg-amber-900/50 rounded-full">
+                  <Users className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg text-amber-800 dark:text-amber-200">
+                    Similar Persona Found
+                  </CardTitle>
+                  <CardDescription className="text-amber-600 dark:text-amber-400">
+                    This persona is {Math.round(similarityModal.similarityScore * 100)}% similar to an existing one
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-4">
+              {similarityModal.mostSimilar && (
+                <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Most similar to:</p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    {similarityModal.mostSimilar.name}
+                  </p>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="p-0 h-auto text-primary"
+                    onClick={() => navigate(`/personas/${similarityModal.mostSimilar?.id}`)}
+                  >
+                    View this persona →
+                  </Button>
+                </div>
+              )}
+
+              {similarityModal.overlappingTraits.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Overlapping characteristics:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {similarityModal.overlappingTraits.slice(0, 5).map((trait, idx) => (
+                      <Badge key={idx} variant="secondary" className="text-xs">
+                        {trait}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  {similarityModal.recommendation === 'use_existing'
+                    ? "Consider using the existing persona instead of creating a duplicate."
+                    : "You can proceed, but the personas may have significant overlap."}
+                </p>
+              </div>
+            </CardContent>
+            <div className="flex justify-end gap-3 p-4 border-t bg-gray-50 dark:bg-gray-900/50">
+              <Button
+                variant="outline"
+                onClick={() => setSimilarityModal(prev => ({ ...prev, open: false, pendingSubmit: null }))}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="default"
+                onClick={async () => {
+                  setSimilarityModal(prev => ({ ...prev, open: false }))
+                  if (similarityModal.pendingSubmit) {
+                    await similarityModal.pendingSubmit()
+                  }
+                }}
+              >
+                Create Anyway
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
       {/* Indegene Purple Header Section */}
       <div className="relative overflow-hidden bg-gradient-to-r from-[hsl(262,60%,38%)] via-[hsl(262,60%,42%)] to-[hsl(280,60%,45%)]">
         {/* Animated Background */}

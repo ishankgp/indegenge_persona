@@ -213,23 +213,27 @@ class BrandInsight(BaseModel):
     source_document: Optional[str] = None
 
 
+
 class BrandDocumentBase(BaseModel):
     brand_id: int
     filename: str
-    category: str
+
+    document_type: Optional[str] = None  # New field: DocumentType enum value
     summary: Optional[str] = None
     extracted_insights: Optional[List[BrandInsight]] = None
     vector_store_id: Optional[str] = None
     chunk_size: Optional[int] = None
     chunk_ids: Optional[List[str]] = None
+    file_type: Optional[str] = None
+    upload_date: Optional[datetime] = None
 
 class BrandDocumentCreate(BrandDocumentBase):
-    filepath: str
+    filepath: Optional[str] = None  # Made optional for flexibility
 
 class BrandDocument(BrandDocumentBase):
     id: int
-    filepath: str
-    created_at: datetime
+    filepath: Optional[str] = None  # May be None for newer documents
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

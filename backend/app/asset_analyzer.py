@@ -95,8 +95,8 @@ def get_gemini_client():
     return _gemini_client
 
 
-def build_annotation_prompt(persona: Dict[str, Any]) -> str:
-    """Build the annotation prompt using persona attributes."""
+def build_annotation_prompt(persona: Dict[str, Any], knowledge_section: Optional[str] = None) -> str:
+    """Build the annotation prompt using persona attributes and optional knowledge graph context."""
     
     # Extract persona attributes
     name = persona.get("name", "Healthcare Professional")
@@ -144,20 +144,37 @@ Persona Profile:
 TASK: Create a visually annotated version of this marketing asset with hand-drawn style feedback markups.
 
 VISUAL ANNOTATION REQUIREMENTS (VERY IMPORTANT - YOU MUST DRAW ON THE IMAGE):
-1. Draw RED CIRCLES around 3-5 areas that concern this persona
+1. Draw RED CIRCLES around areas that concern this persona
 2. Draw ARROWS pointing to specific elements with handwritten-style comments
-3. Add SHORT MARGIN NOTES in a casual handwriting style (e.g., "Too clinical!", "Where's the data?", "Love this!", "Confusing!")
+3. Add handwritten MARGIN NOTES throughout the image with your reactions:
+   - Questions: "Where's the data?", "No treatment mention?"
+   - Concerns: "Too clinical!", "Misses the point!", "Generic"
+   - Strong reactions: "This won't help me!", "PA burden?"
+   - Positives: "Love this!", "Great visual!"
 4. Use RED/ORANGE for concerns, GREEN checkmarks for positives
-5. Add emotion indicators where relevant (e.g., "?" for confusion, "!" for strong reaction)
+5. Add emotion indicators: "?" for confusion, "!" for strong reaction, "X" for rejection
+6. SPREAD annotations across the ENTIRE image - don't cluster them
+7. Aim for 8-12 annotation points covering different areas
 
-ANNOTATION STYLE - Make it look like a real person marked up a printed document:
+ANNOTATION STYLE - Make it look like a real clinician/patient marked up a printed document:
 - Casual, handwritten text labels (not typed/formal)
-- Organic hand-drawn circles and arrows (not perfect geometric shapes)
-- Brief reactions that reflect this persona's viewpoint
+- Organic hand-drawn circles, underlines and arrows
+- Brief but specific reactions that reflect {name}'s unique viewpoint and concerns
+- Include specific clinical/therapeutic language where relevant
 
 Based on {name}'s perspective, identify what would catch their eye, concern them, or resonate with them.
+"""
 
-OUTPUT: Return the original image with all visual annotations drawn directly on it."""
+    # Append knowledge graph context if available
+    if knowledge_section:
+        prompt += f"""
+{knowledge_section}
+
+When writing annotations, you may reference research findings. For example, if something doesn't address a known patient tension, note it.
+"""
+
+    prompt += """
+OUTPUT: Return the original image with ALL visual annotations drawn directly on it. Make the feedback rich and detailed."""
 
     return prompt
 
@@ -165,7 +182,8 @@ OUTPUT: Return the original image with all visual annotations drawn directly on 
 async def analyze_image_with_nano_banana(
     image_bytes: bytes,
     persona: Dict[str, Any],
-    mime_type: str = "image/png"
+    mime_type: str = "image/png",
+    knowledge_section: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Analyze an image using Nano Banana Pro (Gemini 3 Pro Image Preview).
@@ -177,9 +195,10 @@ async def analyze_image_with_nano_banana(
         image_bytes: Raw bytes of the image to analyze
         persona: Dictionary containing persona attributes
         mime_type: MIME type of the image
+        knowledge_section: Optional knowledge graph context for research-backed feedback
         
     Returns:
-        Dictionary with 'annotated_image' (base64) and 'text_summary'
+        Dictionary with 'annotated_image' (base64), 'text_summary', and 'citations'
     """
     
     client = get_gemini_client()
@@ -191,34 +210,69 @@ async def analyze_image_with_nano_banana(
         }
     
     try:
-        # Build persona-specific prompt
-        prompt = build_annotation_prompt(persona)
+        # Build persona-specific prompt WITH knowledge context
+        prompt = build_annotation_prompt(persona, knowledge_section)
         
         # Use Gemini 3 Pro Image for visual annotation
         model_name = "gemini-3-pro-image-preview"
-        logger.info(f"Using model: {model_name} for persona: {persona.get('name', 'Unknown')}")
+        logger.info(f"Using model: {model_name} for persona: {persona.get('name', 'Unknown')}, with_knowledge={bool(knowledge_section)}")
         
         annotated_image_b64 = None
         text_summary = ""
         
+
         try:
-            # Use Gemini 3 Pro Image for visual annotation with image output
-            # CRITICAL: Must include response_modalities=["IMAGE", "TEXT"] for image output
-            response = client.models.generate_content(
-                model=model_name,
-                contents=[
-                    # Include the original image
-                    types.Part.from_bytes(
-                        data=image_bytes,
-                        mime_type=mime_type
-                    ),
-                    # Include the annotation prompt
-                    prompt
-                ],
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"]
-                )
-            )
+            # Try up to 2 times to get an image
+            MAX_RETRIES = 2
+            
+            for attempt in range(1, MAX_RETRIES + 1):
+                try:
+                    logger.info(f"🎨 Generating content (Attempt {attempt}/{MAX_RETRIES})...")
+                    
+                    # Use Gemini 3 Pro Image for visual annotation with image output
+                    # CRITICAL: Must include response_modalities=["IMAGE", "TEXT"] for image output
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[
+                            # Include the original image
+                            types.Part.from_bytes(
+                                data=image_bytes,
+                                mime_type=mime_type
+                            ),
+                            # Include the annotation prompt
+                            prompt
+                        ],
+                        config=types.GenerateContentConfig(
+                            # Increase temperature slightly on retry to get different result
+                            temperature=0.4 if attempt == 1 else 0.7,
+                            response_modalities=["IMAGE", "TEXT"]
+                        )
+                    )
+                    
+                    # Check if we got an image (simplified check before full processing)
+                    has_image_output = False
+                    if hasattr(response, 'candidates') and response.candidates:
+                        parts = response.candidates[0].content.parts
+                        for part in parts:
+                            if hasattr(part, 'inline_data') and part.inline_data:
+                                has_image_output = True
+                                break
+                                
+                    if has_image_output:
+                        logger.info("✅ Got image output from model")
+                        # Break loop to process this successful response
+                        break
+                    else:
+                        logger.warning(f"⚠️ Attempt {attempt}: Model returned text only (no image).")
+                        if attempt < MAX_RETRIES:
+                            logger.info("Retrying...")
+                            prompt += "\n\nIMPORTANT: You FAILED to return an image in the previous attempt. YOU MUST DRAW ON THE IMAGE."
+                
+                except Exception as e:
+                    logger.error(f"Error in attempt {attempt}: {e}")
+                    if attempt == MAX_RETRIES:
+                        raise e
+
             
             # Extract annotated image and text from response
             # Handle different SDK response formats

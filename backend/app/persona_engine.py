@@ -7,37 +7,15 @@ import re
 import uuid
 import random
 from datetime import datetime
+import threading
+
+# Import shared utilities
+from .utils import get_openai_client, MODEL_NAME
 
 # Load environment variables from the backend folder
 backend_dir = os.path.dirname(os.path.dirname(__file__))
 env_path = os.path.join(backend_dir, '.env')
 load_dotenv(env_path)
-
-# Cache for the OpenAI client.  The SDK requires an API key during
-# instantiation, so we create the client lazily to avoid raising an exception
-# when the key is absent (for example in local development or during unit
-# tests).
-_openai_client: Optional[OpenAI] = None
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
-
-import threading
-
-_openai_client: Optional[OpenAI] = None
-_client_lock = threading.Lock()
-
-def get_openai_client() -> Optional[OpenAI]:
-    """Return a configured ``OpenAI`` client if an API key is available."""
-
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-
-    global _openai_client
-    with _client_lock:
-        if _openai_client is None:
-            _openai_client = OpenAI(api_key=api_key)
-
-    return _openai_client
 
 
 def _enriched_string(value: Optional[str], confidence: float = 0.72, evidence: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -740,7 +718,7 @@ def generate_persona_from_attributes(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
-            max_tokens=1600,
+            max_completion_tokens=1600,
         )
 
         content = response.choices[0].message.content or "{}"
@@ -1131,7 +1109,7 @@ def extract_mbt_from_text(document_text: str, max_chars: int = 6000) -> List[Dic
             model=MODEL_NAME,
             messages=extraction_request,
             response_format={"type": "json_object"},
-            max_tokens=900,
+            max_completion_tokens=900,
         )
         content = response.choices[0].message.content or "{}"
         parsed = json.loads(content)
@@ -2146,7 +2124,7 @@ def extract_mbt_from_transcript_llm(transcript: str) -> Dict[str, Any]:
                 {"role": "user", "content": _create_mbt_extraction_prompt(transcript)}
             ],
             response_format={"type": "json_object"},
-            max_tokens=1500,
+            max_completion_tokens=1500,
         )
         content = response.choices[0].message.content or "{}"
         return json.loads(content)
@@ -2168,7 +2146,7 @@ def extract_decision_drivers_from_transcript(transcript: str) -> Dict[str, Any]:
                 {"role": "user", "content": _create_decision_drivers_prompt(transcript)}
             ],
             response_format={"type": "json_object"},
-            max_tokens=1000,
+            max_completion_tokens=1000,
         )
         content = response.choices[0].message.content or "{}"
         return json.loads(content)
@@ -2190,7 +2168,7 @@ def extract_objections_from_transcript(transcript: str) -> Dict[str, Any]:
                 {"role": "user", "content": _create_objections_prompt(transcript)}
             ],
             response_format={"type": "json_object"},
-            max_tokens=1000,
+            max_completion_tokens=1000,
         )
         content = response.choices[0].message.content or "{}"
         return json.loads(content)
@@ -2212,7 +2190,7 @@ def extract_messaging_hooks_from_transcript(transcript: str) -> Dict[str, Any]:
                 {"role": "user", "content": _create_messaging_hooks_prompt(transcript)}
             ],
             response_format={"type": "json_object"},
-            max_tokens=1000,
+            max_completion_tokens=1000,
         )
         content = response.choices[0].message.content or "{}"
         return json.loads(content)
@@ -2234,7 +2212,7 @@ def extract_channel_behavior_from_transcript(transcript: str) -> Dict[str, Any]:
                 {"role": "user", "content": _create_channel_behavior_prompt(transcript)}
             ],
             response_format={"type": "json_object"},
-            max_tokens=1000,
+            max_completion_tokens=1000,
         )
         content = response.choices[0].message.content or "{}"
         return json.loads(content)

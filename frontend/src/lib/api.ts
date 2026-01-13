@@ -274,6 +274,20 @@ export const PersonasAPI = {
     api.get(`/api/personas/${id}/export`, {
       params: { include_evidence: includeEvidence }
     }).then(r => r.data),
+
+  // Check similarity before creating a new persona
+  checkSimilarity: (payload: {
+    persona_attrs: Record<string, any>;
+    brand_id?: number;
+    threshold?: number;
+  }): Promise<{
+    has_similar: boolean;
+    most_similar: { id: number; name: string } | null;
+    similarity_score: number;
+    overlapping_traits: string[];
+    key_differences?: string[];
+    recommendation: 'use_existing' | 'proceed_with_caution' | 'safe_to_create';
+  }> => api.post('/api/personas/check-similarity', payload).then(r => r.data),
 };
 
 export interface BrandInsight {
@@ -477,38 +491,35 @@ export interface AssetAnalysisResult {
   annotated_image: string | null; // Base64 encoded
   text_summary: string;
   error: string | null;
-  cached?: boolean;
+  // Knowledge Graph fields
+  citations?: Array<{
+    id: string;
+    text: string;
+    source_quote?: string;
+    confidence?: number;
+  }>;
+  research_alignment_score?: number;
+  alignment_summary?: string;
+  knowledge_enabled?: boolean;
 }
 
 export interface AssetAnalysisResponse {
   success: boolean;
   asset_filename: string;
-  image_hash?: string;
   personas_analyzed: number;
-  cache_hits?: number;
-  cache_misses?: number;
   results: AssetAnalysisResult[];
-}
-
-export interface AssetHistoryPersona {
-  id: number;
-  persona_id: number;
-  persona_hash: string | null;
-  analyzed_at: string | null;
-  result_json: AssetAnalysisResult;
 }
 
 export interface AssetHistoryItem {
   image_hash: string;
-  asset_name: string | null;
-  first_analyzed: string | null;
-  personas: AssetHistoryPersona[];
+  asset_name: string;
+  created_at: string;
+  results: AssetAnalysisResult[];
 }
 
 export interface AssetHistoryResponse {
-  total_entries: number;
-  unique_assets: number;
-  history: AssetHistoryItem[];
+  total_assets: number;
+  assets: AssetHistoryItem[];
 }
 
 export const AssetIntelligenceAPI = {
@@ -518,13 +529,123 @@ export const AssetIntelligenceAPI = {
     formData.append('persona_ids', personaIds.join(','));
     return api.post('/api/assets/analyze', formData).then(r => r.data);
   },
-
-  getHistory: (skip: number = 0, limit: number = 50): Promise<AssetHistoryResponse> => {
-    return api.get('/api/assets/history', { params: { skip, limit } }).then(r => r.data);
+  getHistory: (): Promise<AssetHistoryResponse> => {
+    return api.get('/api/assets/history/full').then(r => r.data);
   },
-
-  deleteHistory: (analysisId: number): Promise<void> => {
-    return api.delete(`/api/assets/history/${analysisId}`).then(() => undefined);
+  clearCache: (): Promise<{ success: boolean; deleted_count: number }> => {
+    return api.delete('/api/assets/cache/clear').then(r => r.data);
   }
 };
 
+// Knowledge Graph API
+export interface KnowledgeNode {
+  id: string;
+  node_type: string;
+  text: string;
+  summary?: string;
+  segment?: string;
+  journey_stage?: string;
+  confidence: number;
+  source_document_id?: number;
+  source_quote?: string;
+  verified: boolean;
+  created_at?: string;
+}
+
+export interface KnowledgeRelation {
+  id: number;
+  from_node_id: string;
+  to_node_id: string;
+  relation_type: string;
+  strength: number;
+  context?: string;
+  inferred_by: string;
+  created_at?: string;
+}
+
+export interface KnowledgeGraph {
+  brand_id: number;
+  nodes: Array<{
+    id: string;
+    type: string;
+    data: any;
+    position: { x: number; y: number };
+  }>;
+  edges: Array<{
+    id: string;
+    source: string;
+    target: string;
+    type: string;
+    data: any;
+    label: string;
+    animated: boolean;
+  }>;
+  stats: {
+    total_nodes: number;
+    total_edges: number;
+    node_types: Record<string, number>;
+    contradictions: number;
+  };
+}
+
+export const KnowledgeGraphAPI = {
+  // Get nodes for a brand
+  getNodes: (brandId: number, options?: { node_type?: string; segment?: string }): Promise<{ total: number; nodes: KnowledgeNode[] }> =>
+    api.get(`/api/knowledge/brands/${brandId}/nodes`, { params: options }).then(r => r.data),
+
+  // Get relations for a brand
+  getRelations: (brandId: number, options?: { relation_type?: string }): Promise<{ total: number; relations: KnowledgeRelation[] }> =>
+    api.get(`/api/knowledge/brands/${brandId}/relations`, { params: options }).then(r => r.data),
+
+  // Get full graph for visualization
+  getGraph: (brandId: number): Promise<KnowledgeGraph> =>
+    api.get(`/api/knowledge/brands/${brandId}/graph`).then(r => r.data),
+
+  // Extract knowledge from a document
+  extractFromDocument: (documentId: number): Promise<{
+    success: boolean;
+    document_id: number;
+    document_type: string;
+    nodes_extracted: number;
+    relationships_inferred: number;
+    node_ids: string[];
+  }> => api.post(`/api/knowledge/documents/${documentId}/extract`).then(r => r.data),
+
+  // Enrich a persona from the knowledge graph
+  enrichPersona: (brandId: number, personaId: number): Promise<{
+    success: boolean;
+    persona_id: number;
+    enriched: boolean;
+    nodes_applied: number;
+  }> => api.post(`/api/knowledge/brands/${brandId}/personas/${personaId}/enrich`).then(r => r.data),
+
+  // Delete a node
+  deleteNode: (nodeId: string): Promise<{ success: boolean; deleted_node_id: string }> =>
+    api.delete(`/api/knowledge/nodes/${nodeId}`).then(r => r.data),
+
+  // Verify a node
+  verifyNode: (nodeId: string, verified: boolean = true): Promise<{ success: boolean; node_id: string; verified: boolean }> =>
+    api.put(`/api/knowledge/nodes/${nodeId}/verify`, null, { params: { verified } }).then(r => r.data),
+};
+
+// Coverage API
+export interface CoverageSuggestion {
+  name: string;
+  persona_type: string;
+  age?: number;
+  gender?: string;
+  fill_gap?: string;
+  rationale: string;
+  priority: 'high' | 'medium' | 'low';
+  [key: string]: any;
+}
+
+export const CoverageAPI = {
+  // Get coverage analysis
+  getAnalysis: (brandId?: number): Promise<any> =>
+    api.get(`/api/coverage/analysis`, { params: { brand_id: brandId } }).then(r => r.data),
+
+  // Get AI suggestions
+  getSuggestions: (brandId?: number, limit: number = 5): Promise<{ success: boolean; suggestions: CoverageSuggestion[] }> =>
+    api.post(`/api/coverage/suggestions`, { brand_id: brandId, limit }).then(r => r.data),
+};

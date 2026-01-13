@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, Form, Request, Response, Query, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, Form, Request, Response, Query, BackgroundTasks, Body
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -80,6 +80,63 @@ def run_startup_migration():
             'chunk_ids',
             "ALTER TABLE brand_documents ADD COLUMN chunk_ids JSON"
         )
+        
+        # Add document_type column for knowledge graph classification
+        document_type_added = add_column_if_missing(
+            'brand_documents',
+            'document_type',
+            "ALTER TABLE brand_documents ADD COLUMN document_type VARCHAR DEFAULT 'brand_messaging'"
+        )
+
+        # Create knowledge_nodes table if it doesn't exist
+        def create_table_if_missing(table_name: str, create_statement: str):
+            inspector = inspect(engine)
+            if table_name in inspector.get_table_names():
+                logger.info("✅ %s table already exists", table_name)
+                return False
+            logger.info("🔄 Creating %s table...", table_name)
+            with engine.connect() as conn:
+                conn.execute(text(create_statement))
+                conn.commit()
+            logger.info("✅ %s table created", table_name)
+            return True
+
+        knowledge_nodes_created = create_table_if_missing(
+            'knowledge_nodes',
+            """
+            CREATE TABLE knowledge_nodes (
+                id VARCHAR PRIMARY KEY,
+                brand_id INTEGER REFERENCES brands(id),
+                node_type VARCHAR,
+                text TEXT NOT NULL,
+                summary VARCHAR(200),
+                segment VARCHAR,
+                journey_stage VARCHAR,
+                source_document_id INTEGER REFERENCES brand_documents(id),
+                source_quote TEXT,
+                confidence FLOAT DEFAULT 0.7,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                verified_by_user BOOLEAN DEFAULT FALSE
+            )
+            """
+        )
+        
+        knowledge_relations_created = create_table_if_missing(
+            'knowledge_relations',
+            """
+            CREATE TABLE knowledge_relations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                brand_id INTEGER REFERENCES brands(id),
+                from_node_id VARCHAR REFERENCES knowledge_nodes(id),
+                to_node_id VARCHAR REFERENCES knowledge_nodes(id),
+                relation_type VARCHAR,
+                strength FLOAT DEFAULT 0.7,
+                context TEXT,
+                inferred_by VARCHAR DEFAULT 'llm',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
 
         with engine.connect() as conn:
             final_count = conn.execute(text("SELECT COUNT(*) FROM personas")).scalar() or 0
@@ -96,7 +153,10 @@ def run_startup_migration():
                 final_count
             )
 
-        if not any([brand_added, avatar_added, vector_store_added, chunk_size_added, chunk_ids_added]):
+        migrations_run = [brand_added, avatar_added, vector_store_added, chunk_size_added, 
+                         chunk_ids_added, document_type_added, knowledge_nodes_created, 
+                         knowledge_relations_created]
+        if not any(migrations_run):
             logger.info("ℹ️ No schema changes required during startup migration")
 
     except Exception as e:
@@ -549,6 +609,59 @@ async def recruit_personas(request: schemas.PersonaSearchRequest, db: Session = 
     personas = crud.search_personas(db, filters)
 
     return personas
+
+
+@app.post("/api/personas/check-similarity")
+async def check_persona_similarity_endpoint(
+    request: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Check if a new persona is similar to existing personas.
+    
+    Returns similarity analysis to help users avoid creating duplicates.
+    If similar personas exist, suggests using existing ones instead.
+    """
+    from . import similarity_service
+    
+    new_persona_attrs = request.get("persona_attrs", {})
+    brand_id = request.get("brand_id")
+    threshold = request.get("threshold", 0.7)
+    
+    if not new_persona_attrs:
+        raise HTTPException(status_code=400, detail="persona_attrs is required")
+    
+    # Get existing personas (optionally filtered by brand)
+    if brand_id:
+        existing_personas = crud.get_personas_by_brand(db, brand_id=brand_id, limit=50)
+    else:
+        existing_personas = crud.get_personas(db, limit=50)
+    
+    # Convert to dicts for the similarity service
+    existing_dicts = []
+    for p in existing_personas:
+        persona_dict = {
+            "id": p.id,
+            "name": p.name,
+            "age": p.age,
+            "gender": p.gender,
+            "condition": p.condition,
+            "persona_type": p.persona_type,
+            "persona_subtype": p.persona_subtype,
+            "decision_style": p.decision_style,
+            "full_persona_json": p.full_persona_json
+        }
+        existing_dicts.append(persona_dict)
+    
+    # Check similarity
+    result = similarity_service.check_persona_similarity_sync(
+        new_persona_attrs=new_persona_attrs,
+        existing_personas=existing_dicts,
+        brand_id=brand_id,
+        threshold=threshold
+    )
+    
+    return result
 
 
 @app.post("/api/personas/from-transcript")
@@ -1361,6 +1474,26 @@ async def get_brands(skip: int = 0, limit: int = 100, db: Session = Depends(get_
     """List all brands."""
     return crud.get_brands(db, skip, limit)
 
+
+# --- Archetypes & Disease Packs Endpoints ---
+
+@app.get("/api/archetypes")
+async def get_archetypes():
+    """List all available persona archetypes for grounding persona generation."""
+    from .archetypes import ARCHETYPES
+    return ARCHETYPES
+
+
+@app.get("/api/disease-packs")
+async def get_disease_packs():
+    """List all available disease context packs with MBT grounding."""
+    from .disease_packs import DISEASE_PACKS
+    # Return as list with name as key identifier
+    return [
+        {"name": key, **value}
+        for key, value in DISEASE_PACKS.items()
+    ]
+
 @app.post("/api/brands/{brand_id}/upload", response_model=schemas.BrandDocument)
 async def upload_brand_document(
     brand_id: int,
@@ -1429,7 +1562,33 @@ async def upload_brand_document(
         chunk_ids=chunk_ids or None,
     )
 
-    return crud.upsert_brand_document(db, doc_create)
+    new_doc = crud.upsert_brand_document(db, doc_create)
+
+    # Trigger Knowledge Graph Extraction
+    try:
+        from . import knowledge_extractor
+        logger.info(f"🧠 Starting knowledge extraction for document {new_doc.id}")
+        nodes = await knowledge_extractor.extract_knowledge_from_document(
+            document_id=new_doc.id,
+            document_text=text,
+            document_type=category or "brand_messaging",
+            brand_id=brand_id,
+            brand_name=brand.name,
+            db=db
+        )
+        
+        if nodes:
+            logger.info(f"🧠 Inferring relationships for brand {brand_id}")
+            await knowledge_extractor.infer_relationships(
+                brand_id=brand_id,
+                new_nodes=nodes,
+                db=db
+            )
+    except Exception as e:
+        logger.error(f"❌ Knowledge extraction failed for document {new_doc.id}: {e}")
+        # We don't fail the request, just log the error
+
+    return new_doc
 
 @app.get("/api/brands/{brand_id}/documents", response_model=List[schemas.BrandDocument])
 async def get_brand_documents(brand_id: int, db: Session = Depends(get_db)):
@@ -1609,6 +1768,29 @@ async def seed_brand_documents(brand_id: int, db: Session = Depends(get_db)):
         new_doc = crud.upsert_brand_document(db, doc_create)
         created_docs.append(new_doc)
         
+        # Trigger Knowledge Graph Extraction for this document
+        try:
+            from . import knowledge_extractor
+            logger.info(f"🧠 Starting knowledge extraction for seeded document {new_doc.id}")
+            nodes = await knowledge_extractor.extract_knowledge_from_document(
+                document_id=new_doc.id,
+                document_text=text,
+                document_type="brand_messaging", # Default for mock data
+                brand_id=brand_id,
+                brand_name=brand.name,
+                db=db
+            )
+            
+            if nodes:
+                # We can infer relationships cumulatively
+                await knowledge_extractor.infer_relationships(
+                    brand_id=brand_id,
+                    new_nodes=nodes,
+                    db=db
+                )
+        except Exception as e:
+            logger.error(f"❌ Knowledge extraction failed for seeded document {new_doc.id}: {e}")
+
     return created_docs
 
 # --- Veeva CRM Integration Simulation Endpoints ---
@@ -1889,6 +2071,7 @@ async def import_personas_from_crm(request: dict, db: Session = Depends(get_db))
 async def analyze_asset_with_personas(
     file: UploadFile = File(...),
     persona_ids: str = Form(...),
+    brand_id: Optional[int] = Form(None),
     db: Session = Depends(get_db)
 ):
     """
@@ -1897,12 +2080,15 @@ async def analyze_asset_with_personas(
     Uses Nano Banana Pro (Gemini 3.0 Pro Image) to generate annotated images
     with professional red-lining feedback for each persona.
     
+    Now includes Knowledge Graph integration for research-backed, attributable feedback.
+    
     Results are cached based on image hash + persona hash. If a persona's
     attributes change, the cache is automatically invalidated.
     
     Args:
         file: The marketing asset image to analyze
         persona_ids: Comma-separated list of persona IDs
+        brand_id: Optional brand ID to fetch knowledge graph context for research-backed feedback
         
     Returns:
         List of analysis results, one per persona, each containing:
@@ -1910,9 +2096,11 @@ async def analyze_asset_with_personas(
         - persona_name: Name of the persona
         - annotated_image: Base64 encoded annotated image
         - text_summary: Text summary of the feedback
+        - citations: Research citations from knowledge graph (if brand_id provided)
         - cached: Whether result was from cache
     """
     import hashlib
+    from . import knowledge_alignment
     
     # Parse persona IDs
     try:
@@ -1934,13 +2122,35 @@ async def analyze_asset_with_personas(
                 "persona_type": persona.persona_type,
                 "persona_subtype": persona.persona_subtype,
                 "decision_style": persona.decision_style,
-                "full_persona_json": persona.full_persona_json
+                "full_persona_json": persona.full_persona_json,
+                "brand_id": persona.brand_id  # Include brand_id from persona
             })
         else:
             logger.warning(f"Persona with id {persona_id} not found, skipping.")
     
     if not personas:
         raise HTTPException(status_code=404, detail="No valid personas found for the provided IDs.")
+    
+    # Determine brand_id (from parameter or from first persona)
+    effective_brand_id = brand_id
+    if not effective_brand_id and personas:
+        effective_brand_id = personas[0].get("brand_id")
+    
+    # Fetch knowledge graph context if brand_id is available
+    knowledge_section = None
+    knowledge_context = None
+    if effective_brand_id:
+        knowledge_context = knowledge_alignment.get_brand_knowledge_context(
+            brand_id=effective_brand_id,
+            persona_type=personas[0].get("persona_type", "patient"),
+            db=db
+        )
+        if knowledge_context.get("has_knowledge"):
+            knowledge_section = knowledge_alignment.build_knowledge_enriched_prompt_section(
+                knowledge_context=knowledge_context,
+                persona_type=personas[0].get("persona_type", "patient")
+            )
+            logger.info(f"📚 Knowledge context loaded for brand {effective_brand_id}: {len(knowledge_context.get('key_messages', []))} messages, {len(knowledge_context.get('patient_tensions', []))} tensions")
     
     # Read the uploaded file
     try:
@@ -1954,7 +2164,7 @@ async def analyze_asset_with_personas(
     image_hash = hashlib.sha256(image_bytes).hexdigest()
     asset_name = file.filename
     
-    logger.info(f"🎨 Analyzing asset '{asset_name}' (hash: {image_hash[:12]}...) for {len(personas)} personas")
+    logger.info(f"🎨 Analyzing asset '{asset_name}' (hash: {image_hash[:12]}...) for {len(personas)} personas, with_knowledge={bool(knowledge_section)}")
     
     results = []
     cache_hits = 0
@@ -1982,13 +2192,27 @@ async def analyze_asset_with_personas(
             logger.info(f"❌ Cache MISS for persona {persona['id']} ({persona['name']}) - running analysis")
             cache_misses += 1
             
-            # Run analysis
+            # Run analysis with knowledge context
             result = await asset_analyzer.analyze_image_with_nano_banana(
                 image_bytes=image_bytes,
                 persona=persona,
-                mime_type=mime_type
+                mime_type=mime_type,
+                knowledge_section=knowledge_section
             )
             result["cached"] = False
+            
+            # Analyze response for citations if we have knowledge context
+            if knowledge_context and knowledge_context.get("has_knowledge"):
+                citation_analysis = knowledge_alignment.analyze_response_for_citations(
+                    text_summary=result.get("text_summary", ""),
+                    knowledge_context=knowledge_context
+                )
+                result["citations"] = citation_analysis.get("citations", [])
+                result["research_alignment_score"] = citation_analysis.get("research_alignment_score")
+                result["alignment_summary"] = knowledge_alignment.generate_alignment_summary(
+                    citations=citation_analysis.get("citations", []),
+                    knowledge_context=knowledge_context
+                )
             
             # Save to cache
             crud.create_cached_analysis(
@@ -2005,12 +2229,15 @@ async def analyze_asset_with_personas(
     # Log response details before returning
     for i, result in enumerate(results):
         img = result.get('annotated_image')
-        logger.info(f"📸 Result {i} ({result.get('persona_name')}): has_image={bool(img)}, cached={result.get('cached')}")
+        citations = result.get('citations', [])
+        logger.info(f"📸 Result {i} ({result.get('persona_name')}): has_image={bool(img)}, citations={len(citations)}, cached={result.get('cached')}")
     
     return {
         "success": True,
         "asset_filename": file.filename,
         "image_hash": image_hash,
+        "brand_id": effective_brand_id,
+        "knowledge_enabled": bool(knowledge_section),
         "personas_analyzed": len(results),
         "cache_hits": cache_hits,
         "cache_misses": cache_misses,
@@ -2047,11 +2274,9 @@ async def get_asset_analysis_history(
             history.append(seen_assets[asset_key])
         
         seen_assets[asset_key]["personas"].append({
-            "id": cached.id,  # Include ID for deletion
             "persona_id": cached.persona_id,
             "persona_hash": cached.persona_hash[:12] + "..." if cached.persona_hash else None,
-            "analyzed_at": cached.created_at.isoformat() if cached.created_at else None,
-            "result_json": cached.result_json  # Include full result for "Load" action
+            "analyzed_at": cached.created_at.isoformat() if cached.created_at else None
         })
     
     return {
@@ -2061,22 +2286,525 @@ async def get_asset_analysis_history(
     }
 
 
-@app.delete("/api/assets/history/{analysis_id}", status_code=204)
-async def delete_asset_analysis(
-    analysis_id: int,
+@app.get("/api/assets/history/full")
+async def get_full_asset_history(
+    skip: int = 0,
+    limit: int = 20,
     db: Session = Depends(get_db)
 ):
     """
-    Delete a specific asset analysis record from the cache.
+    Get full asset analysis history including annotated images and results.
+    Groups by image_hash and includes all persona analysis results.
     """
-    success = crud.delete_cached_analysis(db=db, analysis_id=analysis_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Analysis record not found")
-    return Response(status_code=204)
+    cached_results = crud.get_asset_history(db=db, skip=skip, limit=limit)
+    
+    # Group by image_hash with full results
+    assets = {}
+    for cached in cached_results:
+        asset_key = cached.image_hash
+        if asset_key not in assets:
+            assets[asset_key] = {
+                "image_hash": cached.image_hash,
+                "asset_name": cached.asset_name,
+                "created_at": cached.created_at.isoformat() if cached.created_at else None,
+                "results": []
+            }
+        
+        # Include full result_json with annotated image
+        result = cached.result_json.copy() if cached.result_json else {}
+        result["persona_id"] = cached.persona_id
+        result["analyzed_at"] = cached.created_at.isoformat() if cached.created_at else None
+        assets[asset_key]["results"].append(result)
+    
+    return {
+        "total_assets": len(assets),
+        "assets": list(assets.values())
+    }
+
+
+@app.delete("/api/assets/cache/clear")
+async def clear_asset_analysis_cache(
+    db: Session = Depends(get_db)
+):
+    """
+    Clear all cached asset analysis results.
+    Useful when API keys change or for testing fresh analyses.
+    """
+    try:
+        # Delete all cached analysis records
+        deleted_count = db.query(models.CachedAssetAnalysis).delete()
+        db.commit()
+        logger.info(f"🗑️ Cleared {deleted_count} cached asset analysis records")
+        return {
+            "success": True,
+            "message": f"Cleared {deleted_count} cached analysis records",
+            "deleted_count": deleted_count
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error clearing cache: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+
+
+# === Knowledge Graph API Endpoints ===
+
+@app.get("/api/knowledge/brands/{brand_id}/nodes")
+async def get_knowledge_nodes(
+    brand_id: int,
+    node_type: Optional[str] = None,
+    segment: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """
+    Get knowledge nodes for a brand.
+    
+    Optionally filter by node_type or segment.
+    """
+    query = db.query(models.KnowledgeNode).filter(
+        models.KnowledgeNode.brand_id == brand_id
+    )
+    
+    if node_type:
+        query = query.filter(models.KnowledgeNode.node_type == node_type)
+    if segment:
+        query = query.filter(models.KnowledgeNode.segment.ilike(f"%{segment}%"))
+    
+    total = query.count()
+    nodes = query.offset(skip).limit(limit).all()
+    
+    return {
+        "total": total,
+        "nodes": [
+            {
+                "id": n.id,
+                "node_type": n.node_type,
+                "text": n.text,
+                "summary": n.summary,
+                "segment": n.segment,
+                "journey_stage": n.journey_stage,
+                "confidence": n.confidence,
+                "source_document_id": n.source_document_id,
+                "source_quote": n.source_quote,
+                "verified": n.verified_by_user,
+                "created_at": n.created_at.isoformat() if n.created_at else None
+            }
+            for n in nodes
+        ]
+    }
+
+
+@app.get("/api/knowledge/brands/{brand_id}/relations")
+async def get_knowledge_relations(
+    brand_id: int,
+    relation_type: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 200,
+    db: Session = Depends(get_db)
+):
+    """
+    Get knowledge relations for a brand.
+    
+    Optionally filter by relation_type.
+    """
+    query = db.query(models.KnowledgeRelation).filter(
+        models.KnowledgeRelation.brand_id == brand_id
+    )
+    
+    if relation_type:
+        query = query.filter(models.KnowledgeRelation.relation_type == relation_type)
+    
+    total = query.count()
+    relations = query.offset(skip).limit(limit).all()
+    
+    return {
+        "total": total,
+        "relations": [
+            {
+                "id": r.id,
+                "from_node_id": r.from_node_id,
+                "to_node_id": r.to_node_id,
+                "relation_type": r.relation_type,
+                "strength": r.strength,
+                "context": r.context,
+                "inferred_by": r.inferred_by,
+                "created_at": r.created_at.isoformat() if r.created_at else None
+            }
+            for r in relations
+        ]
+    }
+
+
+@app.get("/api/knowledge/brands/{brand_id}/graph")
+async def get_full_knowledge_graph(
+    brand_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get the full knowledge graph for visualization.
+    
+    Returns nodes and edges in a format suitable for React Flow.
+    """
+    nodes = db.query(models.KnowledgeNode).filter(
+        models.KnowledgeNode.brand_id == brand_id
+    ).all()
+    
+    relations = db.query(models.KnowledgeRelation).filter(
+        models.KnowledgeRelation.brand_id == brand_id
+    ).all()
+    
+    # Format for React Flow
+    graph_nodes = []
+    for n in nodes:
+        graph_nodes.append({
+            "id": n.id,
+            "type": "knowledgeNode",  # Custom React Flow node type
+            "data": {
+                "label": n.summary or n.text[:50],
+                "node_type": n.node_type,
+                "text": n.text,
+                "segment": n.segment,
+                "confidence": n.confidence,
+                "verified": n.verified_by_user,
+                "source_quote": n.source_quote
+            },
+            "position": {"x": 0, "y": 0}  # Frontend will compute layout
+        })
+    
+    graph_edges = []
+    for r in relations:
+        graph_edges.append({
+            "id": f"e-{r.id}",
+            "source": r.from_node_id,
+            "target": r.to_node_id,
+            "type": "knowledgeEdge",  # Custom React Flow edge type
+            "data": {
+                "relation_type": r.relation_type,
+                "strength": r.strength,
+                "context": r.context
+            },
+            "label": r.relation_type,
+            "animated": r.relation_type == "contradicts"  # Highlight contradictions
+        })
+    
+    # Count by type for stats
+    type_counts = {}
+    for n in nodes:
+        type_counts[n.node_type] = type_counts.get(n.node_type, 0) + 1
+    
+    return {
+        "brand_id": brand_id,
+        "nodes": graph_nodes,
+        "edges": graph_edges,
+        "stats": {
+            "total_nodes": len(nodes),
+            "total_edges": len(relations),
+            "node_types": type_counts,
+            "contradictions": sum(1 for r in relations if r.relation_type == "contradicts")
+        }
+    }
+
+
+@app.post("/api/knowledge/documents/{document_id}/extract")
+async def extract_knowledge_from_document(
+    document_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Trigger knowledge extraction from a document.
+    
+    This extracts nodes and infers relationships using GPT-5.2.
+    """
+    from . import knowledge_extractor, document_processor
+    
+    # Get the document
+    document = db.query(models.BrandDocument).filter(
+        models.BrandDocument.id == document_id
+    ).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Get brand info
+    brand = db.query(models.Brand).filter(models.Brand.id == document.brand_id).first()
+    brand_name = brand.name if brand else "Unknown Brand"
+    
+    # Get document text from extracted insights or re-extract
+    document_text = ""
+    if document.extracted_insights:
+        insights = document.extracted_insights
+        if isinstance(insights, str):
+            try:
+                insights = json.loads(insights)
+            except:
+                insights = {}
+        
+        # Try to get raw text
+        document_text = insights.get("raw_text", "")
+        if not document_text:
+            # Reconstruct from insights
+            for key in ["motivations", "beliefs", "tensions"]:
+                items = insights.get(key, [])
+                if isinstance(items, list):
+                    for item in items:
+                        if isinstance(item, dict):
+                            document_text += item.get("text", "") + ". "
+                        elif isinstance(item, str):
+                            document_text += item + ". "
+    
+    if not document_text:
+        return {
+            "success": False,
+            "message": "No text content found in document. Please re-upload with text extraction."
+        }
+    
+    # Determine document type
+    doc_type = document.document_type or "brand_messaging"
+    
+    # Extract knowledge nodes
+    nodes = knowledge_extractor.extract_knowledge_from_document_sync(
+        document_id=document_id,
+        document_text=document_text,
+        document_type=doc_type,
+        brand_id=document.brand_id,
+        brand_name=brand_name,
+        db=db
+    )
+    
+    # Infer relationships
+    relations = []
+    if nodes:
+        relations = knowledge_extractor.infer_relationships_sync(
+            brand_id=document.brand_id,
+            new_nodes=nodes,
+            db=db
+        )
+    
+    return {
+        "success": True,
+        "document_id": document_id,
+        "document_type": doc_type,
+        "nodes_extracted": len(nodes),
+        "relationships_inferred": len(relations),
+        "node_ids": [n.id for n in nodes]
+    }
+
+
+@app.post("/api/knowledge/brands/{brand_id}/personas/{persona_id}/enrich")
+async def enrich_persona_from_graph(
+    brand_id: int,
+    persona_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Enrich a persona with relevant insights from the knowledge graph.
+    """
+    from . import auto_enrichment
+    
+    result = auto_enrichment.enrich_persona_from_knowledge_graph_sync(
+        persona_id=persona_id,
+        brand_id=brand_id,
+        db=db
+    )
+    
+    if result is None:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    
+    return {
+        "success": True,
+        "persona_id": persona_id,
+        "enriched": True,
+        "nodes_applied": result.get("knowledge_graph_enrichment", {}).get("nodes_applied", 0)
+    }
+
+
+@app.delete("/api/knowledge/nodes/{node_id}")
+async def delete_knowledge_node(
+    node_id: str,
+    db: Session = Depends(get_db)
+):
+    """Delete a knowledge node and its relationships."""
+    node = db.query(models.KnowledgeNode).filter(
+        models.KnowledgeNode.id == node_id
+    ).first()
+    
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    
+    # Delete related relations
+    db.query(models.KnowledgeRelation).filter(
+        (models.KnowledgeRelation.from_node_id == node_id) |
+        (models.KnowledgeRelation.to_node_id == node_id)
+    ).delete()
+    
+    db.delete(node)
+    db.commit()
+    
+    return {"success": True, "deleted_node_id": node_id}
+
+
+@app.put("/api/knowledge/nodes/{node_id}/verify")
+async def verify_knowledge_node(
+    node_id: str,
+    verified: bool = True,
+    db: Session = Depends(get_db)
+):
+    """Mark a knowledge node as verified by user."""
+    node = db.query(models.KnowledgeNode).filter(
+        models.KnowledgeNode.id == node_id
+    ).first()
+    
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    
+    node.verified_by_user = verified
+    db.commit()
+    
+    return {"success": True, "node_id": node_id, "verified": verified}
+
+
+# === Coverage & Gap Analysis Endpoints ===
+
+@app.get("/api/coverage/analysis")
+async def get_coverage_analysis(
+    brand_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Analyze persona library for coverage gaps.
+    """
+    from . import coverage_engine
+    return coverage_engine.get_coverage_summary(brand_id, db)
+
+
+@app.post("/api/coverage/suggestions")
+async def get_coverage_suggestions(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Get AI suggestions for new personas to fill gaps.
+    """
+    from . import coverage_engine
+    
+    brand_id = payload.get("brand_id")
+    limit = payload.get("limit", 5)
+    
+    suggestions = coverage_engine.suggest_next_personas_sync(
+        brand_id=brand_id,
+        db=db,
+        limit=limit
+    )
+    
+    return {
+        "success": True,
+        "suggestions": suggestions
+    }
+
+
+# === Knowledge Graph Node Management Endpoints ===
+
+@app.get("/api/knowledge/brands/{brand_id}/duplicates")
+async def get_duplicate_nodes(
+    brand_id: int,
+    threshold: float = 0.60,
+    db: Session = Depends(get_db)
+):
+    """
+    Find duplicate/similar knowledge nodes for review.
+    
+    Returns pairs of nodes with similarity >= threshold.
+    """
+    from . import knowledge_merger
+    
+    candidates = knowledge_merger.find_duplicate_candidates(
+        brand_id=brand_id,
+        db=db,
+        threshold=threshold
+    )
+    
+    return {
+        "brand_id": brand_id,
+        "threshold": threshold,
+        "duplicate_count": len(candidates),
+        "duplicates": candidates
+    }
+
+
+@app.post("/api/knowledge/nodes/merge")
+async def merge_knowledge_nodes(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Merge multiple nodes into a primary node.
+    
+    Payload:
+        - primary_id: ID of node to keep
+        - secondary_ids: List of node IDs to merge into primary
+    """
+    from . import knowledge_merger
+    
+    primary_id = payload.get("primary_id")
+    secondary_ids = payload.get("secondary_ids", [])
+    
+    if not primary_id or not secondary_ids:
+        raise HTTPException(status_code=400, detail="primary_id and secondary_ids required")
+    
+    result = knowledge_merger.merge_nodes(
+        primary_id=primary_id,
+        secondary_ids=secondary_ids,
+        db=db
+    )
+    
+    if result.get("error"):
+        raise HTTPException(status_code=404, detail=result["error"])
+    
+    return result
+
+
+@app.delete("/api/knowledge/nodes/{node_id}")
+async def delete_knowledge_node(
+    node_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a single knowledge node and its relationships.
+    """
+    from . import knowledge_merger
+    
+    result = knowledge_merger.delete_node(node_id, db)
+    
+    if result.get("error"):
+        raise HTTPException(status_code=404, detail=result["error"])
+    
+    return result
+
+
+@app.post("/api/knowledge/brands/{brand_id}/auto-merge")
+async def auto_merge_duplicate_nodes(
+    brand_id: int,
+    threshold: float = 0.85,
+    db: Session = Depends(get_db)
+):
+    """
+    Automatically merge nodes with very high similarity (>= threshold).
+    
+    Use with caution - this is a destructive operation.
+    """
+    from . import knowledge_merger
+    
+    result = knowledge_merger.auto_merge_duplicates(
+        brand_id=brand_id,
+        db=db,
+        threshold=threshold
+    )
+    
+    return result
 
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
 

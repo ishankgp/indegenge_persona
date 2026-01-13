@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Network,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -54,6 +55,12 @@ const navigation = [
     description: 'Brand knowledge & assets',
     href: '/brand-library',
     icon: Library,
+  },
+  {
+    name: 'Knowledge Graph',
+    description: 'Visualize insights',
+    href: '/knowledge-graph',
+    icon: Network,
   },
   {
     name: 'Simulation Hub',

@@ -470,7 +470,12 @@ def get_brands(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.Brand).offset(skip).limit(limit).all()
 
 def create_brand_document(db: Session, document: schemas.BrandDocumentCreate):
-    db_document = models.BrandDocument(**document.dict())
+    data = document.dict()
+    # Remove fields not in the model
+    data.pop('filepath', None)
+    data.pop('summary', None)
+    
+    db_document = models.BrandDocument(**data)
     db.add(db_document)
     db.commit()
     db.refresh(db_document)
@@ -500,10 +505,21 @@ def upsert_brand_document(db: Session, document: schemas.BrandDocumentCreate):
     the previous store is removed on a best-effort basis.
     """
 
+    logger.info(f"🔍 Upserting document: Brand {document.brand_id}, Filename '{document.filename}'")
+    
     existing = db.query(models.BrandDocument).filter(
         models.BrandDocument.brand_id == document.brand_id,
         models.BrandDocument.filename == document.filename,
     ).first()
+    
+    if existing:
+        logger.info(f"✅ Found existing document ID {existing.id} for filename '{document.filename}'")
+    else:
+        logger.info(f"⚠️ No existing document found for filename '{document.filename}'. checking similar...")
+        # Debug: list all docs for this brand to see what's there
+        all_docs = db.query(models.BrandDocument).filter(models.BrandDocument.brand_id == document.brand_id).all()
+        doc_names = [d.filename for d in all_docs]
+        logger.info(f"   Current docs for brand {document.brand_id}: {doc_names}")
 
     if existing:
         previous_vs_id = existing.vector_store_id
