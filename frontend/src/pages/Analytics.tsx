@@ -35,7 +35,9 @@ import {
   History,
   Loader2,
   PieChart,
-  LayoutGrid
+  LayoutGrid,
+  Database,
+  ImageIcon as ImageIconLucide
 } from 'lucide-react';
 import {
   Bar,
@@ -76,8 +78,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { SavedSimulationsAPI, CohortAPI, type SavedSimulation } from '@/lib/api';
+import { SavedSimulationsAPI, CohortAPI, AssetIntelligenceAPI, type SavedSimulation, type AssetAnalysisResult } from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
+import { AssetHistory } from '@/components/AssetHistory';
+import { AnnotatedAssetViewer } from '@/components/AnnotatedAssetViewer';
 
 type CustomQuestionResponse = { question: string; answer: string };
 
@@ -129,7 +133,7 @@ export function Analytics() {
   const [contentType] = useState<string>(
     location.state?.contentType as string | undefined || 'text'
   );
-  const [improvedImages, setImprovedImages] = useState<Array<{original: string, improved: string, improvements: string}>>([]);
+  const [improvedImages, setImprovedImages] = useState<Array<{ original: string, improved: string, improvements: string }>>([]);
   const [isImprovingImages, setIsImprovingImages] = useState(false);
 
   // History / Saved Simulations State
@@ -141,6 +145,17 @@ export function Analytics() {
   const [selectedQAResponse, setSelectedQAResponse] = useState<
     { persona: string; qas: CustomQuestionResponse[] } | null
   >(null);
+
+  // Tab state for empty state view
+  const [analyticsTab, setAnalyticsTab] = useState<'simulations' | 'assets'>('simulations');
+  // Asset history results to view
+  const [loadedAssetResults, setLoadedAssetResults] = useState<AssetAnalysisResult[]>([]);
+  const [loadedAssetName, setLoadedAssetName] = useState<string>('');
+
+  const handleLoadAssetResults = (results: AssetAnalysisResult[], assetName: string) => {
+    setLoadedAssetResults(results);
+    setLoadedAssetName(assetName);
+  };
 
   // Load saved simulations on mount
   useEffect(() => {
@@ -163,7 +178,7 @@ export function Analytics() {
 
   const handleImproveImages = async () => {
     if (!analysisResults || originalImages.length === 0) return;
-    
+
     setIsImprovingImages(true);
     try {
       const improvedResults = await Promise.all(
@@ -263,50 +278,95 @@ export function Analytics() {
         {/* Indegene Purple Header */}
         <div className="bg-gradient-to-r from-[hsl(262,60%,38%)] via-[hsl(262,60%,42%)] to-[hsl(280,60%,45%)]">
           <div className="max-w-7xl mx-auto px-8 py-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
-                <BarChart3 className="h-8 w-8 text-white" />
-              </div>
-              <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-3xl font-bold text-white tracking-tight">Analytics Dashboard</h1>
-                  <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30 font-normal">
-                    <Sparkles className="h-3 w-3 mr-1" />
-                    Insights & Reports
-                  </Badge>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                  <BarChart3 className="h-8 w-8 text-white" />
                 </div>
-                <p className="text-white/80 mt-1">View and analyze cohort simulation results</p>
+                <div>
+                  <div className="flex items-center gap-3">
+                    <h1 className="text-3xl font-bold text-white tracking-tight">Analytics Dashboard</h1>
+                    <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30 font-normal">
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      Insights & Reports
+                    </Badge>
+                  </div>
+                  <p className="text-white/80 mt-1">View and analyze simulation results</p>
+                </div>
+              </div>
+              {/* Tab Toggle */}
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1 flex gap-1">
+                <button
+                  onClick={() => setAnalyticsTab('simulations')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${analyticsTab === 'simulations'
+                      ? 'bg-white text-primary shadow-sm'
+                      : 'text-white/80 hover:bg-white/10'
+                    }`}
+                >
+                  <MessageSquare className="h-4 w-4 inline mr-2" />
+                  Text Simulations
+                </button>
+                <button
+                  onClick={() => setAnalyticsTab('assets')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${analyticsTab === 'assets'
+                      ? 'bg-white text-primary shadow-sm'
+                      : 'text-white/80 hover:bg-white/10'
+                    }`}
+                >
+                  <Database className="h-4 w-4 inline mr-2" />
+                  Asset Intelligence
+                </button>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Empty State */}
+        {/* Content based on tab */}
         <div className="max-w-7xl mx-auto px-8 py-12">
-          <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
-            <CardContent className="py-20 text-center">
-              <div className="relative inline-block">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-full blur-2xl opacity-30"></div>
-                <div className="relative p-6 bg-gradient-to-br from-primary/10 to-secondary/10 rounded-full">
-                  <BarChart3 className="h-12 w-12 text-primary" />
+          {analyticsTab === 'simulations' ? (
+            <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
+              <CardContent className="py-20 text-center">
+                <div className="relative inline-block">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-full blur-2xl opacity-30"></div>
+                  <div className="relative p-6 bg-gradient-to-br from-primary/10 to-secondary/10 rounded-full">
+                    <BarChart3 className="h-12 w-12 text-primary" />
+                  </div>
                 </div>
-              </div>
-              <h3 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mt-6 mb-2">
-                No Analysis Results Available
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
-                Run a simulation from the Simulation Hub to see detailed analytics and insights
-              </p>
-              <Button
-                size="lg"
-                className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200"
-                onClick={() => navigate('/simulation')}
-              >
-                <Activity className="mr-2 h-5 w-5" />
-                Go to Simulation Hub
-              </Button>
-            </CardContent>
-          </Card>
+                <h3 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mt-6 mb-2">
+                  No Analysis Results Available
+                </h3>
+                <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
+                  Run a simulation from the Simulation Hub to see detailed analytics and insights
+                </p>
+                <Button
+                  size="lg"
+                  className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200"
+                  onClick={() => navigate('/simulation')}
+                >
+                  <Activity className="mr-2 h-5 w-5" />
+                  Go to Simulation Hub
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              {loadedAssetResults.length > 0 ? (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-semibold">
+                      Viewing: {loadedAssetName}
+                    </h2>
+                    <Button variant="outline" onClick={() => setLoadedAssetResults([])}>
+                      Back to History
+                    </Button>
+                  </div>
+                  <AnnotatedAssetViewer results={loadedAssetResults} />
+                </div>
+              ) : (
+                <AssetHistory onLoadResults={handleLoadAssetResults} />
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -649,8 +709,8 @@ export function Analytics() {
                     Marketing Images Analyzed
                   </h3>
                   {improvedImages.length === 0 && (
-                    <Button 
-                      onClick={handleImproveImages} 
+                    <Button
+                      onClick={handleImproveImages}
                       disabled={isImprovingImages}
                       className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
                     >
@@ -934,9 +994,9 @@ export function Analytics() {
         {individual_responses && individual_responses.length > 0 && (() => {
           const lowScorePersonas = primaryScoreMetric
             ? individual_responses.filter((row) => {
-                const score = getNumericScore(row, primaryScoreMetric)
-                return typeof score === "number" && score < primaryScoreMetric.scale.max * 0.5
-              })
+              const score = getNumericScore(row, primaryScoreMetric)
+              return typeof score === "number" && score < primaryScoreMetric.scale.max * 0.5
+            })
             : []
 
           const hasConcern = (keywords: string[]) =>
@@ -1178,11 +1238,11 @@ export function Analytics() {
                             <TooltipContent className="max-w-md p-4 bg-white dark:bg-gray-800 shadow-xl">
                               <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
                                 {response.reasoning}
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </td>
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </td>
                       {/* Composite Score cell - only show when multiple score metrics */}
                       {scoreMetrics.length > 1 && (() => {
                         const compositeScore = personaCompositeScores.get(response.persona_id);
@@ -1257,11 +1317,11 @@ export function Analytics() {
                           </td>
                         )
                       })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </CardContent>
         </Card>
 

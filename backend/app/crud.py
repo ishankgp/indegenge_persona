@@ -587,3 +587,15 @@ def get_asset_history(
     return db.query(models.CachedAssetAnalysis).order_by(
         models.CachedAssetAnalysis.created_at.desc()
     ).offset(skip).limit(limit).all()
+
+
+def delete_cached_analysis(db: Session, analysis_id: int) -> bool:
+    """Delete a cached analysis record by ID."""
+    record = db.query(models.CachedAssetAnalysis).filter(
+        models.CachedAssetAnalysis.id == analysis_id
+    ).first()
+    if record:
+        db.delete(record)
+        db.commit()
+        return True
+    return False

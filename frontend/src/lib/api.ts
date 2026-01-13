@@ -477,13 +477,38 @@ export interface AssetAnalysisResult {
   annotated_image: string | null; // Base64 encoded
   text_summary: string;
   error: string | null;
+  cached?: boolean;
 }
 
 export interface AssetAnalysisResponse {
   success: boolean;
   asset_filename: string;
+  image_hash?: string;
   personas_analyzed: number;
+  cache_hits?: number;
+  cache_misses?: number;
   results: AssetAnalysisResult[];
+}
+
+export interface AssetHistoryPersona {
+  id: number;
+  persona_id: number;
+  persona_hash: string | null;
+  analyzed_at: string | null;
+  result_json: AssetAnalysisResult;
+}
+
+export interface AssetHistoryItem {
+  image_hash: string;
+  asset_name: string | null;
+  first_analyzed: string | null;
+  personas: AssetHistoryPersona[];
+}
+
+export interface AssetHistoryResponse {
+  total_entries: number;
+  unique_assets: number;
+  history: AssetHistoryItem[];
 }
 
 export const AssetIntelligenceAPI = {
@@ -492,6 +517,14 @@ export const AssetIntelligenceAPI = {
     formData.append('file', file);
     formData.append('persona_ids', personaIds.join(','));
     return api.post('/api/assets/analyze', formData).then(r => r.data);
+  },
+
+  getHistory: (skip: number = 0, limit: number = 50): Promise<AssetHistoryResponse> => {
+    return api.get('/api/assets/history', { params: { skip, limit } }).then(r => r.data);
+  },
+
+  deleteHistory: (analysisId: number): Promise<void> => {
+    return api.delete(`/api/assets/history/${analysisId}`).then(() => undefined);
   }
 };
 

@@ -2047,9 +2047,11 @@ async def get_asset_analysis_history(
             history.append(seen_assets[asset_key])
         
         seen_assets[asset_key]["personas"].append({
+            "id": cached.id,  # Include ID for deletion
             "persona_id": cached.persona_id,
             "persona_hash": cached.persona_hash[:12] + "..." if cached.persona_hash else None,
-            "analyzed_at": cached.created_at.isoformat() if cached.created_at else None
+            "analyzed_at": cached.created_at.isoformat() if cached.created_at else None,
+            "result_json": cached.result_json  # Include full result for "Load" action
         })
     
     return {
@@ -2059,7 +2061,22 @@ async def get_asset_analysis_history(
     }
 
 
+@app.delete("/api/assets/history/{analysis_id}", status_code=204)
+async def delete_asset_analysis(
+    analysis_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a specific asset analysis record from the cache.
+    """
+    success = crud.delete_cached_analysis(db=db, analysis_id=analysis_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Analysis record not found")
+    return Response(status_code=204)
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
 
 
