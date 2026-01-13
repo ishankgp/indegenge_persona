@@ -478,11 +478,97 @@ export function KnowledgeGraphWorkspace({ brandId, onNodeSelect }: KnowledgeGrap
                 )}
             </div>
 
-        </p>
-                    </div >
-                )
-}
-            </div >
-        </div >
+            {/* RIGHT: Detail Panel */}
+            <div className={`w-[350px] border-l bg-background p-4 shadow-xl z-10 transition-transform duration-300 ${selectedNode || selectedEdge ? 'translate-x-0' : 'translate-x-full absolute right-0'}`}>
+                <div className="flex items-center justify-between mb-6">
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${selectedEdge
+                            ? 'bg-purple-100 text-purple-700'
+                            : 'bg-indigo-100 text-indigo-700'
+                        }`}>
+                        {selectedEdge ? (selectedEdge.relation_type || 'relationship').replace(/_/g, ' ') : (selectedNode?.node_type?.replace(/_/g, ' ') || 'insight details')}
+                    </span>
+                    <Button variant="ghost" size="sm" onClick={() => { setSelectedNode(null); setSelectedEdge(null); }}>
+                        <X className="h-4 w-4" />
+                    </Button>
+                </div>
+
+                {selectedNode && (
+                    <div className="space-y-6">
+                        <div>
+                            <h3 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Content</h3>
+                            <div className="p-3 bg-gray-50 rounded-lg border text-sm font-medium">
+                                {selectedNode.text}
+                            </div>
+                        </div>
+
+                        {selectedNode.source_quote && (
+                            <div>
+                                <h3 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Source Evidence</h3>
+                                <blockquote className="pl-3 border-l-2 border-indigo-300 text-sm italic text-muted-foreground">
+                                    "{selectedNode.source_quote}"
+                                </blockquote>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <h3 className="text-xs font-semibold text-muted-foreground uppercase mb-1">Segment</h3>
+                                <p className="text-sm font-medium">{selectedNode.segment || 'General'}</p>
+                            </div>
+                            <div>
+                                <h3 className="text-xs font-semibold text-muted-foreground uppercase mb-1">Confidence</h3>
+                                <div className="flex items-center gap-2">
+                                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-emerald-500 rounded-full"
+                                            style={{ width: `${(selectedNode.confidence || 0) * 100}%` }}
+                                        />
+                                    </div>
+                                    <span className="text-xs text-muted-foreground">{Math.round((selectedNode.confidence || 0) * 100)}%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="pt-4 border-t">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <span>ID:</span>
+                                <code className="bg-gray-100 px-1 py-0.5 rounded text-[10px]">{selectedNode.id}</code>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {selectedEdge && (
+                    <div className="space-y-6">
+                        <div>
+                            <h3 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Relationship Context</h3>
+                            <div className="p-3 bg-purple-50 rounded-lg border border-purple-100 text-sm">
+                                {selectedEdge.context || "No detailed context available."}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <h3 className="text-xs font-semibold text-muted-foreground uppercase mb-1">Type</h3>
+                                <p className="text-sm font-medium capitalize">{(selectedEdge.relation_type || 'Related to').replace(/_/g, ' ')}</p>
+                            </div>
+                            <div>
+                                <h3 className="text-xs font-semibold text-muted-foreground uppercase mb-1">Strength</h3>
+                                <div className="flex items-center gap-2">
+                                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-purple-500 rounded-full"
+                                            style={{ width: `${(selectedEdge.strength || 0) * 100}%` }}
+                                        />
+                                    </div>
+                                    <span className="text-xs text-muted-foreground">{Math.round((selectedEdge.strength || 0) * 100)}%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
     )
 }
+

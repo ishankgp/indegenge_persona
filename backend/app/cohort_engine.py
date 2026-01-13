@@ -11,35 +11,20 @@ from typing import Dict, Any, List, Optional
 from . import crud
 from datetime import datetime
 
+# Import shared utilities
+from .utils import get_openai_client, MODEL_NAME
+
 # Load environment variables from the backend folder
 backend_dir = os.path.dirname(os.path.dirname(__file__))
 env_path = os.path.join(backend_dir, '.env')
 load_dotenv(env_path)
 
-# Initialize OpenAI client lazily to avoid requiring credentials at import time
-import threading
-
-_openai_client: Optional[OpenAI] = None
-_client_lock = threading.Lock()
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-5.2")  # Use gpt-5.2 for vision capabilities
-
-
-def get_openai_client() -> Optional[OpenAI]:
-    """Return a configured OpenAI client when an API key is present."""
-
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-
-    global _openai_client
-    with _client_lock:
-        if _openai_client is None:
-            _openai_client = OpenAI(api_key=api_key)
-
-    return _openai_client
-
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Model token limit (allow overriding via env)
+MODEL_MAX_TOKENS = int(os.getenv("OPENAI_MODEL_MAX_TOKENS", "32768"))
+
 
 # Model token limit (allow overriding via env)
 MODEL_MAX_TOKENS = int(os.getenv("OPENAI_MODEL_MAX_TOKENS", "32768"))

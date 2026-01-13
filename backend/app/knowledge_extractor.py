@@ -18,27 +18,15 @@ from sqlalchemy.orm import Session
 
 from . import models
 
+# Import shared utilities
+from .utils import get_openai_client, MODEL_NAME
+
 # Load environment variables
 backend_dir = os.path.dirname(os.path.dirname(__file__))
 env_path = os.path.join(backend_dir, '.env')
 load_dotenv(env_path)
 
 logger = logging.getLogger(__name__)
-
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-5.2")
-
-# Lazy-loaded OpenAI client
-_openai_client: Optional[OpenAI] = None
-
-
-def get_openai_client() -> Optional[OpenAI]:
-    """Return a configured OpenAI client when an API key is present."""
-    global _openai_client
-    if _openai_client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if api_key:
-            _openai_client = OpenAI(api_key=api_key)
-    return _openai_client
 
 
 # === Text Similarity Functions ===

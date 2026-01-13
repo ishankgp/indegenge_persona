@@ -13,24 +13,14 @@ import logging
 import hashlib
 import random
 
+# Import shared utilities
+from .utils import get_openai_client
+
 # Load environment variables
 env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
 load_dotenv(env_path)
 
 logger = logging.getLogger(__name__)
-
-# OpenAI client - lazily initialized
-_openai_client: Optional[OpenAI] = None
-
-
-def get_openai_client() -> Optional[OpenAI]:
-    """Return a configured OpenAI client if an API key is available."""
-    global _openai_client
-    if _openai_client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if api_key:
-            _openai_client = OpenAI(api_key=api_key)
-    return _openai_client
 
 
 # Ethnicity options for diversity (will be randomly assigned if not specified)

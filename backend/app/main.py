@@ -1474,6 +1474,26 @@ async def get_brands(skip: int = 0, limit: int = 100, db: Session = Depends(get_
     """List all brands."""
     return crud.get_brands(db, skip, limit)
 
+
+# --- Archetypes & Disease Packs Endpoints ---
+
+@app.get("/api/archetypes")
+async def get_archetypes():
+    """List all available persona archetypes for grounding persona generation."""
+    from .archetypes import ARCHETYPES
+    return ARCHETYPES
+
+
+@app.get("/api/disease-packs")
+async def get_disease_packs():
+    """List all available disease context packs with MBT grounding."""
+    from .disease_packs import DISEASE_PACKS
+    # Return as list with name as key identifier
+    return [
+        {"name": key, **value}
+        for key, value in DISEASE_PACKS.items()
+    ]
+
 @app.post("/api/brands/{brand_id}/upload", response_model=schemas.BrandDocument)
 async def upload_brand_document(
     brand_id: int,

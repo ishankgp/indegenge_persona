@@ -8,11 +8,13 @@ import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Textarea } from "../components/ui/textarea"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Badge } from "../components/ui/badge"
 import { Separator } from "../components/ui/separator"
 import { Skeleton } from "../components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
+import { ScrollArea } from "../components/ui/scroll-area"
+import { Checkbox } from "../components/ui/checkbox"
+import { Slider } from "../components/ui/slider"
 import { VeevaCRMImporter } from "../components/VeevaCRMImporter"
 import {
   User,
@@ -44,12 +46,15 @@ import {
   Trash2,
   Library,
   GitCompare,
+  PlayCircle,
+  Filter,
+  LayoutGrid,
+  List,
+  Eye,
 } from "lucide-react"
 import { PersonaDetailModal } from "../components/PersonaDetailModal"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
-
-// Base URL managed centrally via lib/api
 
 interface Persona {
   id: number
@@ -65,7 +70,6 @@ interface Persona {
   full_persona_json: string
   created_at: string
   brand_id?: number
-  // HCP specific fields
   specialty?: string
   practice_setup?: string
   system_context?: string
@@ -99,6 +103,17 @@ const conditionColors: Record<string, string> = {
   default: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
 }
 
+const DEFAULT_AGE_RANGE: [number, number] = [18, 100]
+const PERSONA_TYPES = ["HCP", "Patient"] as const
+
+interface PersonaFilters {
+  ageRange: [number, number]
+  personaTypes: string[]
+  genders: string[]
+  conditions: string[]
+  locations: string[]
+}
+
 export function PersonaLibrary() {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -111,13 +126,23 @@ export function PersonaLibrary() {
   const [generating, setGenerating] = useState(false);
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 });
-  const [activeTab, setActiveTab] = useState<"view" | "create">("view");
+  const [workspaceMode, setWorkspaceMode] = useState<"browse" | "create">("browse");
   const [creationMode, setCreationMode] = useState<"single" | "bulk" | "prompt">("single");
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [selectedPersonaIds, setSelectedPersonaIds] = useState<Set<number>>(new Set());
+  const [viewMode, setViewMode] = useState<"grid" | "list">("list");
+
+  // Filters
+  const [filters, setFilters] = useState<PersonaFilters>({
+    ageRange: DEFAULT_AGE_RANGE,
+    personaTypes: [],
+    genders: [],
+    conditions: [],
+    locations: [],
+  });
 
   // Form data for single persona creation
   const [formData, setFormData] = useState({
@@ -142,7 +167,6 @@ export function PersonaLibrary() {
   })
 
   useEffect(() => {
-    console.log("PersonaLibrary: Starting to fetch personas and brands...")
     fetchBrands()
   }, [])
 
@@ -157,7 +181,6 @@ export function PersonaLibrary() {
     })
   }, [personas])
 
-  // Update URL when brand filter changes
   const handleBrandFilterChange = (value: string) => {
     setSelectedBrandId(value)
     if (value === "all") {
@@ -203,27 +226,19 @@ export function PersonaLibrary() {
   }
 
   const fetchPersonas = async () => {
-    console.log("PersonaLibrary: fetchPersonas called with brand filter:", selectedBrandId)
     setLoading(true)
     try {
       const brandId = selectedBrandId !== "all" ? parseInt(selectedBrandId) : undefined
-      console.log("PersonaLibrary: Calling PersonasAPI.list() with brandId:", brandId)
       const data = await PersonasAPI.list(brandId)
-      console.log("PersonaLibrary: Got personas data:", { count: data.length, data: data.slice(0, 2) })
       setPersonas(data)
       setError(null)
     } catch (error: any) {
       console.error("PersonaLibrary: Error fetching personas:", error)
-      const errorMessage = error?.response?.data?.detail || "Failed to load personas. Please check your connection and try again."
+      const errorMessage = error?.response?.data?.detail || "Failed to load personas."
       setError(errorMessage)
-      toast({
-        title: "Error loading personas",
-        description: errorMessage,
-        variant: "destructive"
-      })
+      toast({ title: "Error loading personas", description: errorMessage, variant: "destructive" })
     } finally {
       setLoading(false)
-      console.log("PersonaLibrary: Finished loading")
     }
   }
 
@@ -236,37 +251,22 @@ export function PersonaLibrary() {
         updated.delete(personaId)
         return updated
       })
-      toast({
-        title: "Deleted",
-        description: `Persona "${personaName}" has been removed.`,
-        variant: "default"
-      });
+      toast({ title: "Deleted", description: `Persona "${personaName}" has been removed.` });
     } catch (error) {
-      console.error("Failed to delete persona", error);
-      toast({
-        title: "Error",
-        description: "Could not delete the persona.",
-        variant: "destructive"
-      });
+      toast({ title: "Error", description: "Could not delete the persona.", variant: "destructive" });
     }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    })
+    setFormData({ ...formData, [e.target.name]: e.target.value })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null); // Clear previous errors
-
+    setError(null);
     const age = parseInt(formData.age);
     if (isNaN(age) || age < 1 || age > 120) {
-      const errorMessage = "Please enter a valid age between 1 and 120.";
-      setError(errorMessage);
-      alert(errorMessage);
+      setError("Please enter a valid age between 1 and 120.");
       return;
     }
 
@@ -275,151 +275,39 @@ export function PersonaLibrary() {
       const count = parseInt(formData.count) || 1;
       setGenerationProgress({ current: 0, total: count });
 
-      const basePersonaData = {
-        age: age,
-        gender: formData.gender,
-        condition: formData.condition,
-        location: formData.location,
-        concerns: formData.concerns
-      };
-
-      const createdPersonas = [];
       for (let i = 0; i < count; i++) {
         setGenerationProgress({ current: i + 1, total: count });
-
-        const variations = [
-          '', ' with family history', ' seeking treatment options',
-          ' concerned about side effects', ' looking for lifestyle changes',
-          ' with financial concerns', ' preferring natural remedies',
-          ' with mobility limitations', ' living in rural area', ' with strong family support'
-        ];
-        const variation = variations[i % variations.length];
-
-        const personaData = {
-          ...basePersonaData,
-          concerns: formData.concerns + variation
-        };
-
-        const newPersona = await PersonasAPI.generate(personaData);
-        createdPersonas.push(newPersona);
+        const variations = ['', ' with family history', ' seeking treatment options', ' concerned about side effects'];
+        await PersonasAPI.generate({
+          age, gender: formData.gender, condition: formData.condition,
+          location: formData.location, concerns: formData.concerns + variations[i % variations.length]
+        });
       }
 
       await fetchPersonas();
-      setActiveTab("view");
-      setFormData({
-        age: '',
-        gender: '',
-        condition: '',
-        location: '',
-        concerns: '',
-        count: '1'
-      });
-      setGenerationProgress({ current: 0, total: 0 });
-      alert(`Successfully generated ${count} new persona${count > 1 ? 's' : ''}.`);
+      setWorkspaceMode("browse");
+      setFormData({ age: '', gender: '', condition: '', location: '', concerns: '', count: '1' });
+      toast({ title: "Success", description: `Generated ${count} new persona(s).` });
     } catch (error: any) {
-      console.error("Error generating persona:", error);
-      const errorMessage = error.response?.data?.detail || "An unexpected error occurred. Please check the console and ensure the backend is running.";
-      setError(errorMessage);
-      alert(`Generation Failed: ${errorMessage}`);
+      setError(error.response?.data?.detail || "Generation failed.");
     } finally {
       setGenerating(false);
     }
   }
 
-  const addBulkTemplate = () => {
-    const newTemplate: BulkPersonaTemplate = {
-      id: Date.now().toString(),
-      age: "",
-      gender: "",
-      condition: "",
-      location: "",
-      concerns: "",
-    }
-    setBulkTemplates([...bulkTemplates, newTemplate])
-  }
-
-  const removeBulkTemplate = (id: string) => {
-    if (bulkTemplates.length > 1) {
-      setBulkTemplates(bulkTemplates.filter((template) => template.id !== id))
-    }
-  }
-
-  const handleBulkTemplateChange = (id: string, field: keyof Omit<BulkPersonaTemplate, 'id'>, value: string) => {
-    setBulkTemplates(bulkTemplates.map((template) => (template.id === id ? { ...template, [field]: value } : template)))
-  }
-
-  const duplicateBulkTemplate = (id: string) => {
-    const templateToDuplicate = bulkTemplates.find((t) => t.id === id)
-    if (templateToDuplicate) {
-      const newTemplate = {
-        ...templateToDuplicate,
-        id: Date.now().toString(),
-      }
-      setBulkTemplates([...bulkTemplates, newTemplate])
-    }
-  }
-
-  const validateBulkTemplates = () => {
-    const errors: string[] = []
-    bulkTemplates.forEach((template, index) => {
-      if (!template.age || !template.gender || !template.condition || !template.location || !template.concerns) {
-        errors.push(`Template ${index + 1}: All fields are required`)
-      }
-      const age = Number.parseInt(template.age);
-      if (isNaN(age) || age < 1 || age > 120) {
-        errors.push(`Template ${index + 1}: Age must be a valid number between 1 and 120`)
-      }
-    })
-    return errors
-  }
-
   const handleBulkGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    const validationErrors = validateBulkTemplates()
-    if (validationErrors.length > 0) {
-      const errorMsg = "Validation errors:\n" + validationErrors.join("\n");
-      setError(errorMsg);
-      alert(errorMsg);
-      return
-    }
-
     setBulkGenerating(true)
     try {
-      const promises = bulkTemplates.map((template) =>
-        PersonasAPI.generate({
-          age: Number.parseInt(template.age),
-          gender: template.gender,
-          condition: template.condition,
-          location: template.location,
-          concerns: template.concerns,
-        }),
+      const promises = bulkTemplates.map((t) =>
+        PersonasAPI.generate({ age: parseInt(t.age), gender: t.gender, condition: t.condition, location: t.location, concerns: t.concerns })
       )
-
-      const results = await Promise.allSettled(promises);
-      const successfulCreations = results.filter(r => r.status === 'fulfilled').length;
-      const failedCreations = results.length - successfulCreations;
-
-      if (successfulCreations > 0) {
-        await fetchPersonas();
-        setActiveTab("view");
-        setBulkTemplates([{ id: "1", age: "", gender: "", condition: "", location: "", concerns: "" }]);
-        setCreationMode("single");
-      }
-
-      alert(`Bulk Generation Complete: Successfully created ${successfulCreations} personas. ${failedCreations > 0 ? `Failed to create ${failedCreations}.` : ''}`);
-
-      if (failedCreations > 0) {
-        const firstError = results.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined;
-        const errorMessage = firstError?.reason?.response?.data?.detail || "Some personas could not be generated. Check the console for details.";
-        setError(errorMessage);
-      }
-
+      await Promise.allSettled(promises);
+      await fetchPersonas();
+      setWorkspaceMode("browse");
+      toast({ title: "Success", description: `Bulk generation complete.` });
     } catch (error: any) {
-      console.error("Error generating bulk personas:", error)
-      const errorMessage = error.response?.data?.detail || "An unexpected error occurred during bulk generation.";
-      setError(errorMessage);
-      alert(`Bulk Generation Failed: ${errorMessage}`);
+      setError(error.response?.data?.detail || "Bulk generation failed.");
     } finally {
       setBulkGenerating(false)
     }
@@ -427,1146 +315,625 @@ export function PersonaLibrary() {
 
   const handleBulkGenerateFromPrompt = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    if (!bulkPrompt.trim()) {
-      const errorMsg = "Please enter a prompt for persona generation";
-      setError(errorMsg);
-      alert(errorMsg);
-      return
-    }
-
+    if (!bulkPrompt.trim()) return;
     setBulkGenerating(true)
     try {
-      const promises = Array.from({ length: bulkCount }, (_, index) => {
-        const randomAge =
-          Math.floor(Math.random() * (bulkFilters.ageRange.max - bulkFilters.ageRange.min + 1)) +
-          bulkFilters.ageRange.min
+      const promises = Array.from({ length: bulkCount }, (_, i) => {
+        const randomAge = Math.floor(Math.random() * (bulkFilters.ageRange.max - bulkFilters.ageRange.min + 1)) + bulkFilters.ageRange.min
         const randomGender = bulkFilters.genders[Math.floor(Math.random() * bulkFilters.genders.length)]
-
         return PersonasAPI.generate({
-          age: randomAge,
-          gender: randomGender,
-          condition:
-            bulkFilters.conditions.length > 0
-              ? bulkFilters.conditions[Math.floor(Math.random() * bulkFilters.conditions.length)]
-              : "General Health",
-          location:
-            bulkFilters.locations.length > 0
-              ? bulkFilters.locations[Math.floor(Math.random() * bulkFilters.locations.length)]
-              : "United States",
-          concerns: `${bulkPrompt} (Persona ${index + 1})`,
+          age: randomAge, gender: randomGender,
+          condition: bulkFilters.conditions[0] || "General Health",
+          location: bulkFilters.locations[0] || "United States",
+          concerns: `${bulkPrompt} (Persona ${i + 1})`,
         })
       })
-
-      const results = await Promise.allSettled(promises);
-      const successfulCreations = results.filter(r => r.status === 'fulfilled').length;
-      const failedCreations = results.length - successfulCreations;
-
-      if (successfulCreations > 0) {
-        await fetchPersonas();
-        setActiveTab("view");
-        setBulkPrompt("");
-        setCreationMode("single");
-      }
-
-      alert(`Prompt Generation Complete: Successfully created ${successfulCreations} personas. ${failedCreations > 0 ? `Failed to create ${failedCreations}.` : ''}`);
-
-      if (failedCreations > 0) {
-        const firstError = results.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined;
-        const errorMessage = firstError?.reason?.response?.data?.detail || "Some personas could not be generated. Check the console for details.";
-        setError(errorMessage);
-      }
-
+      await Promise.allSettled(promises);
+      await fetchPersonas();
+      setWorkspaceMode("browse");
+      toast({ title: "Success", description: `Generated ${bulkCount} personas from prompt.` });
     } catch (error: any) {
-      console.error("Error generating prompt-based personas:", error)
-      const errorMessage = error.response?.data?.detail || "An unexpected error occurred during prompt-based generation.";
-      setError(errorMessage);
-      alert(`Prompt Generation Failed: ${errorMessage}`);
+      setError(error.response?.data?.detail || "Prompt generation failed.");
     } finally {
       setBulkGenerating(false)
     }
   }
 
-  // Enhanced filtering with better debugging
+  const toggleFilterValue = (key: "personaTypes" | "genders" | "conditions" | "locations", value: string) => {
+    setFilters(prev => {
+      const current = prev[key]
+      return { ...prev, [key]: current.includes(value) ? current.filter(v => v !== value) : [...current, value] }
+    })
+  }
+
+  const updateAgeRange = (value: number[]) => {
+    if (value.length === 2) setFilters(prev => ({ ...prev, ageRange: [value[0], value[1]] }))
+  }
+
+  const handleResetFilters = () => {
+    setFilters({ ageRange: DEFAULT_AGE_RANGE, personaTypes: [], genders: [], conditions: [], locations: [] })
+    setSearchTerm('')
+  }
+
   const filteredPersonas = React.useMemo(() => {
-    console.log("Filtering with:", { searchTerm, totalPersonas: personas.length })
-    if (personas.length === 0) return []
     return personas.filter((persona) => {
       const searchLower = searchTerm.toLowerCase().trim()
-      const matchesSearch =
-        searchTerm === "" ||
+      const matchesSearch = searchTerm === "" ||
         persona.name.toLowerCase().includes(searchLower) ||
         (persona.condition || "").toLowerCase().includes(searchLower) ||
         persona.location.toLowerCase().includes(searchLower)
-      return matchesSearch
+
+      const [minAge, maxAge] = filters.ageRange
+      const matchesAge = persona.age >= minAge && persona.age <= maxAge
+
+      const normalizedType = (persona.persona_type || "Patient").trim().toLowerCase()
+      const matchesType = filters.personaTypes.length === 0 ||
+        filters.personaTypes.some(t => t.toLowerCase() === normalizedType)
+
+      const matchesGender = filters.genders.length === 0 ||
+        filters.genders.some(g => g.toLowerCase() === persona.gender.toLowerCase())
+
+      const matchesCondition = filters.conditions.length === 0 ||
+        filters.conditions.some(c => c.toLowerCase() === (persona.condition || "").toLowerCase())
+
+      return matchesSearch && matchesAge && matchesType && matchesGender && matchesCondition
     })
-  }, [personas, searchTerm])
+  }, [personas, searchTerm, filters])
 
-  // Normalize and deduplicate conditions (trim/lowercase for robustness)
-  const uniqueConditions = Array.from(new Set(personas.map((p) => (p.condition || "").trim())))
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b))
-  console.log("Available conditions:", uniqueConditions)
+  const uniqueConditions = Array.from(new Set(personas.map(p => (p.condition || "").trim()))).filter(Boolean).sort()
+  const uniqueGenders = Array.from(new Set(personas.map(p => (p.gender || "").trim()))).filter(Boolean).sort()
+  const activeFiltersCount = (filters.personaTypes.length > 0 ? 1 : 0) + (filters.genders.length > 0 ? 1 : 0) +
+    (filters.conditions.length > 0 ? 1 : 0) + (filters.ageRange[0] !== DEFAULT_AGE_RANGE[0] || filters.ageRange[1] !== DEFAULT_AGE_RANGE[1] ? 1 : 0)
 
-  // Helper to get brand name by ID
   const getBrandName = (brandId: number | undefined) => {
     if (!brandId) return null
-    const brand = brands.find(b => b.id === brandId)
-    return brand?.name || null
+    return brands.find(b => b.id === brandId)?.name || null
   }
 
-  const PersonaCard = ({
-    persona,
-    onDelete,
-    onToggleSelect,
-    onSimulate,
-    isSelected
-  }: {
-    persona: Persona
-    onDelete: (id: number, name: string) => void
-    onToggleSelect: () => void
-    onSimulate: () => void
-    isSelected: boolean
-  }) => {
-    let personaData: any = {};
-    try {
-      personaData = JSON.parse(persona.full_persona_json);
-    } catch (error) {
-      console.error("Failed to parse persona JSON:", error);
-      personaData = {};
-    }
-    const conditionClass = conditionColors[persona.condition] || conditionColors.default
-    const brandName = getBrandName(persona.brand_id)
-
-    return (
-      <Card
-        className={`group relative overflow-hidden border-0 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm bg-white/90 dark:bg-gray-900/90 ${isSelected ? "ring-2 ring-primary/30 dark:ring-primary/50" : ""
-          }`}
-      >
-        {/* Gradient Border Effect */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-secondary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-
-        {/* Brand Badge */}
-        {brandName && (
-          <div className="absolute top-2 right-2 z-10">
-            <Badge variant="secondary" className="text-xs bg-primary/10 text-primary border-primary/20">
-              <Library className="h-3 w-3 mr-1" />
-              {brandName}
-            </Badge>
-          </div>
-        )}
-
-        <CardHeader className="relative pb-3">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                {persona.avatar_url ? (
-                  <>
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-xl blur-lg opacity-50"></div>
-                    <img
-                      src={persona.avatar_url}
-                      alt={persona.name}
-                      className="relative w-12 h-12 rounded-xl object-cover border-2 border-white shadow-lg"
-                      onError={(e) => {
-                        // Fallback to icon if image fails to load
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                        target.nextElementSibling?.classList.remove('hidden');
-                      }}
-                    />
-                    <div className="hidden relative p-2.5 bg-gradient-to-br from-primary to-secondary rounded-xl">
-                      <User className="h-5 w-5 text-white" />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-xl blur-lg opacity-50"></div>
-                    <div className="relative p-2.5 bg-gradient-to-br from-primary to-secondary rounded-xl">
-                      <User className="h-5 w-5 text-white" />
-                    </div>
-                  </>
-                )}
-              </div>
-              <div>
-                <CardTitle className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-600 to-purple-600 dark:from-violet-400 dark:to-purple-400">
-                  {persona.persona_subtype || 'Patient'}
-                </CardTitle>
-                <CardDescription className="text-sm text-gray-700 dark:text-gray-300 font-medium">
-                  {persona.name}
-                </CardDescription>
-                {persona.disease_pack && (
-                  <Badge variant="outline" className="text-[10px] mt-1 mb-1 border-blue-200 text-blue-700 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800">
-                    {persona.disease_pack}
-                  </Badge>
-                )}
-                <CardDescription className="text-xs flex items-center gap-2 mt-0.5 text-gray-500">
-                  <span>{persona.age} years</span>
-                  <Separator orientation="vertical" className="h-3" />
-                  <span>{persona.gender}</span>
-                </CardDescription>
-              </div>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <div className="flex items-center gap-2">
-                <Badge className={cn("text-xs", conditionClass)}>{persona.condition}</Badge>
-                {isSelected && (
-                  <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
-                    Selected
-                  </Badge>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (confirm(`Are you sure you want to delete persona "${persona.name}"?`)) {
-                      onDelete(persona.id, persona.name);
-                    }
-                  }}
-                  className="h-6 w-6 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-              <div className="flex items-center gap-1">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} className={`h-3 w-3 ${i < 4 ? "text-amber-400 fill-amber-400" : "text-gray-300"}`} />
-                ))}
-              </div>
-            </div>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-3 relative">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm">
-              <div className="p-1.5 bg-red-100 dark:bg-red-900/30 rounded-lg">
-                <Heart className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
-              </div>
-              <span className="font-medium text-gray-700 dark:text-gray-300">Primary Condition:</span>
-              <span className="text-gray-600 dark:text-gray-400">{persona.condition}</span>
-            </div>
-
-            <div className="flex items-center gap-2 text-sm">
-              <div className="p-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                <MapPin className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <span className="font-medium text-gray-700 dark:text-gray-300">Location:</span>
-              <span className="text-gray-600 dark:text-gray-400">{persona.location}</span>
-            </div>
-
-            {personaData.demographics?.occupation && (
-              <div className="flex items-center gap-2 text-sm">
-                <div className="p-1.5 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                  <Activity className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
-                </div>
-                <span className="font-medium text-gray-700 dark:text-gray-300">Occupation:</span>
-                <span className="text-gray-600 dark:text-gray-400">{personaData.demographics.occupation}</span>
-              </div>
-            )}
-
-            {/* CRM Data Lineage Indicator */}
-            {personaData.crm_metadata && (
-              <div className="flex items-center gap-2 text-xs bg-blue-50 dark:bg-blue-900/20 rounded-lg p-2">
-                <Database className="h-3 w-3 text-blue-600" />
-                <span className="text-blue-800 dark:text-blue-300">
-                  Generated from {personaData.crm_metadata.hcp_profile.name}'s patient data
-                </span>
-                <Badge variant="outline" className="border-blue-300 text-blue-700 text-xs">
-                  Veeva CRM
-                </Badge>
-              </div>
-            )}
-          </div>
-
-          {/* Quick Stats */}
-          <div className="grid grid-cols-3 gap-2 pt-2">
-            <div className="text-center p-2 bg-gradient-to-br from-violet-50 to-violet-100 dark:from-violet-950/30 dark:to-violet-900/30 rounded-lg">
-              <TrendingUp className="h-3.5 w-3.5 mx-auto text-violet-600 dark:text-violet-400 mb-1" />
-              <p className="text-xs font-semibold text-violet-900 dark:text-violet-100">Active</p>
-            </div>
-            <div className="text-center p-2 bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/30 rounded-lg">
-              <Shield className="h-3.5 w-3.5 mx-auto text-emerald-600 dark:text-emerald-400 mb-1" />
-              <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-100">Verified</p>
-            </div>
-            <div className="text-center p-2 bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/30 rounded-lg">
-              <Clock className="h-3.5 w-3.5 mx-auto text-amber-600 dark:text-amber-400 mb-1" />
-              <p className="text-xs font-semibold text-amber-900 dark:text-amber-100">Recent</p>
-            </div>
-          </div>
-        </CardContent>
-
-        <CardFooter className="pt-3 relative">
-          <div className="flex flex-col gap-2 w-full sm:flex-row">
-            <Button
-              variant="outline"
-              className="sm:w-1/3"
-              onClick={() => {
-                setSelectedPersona(persona)
-                setIsDetailModalOpen(true)
-              }}
-            >
-              View Profile
-            </Button>
-            <Button
-              variant={isSelected ? "secondary" : "outline"}
-              className="sm:w-1/3"
-              onClick={onToggleSelect}
-            >
-              {isSelected ? "Remove from Cohort" : "Add to Cohort"}
-            </Button>
-            <Button
-              className="sm:w-1/3 bg-gradient-to-r from-primary to-secondary text-white"
-              onClick={onSimulate}
-            >
-              Test in Simulator
-            </Button>
-          </div>
-        </CardFooter>
-      </Card>
-    )
+  const addBulkTemplate = () => {
+    setBulkTemplates([...bulkTemplates, { id: Date.now().toString(), age: "", gender: "", condition: "", location: "", concerns: "" }])
   }
 
-  const handleCreateNewPersona = () => {
-    setActiveTab("create")
-    setCreationMode("single")
+  const removeBulkTemplate = (id: string) => {
+    if (bulkTemplates.length > 1) setBulkTemplates(bulkTemplates.filter(t => t.id !== id))
+  }
+
+  const handleBulkTemplateChange = (id: string, field: keyof Omit<BulkPersonaTemplate, 'id'>, value: string) => {
+    setBulkTemplates(bulkTemplates.map(t => t.id === id ? { ...t, [field]: value } : t))
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-violet-50 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950">
-      {/* Enhanced Header Section */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-secondary">
-        {/* Animated Background */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-20 left-10 w-72 h-72 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-0 right-20 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse animation-delay-2000"></div>
-        </div>
-
-        <div className="relative z-10 px-8 py-12">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-6">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-white/20 rounded-2xl blur-xl"></div>
-                  <div className="relative p-4 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20">
-                    <Users className="h-10 w-10 text-white" />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <h1 className="text-5xl font-bold text-white">Persona Library</h1>
-                    <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30 px-3 py-1">
-                      <Sparkles className="h-3 w-3 mr-1" />
-                      AI-Enhanced
-                    </Badge>
-                  </div>
-                  <p className="text-white/90 text-lg">
-                    Create and manage realistic patient and HCP personas with advanced AI
-                  </p>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
-                  <div className="text-4xl font-bold text-white flex items-center gap-2">
-                    <Award className="h-8 w-8 text-yellow-300" />
-                    {personas.length}
-                  </div>
-                  <div className="text-white/80 text-sm mt-1">Total Personas</div>
-                </div>
-              </div>
+    <div className="flex flex-col h-full bg-background overflow-hidden">
+      {/* Slim Header */}
+      <header className="h-14 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between px-4 shrink-0 z-50">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-primary font-semibold">
+            <div className="p-1.5 bg-primary/10 rounded-md">
+              <Library className="h-5 w-5" />
             </div>
+            <span>Persona Library</span>
+          </div>
+          <Separator orientation="vertical" className="h-6" />
+          <div className="flex bg-muted/50 p-1.5 rounded-xl border shadow-sm">
+            <button
+              onClick={() => setWorkspaceMode("browse")}
+              className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${workspaceMode === "browse"
+                ? "bg-background shadow text-primary ring-1 ring-black/5"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                }`}
+            >
+              <Users className="h-4 w-4" />
+              <span>Browse Library</span>
+            </button>
+            <button
+              onClick={() => setWorkspaceMode("create")}
+              className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${workspaceMode === "create"
+                ? "bg-background shadow text-primary ring-1 ring-black/5"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                }`}
+            >
+              <Plus className="h-4 w-4" />
+              <span>Create Personas</span>
+            </button>
           </div>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-8 -mt-8">
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "view" | "create")}>
-          <div className="flex items-center justify-between mb-6">
-            <TabsList className="bg-white/90 dark:bg-gray-900/90 shadow-xl backdrop-blur-sm">
-              <TabsTrigger value="view" className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                View All Personas
-              </TabsTrigger>
-              <TabsTrigger value="create" className="flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                Create Personas
-              </TabsTrigger>
-            </TabsList>
+        <div className="flex items-center gap-4">
+          <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <Users className="h-4 w-4" />
+              <span className="font-medium text-foreground">{personas.length}</span> total
+            </span>
+            <span className="text-border">|</span>
+            <span className="flex items-center gap-1.5">
+              <CheckCircle className="h-4 w-4" />
+              <span className="font-medium text-foreground">{selectedPersonaIds.size}</span> selected
+            </span>
+          </div>
+          <Button
+            onClick={() => navigate('/persona-builder')}
+            className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white"
+          >
+            <Brain className="h-4 w-4 mr-2" />
+            Persona Builder
+          </Button>
+        </div>
+      </header>
 
-            {activeTab === "view" && (
-              <div className="flex items-center gap-4">
-                {/* Brand Filter */}
-                <div className="flex items-center gap-2">
-                  <Library className="h-4 w-4 text-gray-400" />
-                  <Select value={selectedBrandId} onValueChange={handleBrandFilterChange}>
-                    <SelectTrigger className="w-[200px] bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm">
-                      <SelectValue placeholder="Filter by Brand" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Brands</SelectItem>
-                      {brands.map((brand) => (
-                        <SelectItem key={brand.id} value={brand.id.toString()}>
-                          {brand.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-hidden">
+        {workspaceMode === "browse" ? (
+          <div className="flex h-full w-full">
+            {/* LEFT PANE: Filters & Persona List */}
+            <aside className="w-[380px] border-r bg-muted/10 flex flex-col shrink-0">
+              {/* Filter Controls */}
+              <div className="p-4 border-b bg-background/50 backdrop-blur space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-base flex items-center gap-2">
+                    <Filter className="h-5 w-5 text-primary" />
+                    Filters
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    {activeFiltersCount > 0 && (
+                      <Button variant="ghost" size="sm" onClick={handleResetFilters} className="h-6 text-[10px] text-muted-foreground hover:text-primary">
+                        Reset
+                      </Button>
+                    )}
+                    <Badge variant="secondary" className="font-mono text-xs">{filteredPersonas.length}</Badge>
+                  </div>
                 </div>
 
                 {/* Search */}
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search personas..."
+                    placeholder="Search by name, condition, location..."
+                    className="pl-9 h-9 text-sm bg-background"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 w-64 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm"
                   />
                 </div>
 
-                {/* Persona Builder Button */}
-                <Button
-                  onClick={() => navigate('/persona-builder')}
-                  className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white shadow-lg"
-                >
-                  <Brain className="h-4 w-4 mr-2" />
-                  Persona Builder
-                </Button>
-              </div>
-            )}
-          </div>
+                {/* Brand Filter */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-uppercase tracking-wider text-muted-foreground font-semibold w-14 shrink-0">BRAND</span>
+                  <Select value={selectedBrandId} onValueChange={handleBrandFilterChange}>
+                    <SelectTrigger className="h-8 text-xs flex-1">
+                      <SelectValue placeholder="All Brands" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Brands</SelectItem>
+                      {brands.map(b => <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-          <TabsContent value="view">
-            {loading ? (
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {[...Array(6)].map((_, i) => (
-                  <Card key={i} className="border-0 shadow-xl">
-                    <CardHeader>
-                      <Skeleton className="h-4 w-32 mb-2" />
-                      <Skeleton className="h-3 w-20" />
-                    </CardHeader>
-                    <CardContent>
-                      <Skeleton className="h-3 w-full mb-2" />
-                      <Skeleton className="h-3 w-full mb-2" />
-                      <Skeleton className="h-3 w-3/4" />
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : filteredPersonas.length === 0 ? (
-              <Card className="border-0 shadow-xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
-                <CardContent className="py-20 text-center">
-                  <div className="relative inline-block">
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-full blur-2xl opacity-30"></div>
-                    <div className="relative p-6 bg-gradient-to-br from-primary/10 to-secondary/10 rounded-full">
-                      <Users className="h-12 w-12 text-primary" />
-                    </div>
+                {/* Age Range */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-uppercase tracking-wider text-muted-foreground font-semibold w-14 shrink-0">AGE</span>
+                  <Slider value={filters.ageRange} onValueChange={updateAgeRange} min={DEFAULT_AGE_RANGE[0]} max={DEFAULT_AGE_RANGE[1]} step={1} className="flex-1 py-1.5" />
+                  <span className="text-[10px] text-muted-foreground font-mono w-16 text-right">{filters.ageRange[0]} - {filters.ageRange[1]}</span>
+                </div>
+
+                {/* Type Filters */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-uppercase tracking-wider text-muted-foreground font-semibold w-14 shrink-0">TYPE</span>
+                  <div className="flex gap-1 flex-1">
+                    {PERSONA_TYPES.map(type => (
+                      <button key={type} onClick={() => toggleFilterValue("personaTypes", type)}
+                        className={`px-2 py-1 rounded text-[10px] uppercase font-bold border transition-all ${filters.personaTypes.includes(type)
+                          ? "bg-primary/10 border-primary text-primary"
+                          : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                          }`}
+                      >{type}</button>
+                    ))}
                   </div>
-                  <h3 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mt-6 mb-2">
-                    {searchTerm ? "No matching personas found" : "No personas created yet"}
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
-                    {searchTerm
-                      ? "Try adjusting your search criteria"
-                      : "Start by creating your first AI-powered patient persona to unlock powerful insights"}
-                  </p>
-                  <Button
-                    size="lg"
-                    className="bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200"
-                    onClick={() => handleCreateNewPersona()}
-                  >
-                    <Plus className="mr-2 h-5 w-5" />
-                    Create Your First Persona
+                </div>
+
+                {/* Gender Filters */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-uppercase tracking-wider text-muted-foreground font-semibold w-14 shrink-0">GENDER</span>
+                  <div className="flex gap-1 flex-1 flex-wrap">
+                    {uniqueGenders.slice(0, 3).map(gender => (
+                      <button key={gender} onClick={() => toggleFilterValue("genders", gender)}
+                        className={`px-2 py-1 rounded text-[10px] font-bold border transition-all ${filters.genders.includes(gender)
+                          ? "bg-primary/10 border-primary text-primary"
+                          : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                          }`}
+                      >{gender}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Persona List Header */}
+              <div className="bg-muted/5 px-4 py-2 border-b flex justify-between items-center">
+                <div className="text-xs text-muted-foreground font-medium">Results ({filteredPersonas.length})</div>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1" onClick={() => setSelectedPersonaIds(new Set(filteredPersonas.map(p => p.id)))}>
+                    Select All
                   </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              <>
-                {selectedPersonaIds.size > 0 && (
-                  <div className="mb-6 flex flex-col gap-3 rounded-xl border border-primary/10 bg-white/90 p-4 shadow-lg backdrop-blur-sm dark:border-primary/30 dark:bg-gray-900/80 md:flex-row md:items-center md:justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-full bg-primary/10 p-2 text-primary">
-                        <Users className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                          {selectedPersonaIds.size} persona{selectedPersonaIds.size > 1 ? 's' : ''} selected for cohort testing
-                        </p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400">Launch the simulator with this curated group.</p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-2 md:flex-row">
-                      <Button
-                        variant="outline"
-                        className="border-violet-200 text-violet-700 hover:bg-violet-50"
-                        onClick={() => handleComparePersonas(Array.from(selectedPersonaIds))}
-                        disabled={selectedPersonaIds.size < 2}
-                      >
-                        <GitCompare className="mr-2 h-4 w-4" />
-                        Compare ({selectedPersonaIds.size})
-                      </Button>
-                      <Button
-                        className="bg-gradient-to-r from-primary to-secondary text-white"
-                        onClick={() => handleSimulatePersonas(Array.from(selectedPersonaIds))}
-                      >
-                        <Sparkles className="mr-2 h-4 w-4" />
-                        Test Selection in Simulator
-                      </Button>
-                      <Button variant="outline" onClick={() => setSelectedPersonaIds(new Set())}>
-                        Clear Selection
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Stats Bar */}
-                <div className="grid grid-cols-4 gap-4 mb-6">
-                  <Card className="border-0 shadow-lg bg-gradient-to-br from-violet-50 to-violet-100 dark:from-violet-950/30 dark:to-violet-900/30">
-                    <CardContent className="p-4 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-violet-700 dark:text-violet-300">Total</p>
-                        <p className="text-2xl font-bold text-violet-900 dark:text-violet-100">
-                          {filteredPersonas.length}
-                        </p>
-                      </div>
-                      <Users className="h-8 w-8 text-violet-500" />
-                    </CardContent>
-                  </Card>
-                  <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/30">
-                    <CardContent className="p-4 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Conditions</p>
-                        <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{uniqueConditions.length}</p>
-                      </div>
-                      <Heart className="h-8 w-8 text-blue-500" />
-                    </CardContent>
-                  </Card>
-                  <Card className="border-0 shadow-lg bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/30">
-                    <CardContent className="p-4 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Avg Age</p>
-                        <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">
-                          {Math.round(filteredPersonas.reduce((acc, p) => acc + p.age, 0) / filteredPersonas.length) ||
-                            0}
-                        </p>
-                      </div>
-                      <Calendar className="h-8 w-8 text-emerald-500" />
-                    </CardContent>
-                  </Card>
-                  <Card className="border-0 shadow-lg bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/30">
-                    <CardContent className="p-4 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Locations</p>
-                        <p className="text-2xl font-bold text-amber-900 dark:text-amber-100">
-                          {new Set(filteredPersonas.map((p) => p.location)).size}
-                        </p>
-                      </div>
-                      <Globe className="h-8 w-8 text-amber-500" />
-                    </CardContent>
-                  </Card>
+                  <Separator orientation="vertical" className="h-3" />
+                  <button onClick={() => setViewMode("list")} className={`p-1 rounded ${viewMode === "list" ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}>
+                    <List className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => setViewMode("grid")} className={`p-1 rounded ${viewMode === "grid" ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}>
+                    <LayoutGrid className="h-3.5 w-3.5" />
+                  </button>
                 </div>
+              </div>
 
-                {/* Personas Grid */}
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {filteredPersonas.map((persona) => (
-                    <PersonaCard
-                      key={persona.id}
-                      persona={persona}
-                      onDelete={handleDeletePersona}
-                      onToggleSelect={() => togglePersonaSelection(persona.id)}
-                      onSimulate={() => handleSimulatePersonas([persona.id])}
-                      isSelected={selectedPersonaIds.has(persona.id)}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-          </TabsContent>
-
-          <TabsContent value="create">
-            <div className="space-y-6">
-              {/* Creation Mode Selector */}
-              <Card className="border-0 shadow-xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Settings className="h-5 w-5" />
-                    Creation Mode
-                  </CardTitle>
-                  <CardDescription>Choose how you want to create personas</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Button
-                      variant={creationMode === "single" ? "default" : "outline"}
-                      onClick={() => setCreationMode("single")}
-                      className="h-20 flex flex-col items-center gap-2"
-                    >
-                      <User className="h-6 w-6" />
-                      <span>Single Persona</span>
-                    </Button>
-                    <Button
-                      variant={creationMode === "bulk" ? "default" : "outline"}
-                      onClick={() => setCreationMode("bulk")}
-                      className="h-20 flex flex-col items-center gap-2"
-                    >
-                      <Users className="h-6 w-6" />
-                      <span>Bulk Creation</span>
-                    </Button>
-                    <Button
-                      variant={creationMode === "prompt" ? "default" : "outline"}
-                      onClick={() => setCreationMode("prompt")}
-                      className="h-20 flex flex-col items-center gap-2"
-                    >
-                      <Wand2 className="h-6 w-6" />
-                      <span>Prompt-Based</span>
-                    </Button>
-                    <VeevaCRMImporter
-                      onImportComplete={() => {
-                        fetchPersonas();
-                        setActiveTab("view");
-                      }}
-                      trigger={
-                        <Button
-                          variant="outline"
-                          className="h-20 flex flex-col items-center gap-2 w-full border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50"
-                        >
-                          <Database className="h-6 w-6 text-blue-600" />
-                          <span className="text-blue-600">Import from CRM</span>
-                        </Button>
-                      }
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Single Persona Creation */}
-              {creationMode === "single" && (
-                <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
-                  <CardHeader className="bg-gradient-to-r from-primary/10 to-secondary/10 rounded-t-xl">
-                    <div className="flex items-center space-x-4">
-                      <div className="relative">
-                        <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-xl blur-lg opacity-50"></div>
-                        <div className="relative p-3 bg-gradient-to-br from-primary to-secondary rounded-xl">
-                          <Brain className="h-7 w-7 text-white" />
+              {/* Persona List */}
+              <ScrollArea className="flex-1 bg-muted/5">
+                <div className="p-4 space-y-2">
+                  {loading ? (
+                    Array.from({ length: 6 }).map((_, i) => (
+                      <div key={i} className="p-3 rounded-xl border bg-background animate-pulse">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-muted rounded-lg" />
+                          <div className="flex-1 space-y-2">
+                            <div className="h-4 bg-muted rounded w-3/4" />
+                            <div className="h-3 bg-muted rounded w-1/2" />
+                          </div>
                         </div>
                       </div>
-                      <div>
-                        <CardTitle className="text-2xl">Create AI-Powered Personas</CardTitle>
-                        <CardDescription className="text-base">
-                          Enter basic attributes and let AI generate comprehensive, realistic personas with variations
-                        </CardDescription>
-                      </div>
-                      <div className="ml-auto">
-                        <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">
-                          <Zap className="h-3 w-3 mr-1" />
-                          Advanced AI
-                        </Badge>
-                      </div>
+                    ))
+                  ) : filteredPersonas.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground text-sm">
+                      No personas match your filters
                     </div>
-                  </CardHeader>
-                  <CardContent className="pt-8">
-                    <form onSubmit={handleSubmit} className="space-y-6">
-                      <div className="grid gap-6 md:grid-cols-3">
-                        <div className="space-y-2">
-                          <Label htmlFor="age" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-gray-500" />
-                            Age
-                          </Label>
-                          <Input
-                            id="age"
-                            name="age"
-                            type="number"
-                            placeholder="e.g., 45"
-                            value={formData.age}
-                            onChange={handleInputChange}
-                            className="border-gray-300 focus:border-primary focus:ring-primary"
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="gender" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                            <User className="h-4 w-4 text-gray-500" />
-                            Gender
-                          </Label>
-                          <Input
-                            id="gender"
-                            name="gender"
-                            placeholder="e.g., Female"
-                            value={formData.gender}
-                            onChange={handleInputChange}
-                            className="border-gray-300 focus:border-primary focus:ring-primary"
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="condition" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                            <Heart className="h-4 w-4 text-gray-500" />
-                            Primary Medical Condition
-                          </Label>
-                          <Input
-                            id="condition"
-                            name="condition"
-                            placeholder="e.g., Type 2 Diabetes"
-                            value={formData.condition}
-                            onChange={handleInputChange}
-                            className="border-gray-300 focus:border-primary focus:ring-primary"
-                            required
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid gap-6 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label htmlFor="location" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-gray-500" />
-                            Location
-                          </Label>
-                          <Input
-                            id="location"
-                            name="location"
-                            placeholder="e.g., Austin, Texas"
-                            value={formData.location}
-                            onChange={handleInputChange}
-                            className="border-gray-300 focus:border-primary focus:ring-primary"
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="count" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                            <Users className="h-4 w-4 text-gray-500" />
-                            Number of Personas
-                          </Label>
-                          <Input
-                            id="count"
-                            name="count"
-                            type="number"
-                            min="1"
-                            max="10"
-                            placeholder="1"
-                            value={formData.count}
-                            onChange={handleInputChange}
-                            className="border-gray-300 focus:border-primary focus:ring-primary"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="concerns" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                          <Target className="h-4 w-4 text-gray-500" />
-                          Key Concerns & Context
-                        </Label>
-                        <Textarea
-                          id="concerns"
-                          name="concerns"
-                          placeholder="e.g., Managing blood sugar levels, medication side effects, cost of treatment, lifestyle adjustments..."
-                          value={formData.concerns}
-                          onChange={handleInputChange}
-                          className="border-gray-300 focus:border-primary focus:ring-primary min-h-[120px]"
-                          required
-                        />
-                      </div>
-
-                      {error && (
-                        <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 text-red-700 dark:text-red-300 rounded-lg">
-                          <p className="font-bold">Generation Error</p>
-                          <p className="text-sm">{error}</p>
-                        </div>
-                      )}
-
-                      <Separator />
-
-                      <div className="bg-gradient-to-r from-primary/5 to-secondary/5 rounded-xl p-4">
-                        <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-amber-500" />
-                          AI will generate:
-                        </h4>
-                        <div className="grid grid-cols-2 gap-2 text-sm text-gray-600 dark:text-gray-400">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-3 w-3 text-emerald-500" />
-                            Full demographic profile
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-3 w-3 text-emerald-500" />
-                            Medical history
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-3 w-3 text-emerald-500" />
-                            Treatment preferences
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-3 w-3 text-emerald-500" />
-                            Communication style
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-3 w-3 text-emerald-500" />
-                            Decision-making factors
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-3 w-3 text-emerald-500" />
-                            Lifestyle & behaviors
-                          </div>
-                        </div>
-                      </div>
-
-                      <Button
-                        type="submit"
-                        className="w-full bg-gradient-to-r from-primary to-secondary text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold"
-                        disabled={generating}
-                      >
-                        {generating ? (
-                          <>
-                            <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-                            Generating Persona {generationProgress.current} of {generationProgress.total}...
-                          </>
-                        ) : (
-                          <>
-                            <Brain className="mr-3 h-5 w-5" />
-                            Generate {formData.count} AI Persona{parseInt(formData.count) !== 1 ? 's' : ''}
-                          </>
-                        )}
-                      </Button>
-                    </form>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Bulk Creation Mode */}
-              {creationMode === "bulk" && (
-                <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
-                  <CardHeader className="bg-gradient-to-r from-emerald-500/10 to-blue-500/10 rounded-t-xl">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
-                        <div className="relative">
-                          <div className="absolute inset-0 bg-gradient-to-br from-emerald-500 to-blue-500 rounded-xl blur-lg opacity-50"></div>
-                          <div className="relative p-3 bg-gradient-to-br from-emerald-500 to-blue-500 rounded-xl">
-                            <Users className="h-7 w-7 text-white" />
-                          </div>
-                        </div>
-                        <div>
-                          <CardTitle className="text-2xl">Bulk Persona Creation</CardTitle>
-                          <CardDescription className="text-base">
-                            Create multiple personas simultaneously with individual customization
-                          </CardDescription>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-gradient-to-r from-emerald-500 to-blue-500 text-white border-0">
-                          <UserPlus className="h-3 w-3 mr-1" />
-                          {bulkTemplates.length} Personas
-                        </Badge>
-                        <Button
-                          onClick={addBulkTemplate}
-                          size="sm"
-                          className="bg-gradient-to-r from-emerald-500 to-blue-500 text-white"
+                  ) : (
+                    filteredPersonas.map(persona => {
+                      const isSelected = selectedPersonaIds.has(persona.id)
+                      const conditionClass = conditionColors[persona.condition] || conditionColors.default
+                      return (
+                        <div
+                          key={persona.id}
+                          onClick={() => togglePersonaSelection(persona.id)}
+                          className={`group relative p-3 rounded-xl border cursor-pointer transition-all hover:shadow-md ${isSelected
+                            ? 'bg-background border-primary shadow-sm ring-1 ring-primary/20'
+                            : 'bg-background border-border hover:border-primary/50'}`}
                         >
-                          <Plus className="h-4 w-4 mr-1" />
-                          Add Template
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-6">
-                    <form onSubmit={handleBulkGenerate} className="space-y-6">
-                      {bulkTemplates.map((template, index) => (
-                        <Card key={template.id} className="border border-gray-200 dark:border-gray-700">
-                          <CardHeader className="pb-3">
-                            <div className="flex items-center justify-between">
-                              <CardTitle className="text-lg flex items-center gap-2">
-                                <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                                  {index + 1}
+                          <div className="flex items-start gap-3">
+                            <Checkbox checked={isSelected} className="mt-1" onChange={() => togglePersonaSelection(persona.id)} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-0.5">
+                                <span className="font-semibold text-sm truncate pr-2">{persona.name}</span>
+                                <Badge variant={persona.persona_type === 'HCP' ? 'default' : 'secondary'} className="text-[10px] h-4 px-1 rounded-sm">
+                                  {persona.persona_type === 'HCP' ? 'HCP' : 'Pt'}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+                                <span className="flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-muted-foreground/50" /> {persona.age} yrs</span>
+                                <span className="flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-muted-foreground/50" /> {persona.gender}</span>
+                                {persona.condition && <Badge className={cn("text-[9px] h-4 px-1", conditionClass)}>{persona.condition}</Badge>}
+                              </div>
+                              {persona.location && (
+                                <div className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
+                                  <MapPin className="h-3 w-3" /> {persona.location}
                                 </div>
-                                Persona Template {index + 1}
-                              </CardTitle>
-                              <div className="flex items-center gap-2">
-                                <Button onClick={() => duplicateBulkTemplate(template.id)} size="sm" variant="outline">
-                                  <Copy className="h-3 w-3" />
-                                </Button>
-                                {bulkTemplates.length > 1 && (
-                                  <Button
-                                    onClick={() => removeBulkTemplate(template.id)}
-                                    size="sm"
-                                    variant="outline"
-                                    className="text-red-600 hover:text-red-700"
-                                  >
-                                    <X className="h-3 w-3" />
-                                  </Button>
-                                )}
+                              )}
+                            </div>
+                            <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={(e) => { e.stopPropagation(); setSelectedPersona(persona); setIsDetailModalOpen(true); }}>
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500" onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${persona.name}"?`)) handleDeletePersona(persona.id, persona.name); }}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </ScrollArea>
+            </aside>
+
+            {/* RIGHT PANE: Selected Persona Details & Actions */}
+            <main className="flex-1 flex flex-col h-full bg-background relative overflow-hidden">
+              <ScrollArea className="flex-1">
+                <div className="p-8 max-w-5xl mx-auto space-y-8 pb-32">
+                  {/* Selection Summary */}
+                  {selectedPersonaIds.size > 0 ? (
+                    <>
+                      <section className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h2 className="text-xl font-bold flex items-center gap-2">
+                              <Users className="h-5 w-5 text-primary" />
+                              Selected Cohort
+                            </h2>
+                            <p className="text-sm text-muted-foreground mt-1">{selectedPersonaIds.size} persona(s) selected for testing</p>
+                          </div>
+                          <Button variant="outline" size="sm" onClick={() => setSelectedPersonaIds(new Set())}>Clear Selection</Button>
+                        </div>
+
+                        <Card className="border-primary/20 bg-primary/5">
+                          <CardContent className="p-6">
+                            <div className="grid grid-cols-4 gap-4 mb-6">
+                              <div className="text-center p-3 bg-background rounded-lg">
+                                <div className="text-2xl font-bold text-primary">{selectedPersonaIds.size}</div>
+                                <div className="text-xs text-muted-foreground">Total</div>
+                              </div>
+                              <div className="text-center p-3 bg-background rounded-lg">
+                                <div className="text-2xl font-bold text-blue-600">
+                                  {personas.filter(p => selectedPersonaIds.has(p.id) && p.persona_type === 'HCP').length}
+                                </div>
+                                <div className="text-xs text-muted-foreground">HCPs</div>
+                              </div>
+                              <div className="text-center p-3 bg-background rounded-lg">
+                                <div className="text-2xl font-bold text-emerald-600">
+                                  {personas.filter(p => selectedPersonaIds.has(p.id) && p.persona_type !== 'HCP').length}
+                                </div>
+                                <div className="text-xs text-muted-foreground">Patients</div>
+                              </div>
+                              <div className="text-center p-3 bg-background rounded-lg">
+                                <div className="text-2xl font-bold text-amber-600">
+                                  {Math.round(personas.filter(p => selectedPersonaIds.has(p.id)).reduce((sum, p) => sum + p.age, 0) / selectedPersonaIds.size) || 0}
+                                </div>
+                                <div className="text-xs text-muted-foreground">Avg Age</div>
                               </div>
                             </div>
-                          </CardHeader>
-                          <CardContent className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-2">
-                              <div className="space-y-2">
-                                <Label className="text-sm font-medium">Age</Label>
-                                <Input
-                                  type="number"
-                                  placeholder="e.g., 45"
-                                  value={template.age}
-                                  onChange={(e) => handleBulkTemplateChange(template.id, "age", e.target.value)}
-                                  className="border-gray-300 focus:border-primary focus:ring-primary"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label className="text-sm font-medium">Gender</Label>
-                                <Input
-                                  placeholder="e.g., Female"
-                                  value={template.gender}
-                                  onChange={(e) => handleBulkTemplateChange(template.id, "gender", e.target.value)}
-                                  className="border-gray-300 focus:border-primary focus:ring-primary"
-                                />
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              <Label className="text-sm font-medium">Primary Medical Condition</Label>
-                              <Input
-                                placeholder="e.g., Type 2 Diabetes"
-                                value={template.condition}
-                                onChange={(e) => handleBulkTemplateChange(template.id, "condition", e.target.value)}
-                                className="border-gray-300 focus:border-primary focus:ring-primary"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label className="text-sm font-medium">Location</Label>
-                              <Input
-                                placeholder="e.g., Austin, Texas"
-                                value={template.location}
-                                onChange={(e) => handleBulkTemplateChange(template.id, "location", e.target.value)}
-                                className="border-gray-300 focus:border-primary focus:ring-primary"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label className="text-sm font-medium">Key Concerns & Context</Label>
-                              <Textarea
-                                placeholder="e.g., Managing blood sugar levels, medication side effects..."
-                                value={template.concerns}
-                                onChange={(e) => handleBulkTemplateChange(template.id, "concerns", e.target.value)}
-                                className="border-gray-300 focus:border-primary focus:ring-primary min-h-[80px]"
-                              />
+
+                            <div className="flex gap-3">
+                              <Button className="flex-1 bg-gradient-to-r from-primary to-violet-600" onClick={() => handleSimulatePersonas(Array.from(selectedPersonaIds))}>
+                                <PlayCircle className="h-4 w-4 mr-2" />
+                                Test in Simulator
+                              </Button>
+                              <Button variant="outline" className="flex-1" onClick={() => handleComparePersonas(Array.from(selectedPersonaIds))} disabled={selectedPersonaIds.size < 2}>
+                                <GitCompare className="h-4 w-4 mr-2" />
+                                Compare Personas
+                              </Button>
                             </div>
                           </CardContent>
                         </Card>
-                      ))}
+                      </section>
 
-                      {error && (
-                        <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 text-red-700 dark:text-red-300 rounded-lg">
-                          <p className="font-bold">Generation Error</p>
-                          <p className="text-sm">{error}</p>
-                        </div>
-                      )}
-
-                      <Separator className="my-6" />
-
-                      <Button
-                        type="submit"
-                        className="w-full bg-gradient-to-r from-emerald-500 to-blue-500 text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold"
-                        disabled={bulkGenerating}
-                      >
-                        {bulkGenerating ? (
-                          <>
-                            <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-                            Generating {bulkTemplates.length} Personas...
-                          </>
-                        ) : (
-                          <>
-                            <Users className="mr-3 h-5 w-5" />
-                            Generate {bulkTemplates.length} AI Personas
-                          </>
-                        )}
-                      </Button>
-                    </form>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Prompt-Based Creation Mode */}
-              {creationMode === "prompt" && (
-                <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-gray-900/90">
-                  <CardHeader className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-t-xl">
-                    <div className="flex items-center space-x-4">
-                      <div className="relative">
-                        <div className="absolute inset-0 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl blur-lg opacity-50"></div>
-                        <div className="relative p-3 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl">
-                          <Wand2 className="h-7 w-7 text-white" />
-                        </div>
-                      </div>
-                      <div>
-                        <CardTitle className="text-2xl">Prompt-Based Bulk Creation</CardTitle>
-                        <CardDescription className="text-base">
-                          Describe your needs and let AI generate multiple diverse personas automatically
-                        </CardDescription>
-                      </div>
-                      <div className="ml-auto">
-                        <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0">
-                          <Sparkles className="h-3 w-3 mr-1" />
-                          Smart AI
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-6 space-y-6">
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                        <Target className="h-4 w-4 text-gray-500" />
-                        Persona Generation Prompt
-                      </Label>
-                      <Textarea
-                        placeholder="e.g., Create personas for patients with chronic conditions who are tech-savvy and prefer digital health solutions..."
-                        value={bulkPrompt}
-                        onChange={(e) => setBulkPrompt(e.target.value)}
-                        className="border-gray-300 focus:border-primary focus:ring-primary min-h-[120px]"
-                      />
-                    </div>
-
-                    <div className="grid gap-6 md:grid-cols-2">
-                      <div className="space-y-4">
-                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Number of Personas
-                        </Label>
-                        <div className="flex items-center gap-4">
-                          <Input
-                            type="number"
-                            min="1"
-                            max="10"
-                            value={bulkCount}
-                            onChange={(e) => setBulkCount(Number.parseInt(e.target.value) || 3)}
-                            className="w-20"
-                          />
-                          <span className="text-sm text-gray-600">personas to generate</span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Age Range</Label>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="number"
-                            placeholder="Min"
-                            value={bulkFilters.ageRange.min}
-                            onChange={(e) =>
-                              setBulkFilters({
-                                ...bulkFilters,
-                                ageRange: { ...bulkFilters.ageRange, min: Number.parseInt(e.target.value) || 25 },
-                              })
-                            }
-                            className="w-20"
-                          />
-                          <span>to</span>
-                          <Input
-                            type="number"
-                            placeholder="Max"
-                            value={bulkFilters.ageRange.max}
-                            onChange={(e) =>
-                              setBulkFilters({
-                                ...bulkFilters,
-                                ageRange: { ...bulkFilters.ageRange, max: Number.parseInt(e.target.value) || 75 },
-                              })
-                            }
-                            className="w-20"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-6 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Preferred Genders
-                        </Label>
-                        <div className="flex flex-wrap gap-2">
-                          {["Male", "Female", "Non-binary"].map((gender) => (
-                            <Button
-                              key={gender}
-                              size="sm"
-                              variant={bulkFilters.genders.includes(gender) ? "default" : "outline"}
-                              onClick={() => {
-                                const newGenders = bulkFilters.genders.includes(gender)
-                                  ? bulkFilters.genders.filter((g) => g !== gender)
-                                  : [...bulkFilters.genders, gender]
-                                setBulkFilters({ ...bulkFilters, genders: newGenders })
-                              }}
-                            >
-                              {gender}
-                            </Button>
+                      {/* Selected Personas Grid */}
+                      <section className="space-y-4">
+                        <h3 className="font-semibold">Selected Personas</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                          {personas.filter(p => selectedPersonaIds.has(p.id)).map(persona => (
+                            <Card key={persona.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                              <CardHeader className="pb-2">
+                                <div className="flex items-center justify-between">
+                                  <CardTitle className="text-base">{persona.name}</CardTitle>
+                                  <Badge variant={persona.persona_type === 'HCP' ? 'default' : 'secondary'}>{persona.persona_type}</Badge>
+                                </div>
+                                <CardDescription>{persona.age} yrs • {persona.gender} • {persona.location}</CardDescription>
+                              </CardHeader>
+                              <CardContent>
+                                <Badge className={conditionColors[persona.condition] || conditionColors.default}>{persona.condition}</Badge>
+                              </CardContent>
+                            </Card>
                           ))}
                         </div>
+                      </section>
+                    </>
+                  ) : (
+                    /* Empty State */
+                    <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+                      <div className="p-6 bg-primary/5 rounded-full mb-6">
+                        <Users className="h-16 w-16 text-primary/50" />
                       </div>
-
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Preferred Conditions
-                        </Label>
-                        <Input
-                          placeholder="e.g., Diabetes, Hypertension (comma-separated)"
-                          onChange={(e) =>
-                            setBulkFilters({
-                              ...bulkFilters,
-                              conditions: e.target.value
-                                .split(",")
-                                .map((c) => c.trim())
-                                .filter(Boolean),
-                            })
-                          }
-                        />
+                      <h2 className="text-2xl font-bold mb-2">Select Personas</h2>
+                      <p className="text-muted-foreground max-w-md mb-6">
+                        Choose personas from the left panel to build a cohort for testing, comparison, or simulation.
+                      </p>
+                      <div className="flex gap-3">
+                        <Button onClick={() => setWorkspaceMode("create")}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Create New Personas
+                        </Button>
+                        <Button variant="outline" onClick={() => setSelectedPersonaIds(new Set(filteredPersonas.slice(0, 5).map(p => p.id)))}>
+                          Quick Select (5)
+                        </Button>
                       </div>
                     </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Preferred Locations
-                      </Label>
-                      <Input
-                        placeholder="e.g., New York, California, Texas (comma-separated)"
-                        onChange={(e) =>
-                          setBulkFilters({
-                            ...bulkFilters,
-                            locations: e.target.value
-                              .split(",")
-                              .map((l) => l.trim())
-                              .filter(Boolean),
-                          })
-                        }
-                      />
-                    </div>
-
-                    {error && (
-                      <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 text-red-700 dark:text-red-300 rounded-lg">
-                        <p className="font-bold">Generation Error</p>
-                        <p className="text-sm">{error}</p>
+                  )}
+                </div>
+              </ScrollArea>
+            </main>
+          </div>
+        ) : (
+          /* CREATE MODE */
+          <div className="flex h-full w-full">
+            {/* LEFT: Creation Mode Selector */}
+            <aside className="w-[280px] border-r bg-muted/10 flex flex-col shrink-0">
+              <div className="p-4 border-b">
+                <h3 className="font-semibold text-base flex items-center gap-2 mb-4">
+                  <Settings className="h-5 w-5 text-primary" />
+                  Creation Mode
+                </h3>
+                <div className="space-y-2">
+                  <button onClick={() => setCreationMode("single")}
+                    className={`w-full p-3 rounded-lg border text-left transition-all ${creationMode === "single" ? "bg-primary/10 border-primary" : "bg-background border-border hover:border-primary/50"}`}>
+                    <div className="flex items-center gap-3">
+                      <User className="h-5 w-5 text-primary" />
+                      <div>
+                        <div className="font-medium text-sm">Single Persona</div>
+                        <div className="text-xs text-muted-foreground">Create one detailed persona</div>
                       </div>
-                    )}
-
-                    <Separator />
-
-                    <Button
-                      onClick={handleBulkGenerateFromPrompt}
-                      className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:shadow-xl transition-all duration-200 py-6 text-lg font-semibold"
-                      disabled={bulkGenerating || !bulkPrompt.trim()}
-                    >
-                      {bulkGenerating ? (
-                        <>
-                          <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-                          AI is Generating {bulkCount} Personas...
-                        </>
-                      ) : (
-                        <>
-                          <Wand2 className="mr-3 h-5 w-5" />
-                          Generate {bulkCount} AI Personas from Prompt
-                        </>
-                      )}
+                    </div>
+                  </button>
+                  <button onClick={() => setCreationMode("bulk")}
+                    className={`w-full p-3 rounded-lg border text-left transition-all ${creationMode === "bulk" ? "bg-primary/10 border-primary" : "bg-background border-border hover:border-primary/50"}`}>
+                    <div className="flex items-center gap-3">
+                      <Users className="h-5 w-5 text-emerald-600" />
+                      <div>
+                        <div className="font-medium text-sm">Bulk Creation</div>
+                        <div className="text-xs text-muted-foreground">Create multiple with templates</div>
+                      </div>
+                    </div>
+                  </button>
+                  <button onClick={() => setCreationMode("prompt")}
+                    className={`w-full p-3 rounded-lg border text-left transition-all ${creationMode === "prompt" ? "bg-primary/10 border-primary" : "bg-background border-border hover:border-primary/50"}`}>
+                    <div className="flex items-center gap-3">
+                      <Wand2 className="h-5 w-5 text-purple-600" />
+                      <div>
+                        <div className="font-medium text-sm">Prompt-Based</div>
+                        <div className="text-xs text-muted-foreground">AI generates from description</div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+              <div className="p-4">
+                <VeevaCRMImporter
+                  onImportComplete={() => { fetchPersonas(); setWorkspaceMode("browse"); }}
+                  trigger={
+                    <Button variant="outline" className="w-full h-auto py-3 flex flex-col items-center gap-2 border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50">
+                      <Database className="h-5 w-5 text-blue-600" />
+                      <span className="text-blue-600 text-sm">Import from CRM</span>
                     </Button>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </TabsContent>
-        </Tabs>
+                  }
+                />
+              </div>
+            </aside>
+
+            {/* RIGHT: Creation Form */}
+            <main className="flex-1 flex flex-col h-full bg-background overflow-hidden">
+              <ScrollArea className="flex-1">
+                <div className="p-8 max-w-3xl mx-auto space-y-6">
+                  {creationMode === "single" && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Brain className="h-5 w-5 text-primary" />
+                          Create AI-Powered Persona
+                        </CardTitle>
+                        <CardDescription>Enter basic attributes and let AI generate a comprehensive persona</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                          <div className="grid grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="age">Age</Label>
+                              <Input id="age" name="age" type="number" placeholder="e.g., 45" value={formData.age} onChange={handleInputChange} required />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gender">Gender</Label>
+                              <Input id="gender" name="gender" placeholder="e.g., Female" value={formData.gender} onChange={handleInputChange} required />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="count">Count</Label>
+                              <Input id="count" name="count" type="number" min="1" max="10" value={formData.count} onChange={handleInputChange} />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="condition">Primary Condition</Label>
+                              <Input id="condition" name="condition" placeholder="e.g., Type 2 Diabetes" value={formData.condition} onChange={handleInputChange} required />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="location">Location</Label>
+                              <Input id="location" name="location" placeholder="e.g., Austin, Texas" value={formData.location} onChange={handleInputChange} required />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="concerns">Key Concerns & Context</Label>
+                            <Textarea id="concerns" name="concerns" placeholder="e.g., Managing blood sugar levels, medication side effects..." value={formData.concerns} onChange={handleInputChange} className="min-h-[100px]" required />
+                          </div>
+                          {error && <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">{error}</div>}
+                          <Button type="submit" className="w-full" disabled={generating}>
+                            {generating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating {generationProgress.current}/{generationProgress.total}...</> : <><Brain className="mr-2 h-4 w-4" />Generate Persona(s)</>}
+                          </Button>
+                        </form>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {creationMode === "bulk" && (
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle className="flex items-center gap-2">
+                              <Users className="h-5 w-5 text-emerald-600" />
+                              Bulk Persona Creation
+                            </CardTitle>
+                            <CardDescription>Create multiple personas with individual customization</CardDescription>
+                          </div>
+                          <Button onClick={addBulkTemplate} size="sm"><Plus className="h-4 w-4 mr-1" />Add Template</Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <form onSubmit={handleBulkGenerate} className="space-y-4">
+                          {bulkTemplates.map((t, i) => (
+                            <Card key={t.id} className="border-muted">
+                              <CardHeader className="py-3">
+                                <div className="flex items-center justify-between">
+                                  <CardTitle className="text-sm">Template {i + 1}</CardTitle>
+                                  {bulkTemplates.length > 1 && <Button variant="ghost" size="sm" onClick={() => removeBulkTemplate(t.id)}><X className="h-4 w-4" /></Button>}
+                                </div>
+                              </CardHeader>
+                              <CardContent className="space-y-3">
+                                <div className="grid grid-cols-4 gap-3">
+                                  <Input placeholder="Age" value={t.age} onChange={e => handleBulkTemplateChange(t.id, "age", e.target.value)} />
+                                  <Input placeholder="Gender" value={t.gender} onChange={e => handleBulkTemplateChange(t.id, "gender", e.target.value)} />
+                                  <Input placeholder="Condition" value={t.condition} onChange={e => handleBulkTemplateChange(t.id, "condition", e.target.value)} />
+                                  <Input placeholder="Location" value={t.location} onChange={e => handleBulkTemplateChange(t.id, "location", e.target.value)} />
+                                </div>
+                                <Textarea placeholder="Concerns..." value={t.concerns} onChange={e => handleBulkTemplateChange(t.id, "concerns", e.target.value)} className="min-h-[60px]" />
+                              </CardContent>
+                            </Card>
+                          ))}
+                          <Button type="submit" className="w-full" disabled={bulkGenerating}>
+                            {bulkGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Users className="mr-2 h-4 w-4" />}
+                            Generate {bulkTemplates.length} Personas
+                          </Button>
+                        </form>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {creationMode === "prompt" && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Wand2 className="h-5 w-5 text-purple-600" />
+                          Prompt-Based Generation
+                        </CardTitle>
+                        <CardDescription>Describe your needs and let AI generate diverse personas</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <form onSubmit={handleBulkGenerateFromPrompt} className="space-y-4">
+                          <div className="space-y-2">
+                            <Label>Generation Prompt</Label>
+                            <Textarea placeholder="e.g., Create personas for elderly patients with chronic conditions who prefer traditional healthcare..." value={bulkPrompt} onChange={e => setBulkPrompt(e.target.value)} className="min-h-[120px]" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label>Number of Personas</Label>
+                              <Input type="number" min="1" max="10" value={bulkCount} onChange={e => setBulkCount(parseInt(e.target.value) || 3)} />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Age Range</Label>
+                              <div className="flex items-center gap-2">
+                                <Input type="number" value={bulkFilters.ageRange.min} onChange={e => setBulkFilters({ ...bulkFilters, ageRange: { ...bulkFilters.ageRange, min: parseInt(e.target.value) || 25 } })} className="w-20" />
+                                <span>to</span>
+                                <Input type="number" value={bulkFilters.ageRange.max} onChange={e => setBulkFilters({ ...bulkFilters, ageRange: { ...bulkFilters.ageRange, max: parseInt(e.target.value) || 75 } })} className="w-20" />
+                              </div>
+                            </div>
+                          </div>
+                          <Button type="submit" className="w-full bg-gradient-to-r from-purple-500 to-pink-500" disabled={bulkGenerating || !bulkPrompt.trim()}>
+                            {bulkGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
+                            Generate {bulkCount} Personas
+                          </Button>
+                        </form>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              </ScrollArea>
+            </main>
+          </div>
+        )}
       </div>
 
-      <PersonaDetailModal
-        isOpen={isDetailModalOpen}
-        onClose={() => setIsDetailModalOpen(false)}
-        persona={selectedPersona}
-      />
+      <PersonaDetailModal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} persona={selectedPersona} />
     </div>
   )
 }
