@@ -60,6 +60,7 @@ export function KnowledgeGraphWorkspace({ brandId, onNodeSelect }: KnowledgeGrap
         node_types: Record<string, number>
     } | null>(null)
     const [selectedNode, setSelectedNode] = useState<any>(null)
+    const [selectedEdge, setSelectedEdge] = useState<any>(null)
     const [filterType, setFilterType] = useState<string>('all')
     const [filterRelation, setFilterRelation] = useState<string>('all')
     const [filterSegment, setFilterSegment] = useState<string>('all')
@@ -273,9 +274,15 @@ export function KnowledgeGraphWorkspace({ brandId, onNodeSelect }: KnowledgeGrap
 
     const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
         setSelectedNode(node.data)
+        setSelectedEdge(null) // Clear edge selection
         onNodeSelect?.(node.id)
         setFocusNodeId(prev => prev === node.id ? null : node.id)
     }, [onNodeSelect])
+
+    const onEdgeClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
+        setSelectedEdge(edge.data)
+        setSelectedNode(null) // Clear node selection
+    }, [])
 
     // Render Logic
     if (loading) {
@@ -439,6 +446,7 @@ export function KnowledgeGraphWorkspace({ brandId, onNodeSelect }: KnowledgeGrap
                     onNodesChange={onNodesChange}
                     onEdgesChange={onEdgesChange}
                     onNodeClick={onNodeClick}
+                    onEdgeClick={onEdgeClick}
                     nodeTypes={nodeTypes}
                     fitView
                     minZoom={0.2}
@@ -470,76 +478,11 @@ export function KnowledgeGraphWorkspace({ brandId, onNodeSelect }: KnowledgeGrap
                 )}
             </div>
 
-            {/* RIGHT SIDEBAR: Details */}
-            <div className="w-96 flex-shrink-0 border-l bg-background flex flex-col shadow-xl z-20">
-                {selectedNode ? (
-                    <>
-                        <div className="p-4 border-b bg-muted/10 flex items-start justify-between">
-                            <div>
-                                <Badge variant="outline" className="mb-2 bg-background border-primary/20 text-primary">
-                                    {selectedNode.node_type?.replace(/_/g, ' ')}
-                                </Badge>
-                                <h3 className="font-semibold text-lg leading-tight">Insight Details</h3>
-                            </div>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedNode(null)}>
-                                <X className="h-4 w-4" />
-                            </Button>
-                        </div>
-                        <ScrollArea className="flex-1 p-6">
-                            <div className="space-y-6">
-                                <div>
-                                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Content</label>
-                                    <div className="mt-2 p-3 bg-muted/30 rounded-lg border text-sm leading-relaxed">
-                                        {selectedNode.text}
-                                    </div>
-                                </div>
-
-                                {selectedNode.source_quote && (
-                                    <div>
-                                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Source Evidence</label>
-                                        <div className="mt-2 pl-3 border-l-2 border-indigo-500 italic text-sm text-gray-600">
-                                            "{selectedNode.source_quote}"
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div className="grid grid-cols-2 gap-4 pt-2">
-                                    <div>
-                                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Segment</label>
-                                        <p className="text-sm mt-1 font-medium">{selectedNode.segment || "General"}</p>
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Confidence</label>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-green-500 rounded-full"
-                                                    style={{ width: `${(selectedNode.confidence || 0.7) * 100}%` }}
-                                                />
-                                            </div>
-                                            <span className="text-xs font-mono">{Math.round((selectedNode.confidence || 0.7) * 100)}%</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="pt-4 border-t">
-                                    <p className="text-xs text-muted-foreground">ID: {selectedNode.id}</p>
-                                </div>
-                            </div>
-                        </ScrollArea>
-                    </>
-                ) : (
-                    <div className="flex flex-col items-center justify-center p-8 text-center h-full text-muted-foreground">
-                        <div className="bg-muted/30 p-4 rounded-full mb-4">
-                            <Search className="h-8 w-8 opacity-50" />
-                        </div>
-                        <h3 className="font-medium text-lg text-foreground">No Insight Selected</h3>
-                        <p className="text-sm mt-2 max-w-[200px]">
-                            Click on any node in the graph to view detailed insights, segmentation, and source quotes.
-                        </p>
-                    </div>
-                )}
-            </div>
-        </div>
+        </p>
+                    </div >
+                )
+}
+            </div >
+        </div >
     )
 }

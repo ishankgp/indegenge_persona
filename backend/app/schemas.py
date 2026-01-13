@@ -213,10 +213,11 @@ class BrandInsight(BaseModel):
     source_document: Optional[str] = None
 
 
+
 class BrandDocumentBase(BaseModel):
     brand_id: int
     filename: str
-    category: Optional[str] = None  # Legacy field - may be None for newer documents
+
     document_type: Optional[str] = None  # New field: DocumentType enum value
     summary: Optional[str] = None
     extracted_insights: Optional[List[BrandInsight]] = None

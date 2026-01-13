@@ -378,11 +378,24 @@ def setup_mounjaro_brand():
             print(f"     ✅ Vector Store Created: {vector_store_id}")
 
             # Create document
+            # Map category to document_type
+            doc_type_map = {
+                "Disease & Patient Journey Overview": "disease_literature",
+                "Treatment Landscape / SoC": "competitive_intel",
+                "Brand Value Proposition & Core Messaging": "brand_messaging", 
+                "Safety & Tolerability Summary": "brand_messaging",
+                "HCP & Patient Segmentation": "brand_messaging",
+                "Market Research & Insight Summaries": "brand_messaging",
+                "Adherence / Persistence / Discontinuation Insights": "brand_messaging"
+            }
+            # Default to brand_messaging if not found
+            resolved_doc_type = doc_type_map.get(category, "brand_messaging")
+
             doc_create = schemas.BrandDocumentCreate(
                 brand_id=mounjaro_brand.id,
                 filename=filename,
                 filepath=filepath,
-                category=category,
+                document_type=resolved_doc_type,
                 summary=text[:200].strip() + "...",
                 extracted_insights=enriched_insights,
                 vector_store_id=vector_store_id,

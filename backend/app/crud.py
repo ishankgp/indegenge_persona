@@ -470,7 +470,12 @@ def get_brands(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.Brand).offset(skip).limit(limit).all()
 
 def create_brand_document(db: Session, document: schemas.BrandDocumentCreate):
-    db_document = models.BrandDocument(**document.dict())
+    data = document.dict()
+    # Remove fields not in the model
+    data.pop('filepath', None)
+    data.pop('summary', None)
+    
+    db_document = models.BrandDocument(**data)
     db.add(db_document)
     db.commit()
     db.refresh(db_document)
