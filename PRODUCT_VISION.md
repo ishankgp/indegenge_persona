@@ -13,6 +13,12 @@ PharmaPersonaSim transforms qualitative patient and HCP insights into quantitati
 
 ---
 
+## 2026 Product Roadmap
+
+![Product Roadmap 2026](docs/product_roadmap_2026.png)
+
+---
+
 ## Foundation Delivered ✅
 
 | Capability | Description |
