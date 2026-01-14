@@ -2313,6 +2313,7 @@ async def get_full_asset_history(
         # Include full result_json with annotated image
         result = cached.result_json.copy() if cached.result_json else {}
         result["persona_id"] = cached.persona_id
+        result["id"] = cached.id  # Include analysis record ID
         result["analyzed_at"] = cached.created_at.isoformat() if cached.created_at else None
         assets[asset_key]["results"].append(result)
     
@@ -2344,6 +2345,30 @@ async def clear_asset_analysis_cache(
         db.rollback()
         logger.error(f"Error clearing cache: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+
+
+@app.delete("/api/assets/history/{analysis_id}")
+async def delete_asset_analysis_history(
+    analysis_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a specific asset analysis result by ID
+    """
+    try:
+        analysis = db.query(models.CachedAssetAnalysis).filter(models.CachedAssetAnalysis.id == analysis_id).first()
+        if not analysis:
+            raise HTTPException(status_code=404, detail="Analysis result not found")
+        
+        db.delete(analysis)
+        db.commit()
+        return {"success": True, "message": "Analysis result deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete analysis: {str(e)}")
 
 
 # === Knowledge Graph API Endpoints ===

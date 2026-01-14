@@ -21,6 +21,13 @@ from . import models
 # Import shared utilities
 from .utils import get_openai_client, MODEL_NAME
 
+# Import Structured Output schemas
+from .schemas_openai import (
+    KnowledgeExtractionResponse,
+    RelationshipInferenceResponse,
+    DocumentClassificationResponse,
+)
+
 # Load environment variables
 backend_dir = os.path.dirname(os.path.dirname(__file__))
 env_path = os.path.join(backend_dir, '.env')
@@ -336,31 +343,21 @@ async def extract_knowledge_from_document(
     )
     
     try:
-        response = client.chat.completions.create(
+        response = client.beta.chat.completions.parse(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
+            response_format=KnowledgeExtractionResponse,
             max_completion_tokens=2000,
         )
         
-        content = response.choices[0].message.content or "[]"
-        print(f"DEBUG: Raw OpenAI content for doc {document_id}: {content[:500]}...") # Debug log
+        result = response.choices[0].message.parsed
+        if result is None:
+            logger.error("Structured output parsing returned None for knowledge extraction")
+            return _fallback_extraction(document_id, document_text, document_type, brand_id, db)
         
-        # Parse the response
-        try:
-            # Handle potential wrapper object
-            parsed = json.loads(content)
-            if isinstance(parsed, dict):
-                # Check if the dict itself is a node (has 'text') or looks like an error
-                if "text" in parsed or "node_type" in parsed:
-                    nodes_data = [parsed]
-                else:
-                    nodes_data = parsed.get("nodes", parsed.get("items", []))
-            else:
-                nodes_data = parsed
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse extraction response: {e}")
-            nodes_data = []
+        # Convert Pydantic models to dicts for processing
+        nodes_data = [node.model_dump() for node in result.nodes]
+        logger.info(f"✅ Extracted {len(nodes_data)} nodes via Structured Outputs for doc {document_id}")
         
         # Create knowledge nodes with deduplication
         created_nodes = []
@@ -469,24 +466,20 @@ async def infer_relationships(
     )
     
     try:
-        response = client.chat.completions.create(
+        response = client.beta.chat.completions.parse(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
+            response_format=RelationshipInferenceResponse,
             max_completion_tokens=1500,
         )
         
-        content = response.choices[0].message.content or "[]"
-        
-        try:
-            parsed = json.loads(content)
-            if isinstance(parsed, dict):
-                relations_data = parsed.get("relationships", parsed.get("relations", []))
-            else:
-                relations_data = parsed
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse relationships response: {e}")
-            relations_data = []
+        result = response.choices[0].message.parsed
+        if result is None:
+            logger.error("Structured output parsing returned None for relationships")
+            return []
+            
+        # Convert Pydantic models to dicts for processing
+        relations_data = [rel.model_dump() for rel in result.relationships]
         
         # Create relationship objects
         created_relations = []
@@ -660,24 +653,17 @@ def classify_document_type(document_text: str) -> str:
 Return ONLY the category name (e.g., "brand_messaging"), nothing else."""
 
     try:
-        response = client.chat.completions.create(
+        response = client.beta.chat.completions.parse(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
-            max_completion_tokens=50,
+            response_format=DocumentClassificationResponse,
+            max_completion_tokens=100,
         )
         
-        result = response.choices[0].message.content.strip().lower()
-        
-        # Validate result
-        valid_types = ["brand_messaging", "disease_literature", "interview_transcript", "competitive_intel"]
-        if result in valid_types:
-            return result
-        
-        # Try to match partial
-        for vt in valid_types:
-            if vt in result:
-                return vt
-        
+        result = response.choices[0].message.parsed
+        if result and result.document_type:
+            return result.document_type.value
+            
         return "brand_messaging"  # Default
         
     except Exception as e:

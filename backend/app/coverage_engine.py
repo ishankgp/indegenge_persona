@@ -20,6 +20,7 @@ from . import models
 
 # Import shared utilities
 from .utils import get_openai_client, MODEL_NAME
+from .schemas_openai import CoverageSuggestionsResponse
 
 # Load environment variables
 backend_dir = os.path.dirname(os.path.dirname(__file__))
@@ -296,23 +297,15 @@ Return as JSON array:
 ```"""
 
     try:
-        response = client.chat.completions.create(
+        response = client.beta.chat.completions.parse(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
+            response_format=CoverageSuggestionsResponse,
             max_tokens=1500,
         )
         
-        content = response.choices[0].message.content or "[]"
-        
-        try:
-            parsed = json.loads(content)
-            if isinstance(parsed, dict):
-                suggestions = parsed.get("suggestions", parsed.get("personas", []))
-            else:
-                suggestions = parsed
-        except json.JSONDecodeError:
-            suggestions = []
+        result = response.choices[0].message.parsed
+        suggestions = [s.model_dump() for s in result.suggestions] if result else []
         
         # Limit and format suggestions
         return suggestions[:limit]

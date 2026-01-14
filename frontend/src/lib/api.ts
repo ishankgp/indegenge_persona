@@ -488,6 +488,7 @@ export const VeevaCRMAPI = {
 export interface AssetAnalysisResult {
   persona_id: number;
   persona_name: string;
+  id?: number; // Optional as older records might not have it attached in frontend types immediately
   annotated_image: string | null; // Base64 encoded
   text_summary: string;
   error: string | null;
@@ -531,6 +532,9 @@ export const AssetIntelligenceAPI = {
   },
   getHistory: (): Promise<AssetHistoryResponse> => {
     return api.get('/api/assets/history/full').then(r => r.data);
+  },
+  deleteHistory: (analysisId: number): Promise<{ success: boolean; message: string }> => {
+    return api.delete(`/api/assets/history/${analysisId}`).then(r => r.data);
   },
   clearCache: (): Promise<{ success: boolean; deleted_count: number }> => {
     return api.delete('/api/assets/cache/clear').then(r => r.data);

@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 # Import shared utilities
 from .utils import get_openai_client, MODEL_NAME
+from .schemas_openai import SimilarityCheckResponse
 
 # Load environment variables
 backend_dir = os.path.dirname(os.path.dirname(__file__))
@@ -178,28 +179,29 @@ Scoring guide:
 - 0.0-0.5: Sufficiently different"""
 
     try:
-        response = client.chat.completions.create(
+        response = client.beta.chat.completions.parse(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
+            response_format=SimilarityCheckResponse,
             max_tokens=800,
         )
         
-        content = response.choices[0].message.content or "{}"
-        result = json.loads(content)
-        
-        similarity_score = result.get("similarity_score", 0.0)
+        result = response.choices[0].message.parsed
+        if result is None:
+            raise ValueError("Parsing failed")
+            
+        similarity_score = result.similarity_score
         
         return {
             "has_similar": similarity_score >= threshold,
             "most_similar": {
-                "id": result.get("most_similar_persona_id"),
-                "name": result.get("most_similar_persona_name"),
-            } if result.get("most_similar_persona_id") else None,
+                "id": result.most_similar_persona_id,
+                "name": result.most_similar_persona_name,
+            } if result.most_similar_persona_id else None,
             "similarity_score": similarity_score,
-            "overlapping_traits": result.get("overlapping_traits", []),
-            "key_differences": result.get("key_differences", []),
-            "recommendation": result.get("recommendation", "safe_to_create")
+            "overlapping_traits": result.overlapping_traits,
+            "key_differences": result.key_differences,
+            "recommendation": result.recommendation.value
         }
         
     except Exception as e:
