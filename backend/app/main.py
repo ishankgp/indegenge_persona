@@ -2620,6 +2620,39 @@ async def enrich_persona_from_graph(
     }
 
 
+@app.get("/api/knowledge/brands/{brand_id}/persona-check")
+async def check_persona_alignment(
+    brand_id: int,
+    persona_ids: str,  # Comma-separated list of persona IDs
+    db: Session = Depends(get_db)
+):
+    """
+    Pre-flight check: Validate if selected personas have known triggers or gaps
+    in brand messaging before asset analysis.
+    
+    Returns alignment status, triggers, gaps, and recommendations.
+    """
+    from . import persona_check
+    
+    # Parse persona IDs
+    try:
+        ids = [int(id.strip()) for id in persona_ids.split(",") if id.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid persona_ids format")
+    
+    if not ids:
+        raise HTTPException(status_code=400, detail="At least one persona_id is required")
+    
+    result = persona_check.check_persona_alignment(
+        brand_id=brand_id,
+        persona_ids=ids,
+        db=db
+    )
+    
+    result["summary"] = persona_check.get_persona_check_summary(result)
+    
+    return result
+
 @app.delete("/api/knowledge/nodes/{node_id}")
 async def delete_knowledge_node(
     node_id: str,

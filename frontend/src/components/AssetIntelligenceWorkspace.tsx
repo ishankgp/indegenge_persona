@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
     Upload,
     History,
@@ -13,9 +14,21 @@ import {
     ImageIcon,
     Maximize2,
     BookOpen,
-    AlertCircle
+    AlertCircle,
+    Zap,
+    Users,
+    ChevronDown,
+    ChevronUp
 } from 'lucide-react'
 import type { AssetAnalysisResult, AssetHistoryItem } from '@/lib/api'
+import { PreFlightCheckBanner } from './PreFlightCheckBanner'
+
+// Persona type for selector
+interface PersonaItem {
+    id: number
+    name: string
+    persona_type?: string
+}
 
 interface AssetIntelligenceWorkspaceProps {
     results: AssetAnalysisResult[]
@@ -28,6 +41,13 @@ interface AssetIntelligenceWorkspaceProps {
     onBack: () => void
     assetPreview: string | null
     selectedPersonasCount: number
+    // New props for pre-flight check
+    brandId?: number | null
+    selectedPersonaIds?: number[]
+    onViewKnowledgeGraph?: () => void
+    // New props for persona selector
+    personas?: PersonaItem[]
+    onTogglePersona?: (id: number) => void
 }
 
 export function AssetIntelligenceWorkspace({
@@ -40,13 +60,19 @@ export function AssetIntelligenceWorkspace({
     onLoadHistory,
     onBack,
     assetPreview,
-    selectedPersonasCount
+    selectedPersonasCount,
+    brandId,
+    selectedPersonaIds = [],
+    onViewKnowledgeGraph,
+    personas = [],
+    onTogglePersona
 }: AssetIntelligenceWorkspaceProps) {
     const [zoom, setZoom] = useState(1)
     const [pan, setPan] = useState({ x: 0, y: 0 })
     const [activePersonaIndex, setActivePersonaIndex] = useState(0)
     const [isDragging, setIsDragging] = useState(false)
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+    const [showPersonaSelector, setShowPersonaSelector] = useState(true)
     const imageRef = useRef<HTMLDivElement>(null)
 
     const activeResult = results[activePersonaIndex]
@@ -128,6 +154,71 @@ export function AssetIntelligenceWorkspace({
                         <input type="file" className="hidden" accept="image/*" onChange={(e) => onUpload(e.target.files)} />
                     </label>
                 </div>
+
+                {/* Persona Selector Section */}
+                {personas.length > 0 && onTogglePersona && (
+                    <div className="border-b">
+                        <button
+                            onClick={() => setShowPersonaSelector(!showPersonaSelector)}
+                            className="w-full p-3 flex items-center justify-between hover:bg-muted/50 transition-colors"
+                        >
+                            <div className="flex items-center gap-2">
+                                <Users className="h-4 w-4 text-violet-500" />
+                                <span className="font-medium text-sm">Target Personas</span>
+                                <Badge variant="secondary" className="text-xs">
+                                    {selectedPersonaIds.length} selected
+                                </Badge>
+                            </div>
+                            {showPersonaSelector ? (
+                                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                            )}
+                        </button>
+
+                        {showPersonaSelector && (
+                            <div className="px-3 pb-3 space-y-1 max-h-48 overflow-y-auto">
+                                {personas.slice(0, 20).map((persona) => {
+                                    const isSelected = selectedPersonaIds.includes(persona.id)
+                                    return (
+                                        <button
+                                            key={persona.id}
+                                            onClick={() => onTogglePersona(persona.id)}
+                                            className={`w-full flex items-center gap-2 p-2 rounded-md text-left text-sm transition-colors ${isSelected
+                                                    ? 'bg-violet-50 border border-violet-200 dark:bg-violet-900/20 dark:border-violet-800'
+                                                    : 'hover:bg-muted border border-transparent'
+                                                }`}
+                                        >
+                                            <Checkbox checked={isSelected} className="pointer-events-none" />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-medium truncate">{persona.name}</p>
+                                                {persona.persona_type && (
+                                                    <p className="text-xs text-muted-foreground">{persona.persona_type}</p>
+                                                )}
+                                            </div>
+                                        </button>
+                                    )
+                                })}
+                                {personas.length > 20 && (
+                                    <p className="text-xs text-muted-foreground text-center py-2">
+                                        +{personas.length - 20} more personas available
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Pre-flight Check Banner */}
+                {selectedPersonaIds.length > 0 && (
+                    <div className="p-3 border-b">
+                        <PreFlightCheckBanner
+                            brandId={brandId ?? null}
+                            personaIds={selectedPersonaIds}
+                            onViewKnowledgeGraph={onViewKnowledgeGraph}
+                        />
+                    </div>
+                )}
 
                 <ScrollArea className="flex-1">
                     <div className="p-2 space-y-1">
@@ -237,8 +328,8 @@ export function AssetIntelligenceWorkspace({
                                         key={idx}
                                         onClick={() => setActivePersonaIndex(idx)}
                                         className={`flex flex-col items-center p-2 rounded-lg border min-w-[80px] transition-all ${idx === activePersonaIndex
-                                                ? 'bg-violet-50 border-violet-500 ring-1 ring-violet-500 dark:bg-violet-900/20'
-                                                : 'bg-background border-border hover:border-violet-300'
+                                            ? 'bg-violet-50 border-violet-500 ring-1 ring-violet-500 dark:bg-violet-900/20'
+                                            : 'bg-background border-border hover:border-violet-300'
                                             }`}
                                     >
                                         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs mb-1">

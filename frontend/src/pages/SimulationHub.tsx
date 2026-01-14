@@ -47,6 +47,7 @@ interface Persona {
   location: string
   persona_type: string
   specialty?: string | null
+  brand_id?: number | null
 }
 
 const SAMPLE_MESSAGES = [
@@ -759,6 +760,11 @@ export function SimulationHub() {
             onBack={() => setSimulationMode("text")}
             assetPreview={assetPreview}
             selectedPersonasCount={selectedPersonas.size}
+            brandId={personas[0]?.brand_id ?? null}
+            selectedPersonaIds={Array.from(selectedPersonas)}
+            onViewKnowledgeGraph={() => navigate('/knowledge-graph')}
+            personas={personas}
+            onTogglePersona={togglePersona}
           />
         ) : (
           <div className="flex h-full w-full">

@@ -33,7 +33,7 @@ export function AssetHistory({ onLoadResults }: AssetHistoryProps) {
         setError(null)
         try {
             const response = await AssetIntelligenceAPI.getHistory()
-            setHistory(response.history)
+            setHistory(response.assets)
         } catch (err) {
             setError('Failed to load history')
             console.error('Error fetching history:', err)
