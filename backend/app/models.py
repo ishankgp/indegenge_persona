@@ -189,3 +189,35 @@ class KnowledgeRelation(Base):
     inferred_by = Column(String, default="llm")  # "llm" or "user"
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+
+# === Chat Models ===
+
+class ChatSession(Base):
+    """Represents a conversation session with a persona."""
+    __tablename__ = "chat_sessions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    persona_id = Column(Integer, ForeignKey("personas.id"), index=True)
+    brand_id = Column(Integer, ForeignKey("brands.id"), nullable=True)
+    
+    name = Column(String, nullable=True)  # Optional title for the chat
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ChatMessage(Base):
+    """Individual message in a chat session."""
+    __tablename__ = "chat_messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id"), index=True)
+    
+    role = Column(String)  # "user" or "assistant" (or "system")
+    content = Column(Text)
+    
+    # Optional metadata for citation/reasoning
+    citations = Column(JSON, nullable=True)
+    thought_process = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+

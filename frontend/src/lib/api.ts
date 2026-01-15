@@ -328,6 +328,8 @@ export const BrandsAPI = {
     formData.append('file', file);
     return api.post(`/api/brands/${brandId}/upload`, formData).then(r => r.data);
   },
+  ingestFolder: (brandId: number, folderPath: string) =>
+    api.post(`/api/brands/${brandId}/ingest-folder`, { folder_path: folderPath, recursive: true }).then(r => r.data),
   seed: (brandId: number) => api.post(`/api/brands/${brandId}/seed`).then(r => r.data),
   getContext: (brandId: number, params?: { target_segment?: string; limit_per_category?: number }) =>
     api.get<BrandContextResponse>(`/api/brands/${brandId}/context`, { params }).then(r => r.data),
@@ -652,4 +654,38 @@ export const CoverageAPI = {
   // Get AI suggestions
   getSuggestions: (brandId?: number, limit: number = 5): Promise<{ success: boolean; suggestions: CoverageSuggestion[] }> =>
     api.post(`/api/coverage/suggestions`, { brand_id: brandId, limit }).then(r => r.data),
+};
+
+// Chat API
+export interface ChatSession {
+  id: number;
+  persona_id: number;
+  brand_id?: number;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  session_id: number;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  created_at: string;
+  citations?: any;
+  thought_process?: string;
+}
+
+export const ChatAPI = {
+  createSession: (personaId: number, brandId?: number) =>
+    api.post<ChatSession>('/api/chat/sessions', { persona_id: personaId, brand_id: brandId }).then(r => r.data),
+
+  getSession: (sessionId: number) =>
+    api.get<ChatSession>(`/api/chat/sessions/${sessionId}`).then(r => r.data),
+
+  getHistory: (sessionId: number) =>
+    api.get<ChatMessage[]>(`/api/chat/sessions/${sessionId}/messages`).then(r => r.data),
+
+  sendMessage: (sessionId: number, content: string) =>
+    api.post<ChatMessage>(`/api/chat/sessions/${sessionId}/messages`, { content, role: 'user' }).then(r => r.data),
 };

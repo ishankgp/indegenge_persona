@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { PersonasAPI, BrandsAPI } from "@/lib/api"
+import { PersonasAPI, BrandsAPI, ChatAPI } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -51,6 +51,7 @@ import {
   LayoutGrid,
   List,
   Eye,
+  MessageSquare,
 } from "lucide-react"
 import { PersonaDetailModal } from "../components/PersonaDetailModal"
 import { useToast } from "@/components/ui/use-toast"
@@ -256,6 +257,16 @@ export function PersonaLibrary() {
       toast({ title: "Error", description: "Could not delete the persona.", variant: "destructive" });
     }
   };
+
+  const handleChatWithPersona = async (personaId: number) => {
+    try {
+      const session = await ChatAPI.createSession(personaId);
+      navigate(`/chat/${session.id}`);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to start chat session", variant: "destructive" });
+    }
+  };
+
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -618,6 +629,9 @@ export function PersonaLibrary() {
                               <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={(e) => { e.stopPropagation(); setSelectedPersona(persona); setIsDetailModalOpen(true); }}>
                                 <Eye className="h-3.5 w-3.5" />
                               </Button>
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-blue-500" onClick={(e) => { e.stopPropagation(); handleChatWithPersona(persona.id); }}>
+                                <MessageSquare className="h-3.5 w-3.5" />
+                              </Button>
                               <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500" onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${persona.name}"?`)) handleDeletePersona(persona.id, persona.name); }}>
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
@@ -686,6 +700,12 @@ export function PersonaLibrary() {
                                 <GitCompare className="h-4 w-4 mr-2" />
                                 Compare Personas
                               </Button>
+                              {selectedPersonaIds.size === 1 && (
+                                <Button variant="secondary" className="flex-1" onClick={() => handleChatWithPersona(Array.from(selectedPersonaIds)[0])}>
+                                  <MessageSquare className="h-4 w-4 mr-2" />
+                                  Chat
+                                </Button>
+                              )}
                             </div>
                           </CardContent>
                         </Card>

@@ -19,7 +19,8 @@ from datetime import datetime
 
 # Note: dotenv loading removed - pass environment variables directly
 
-from . import crud, models, schemas, persona_engine, cohort_engine, document_processor, avatar_engine, image_improvement, vector_search
+from .chat_engine import ChatEngine
+from . import models, schemas, crud, persona_engine, cohort_engine, auto_enrichment, database, vector_search
 from . import archetypes, disease_packs
 from . import asset_analyzer
 from .database import engine, get_db
@@ -362,29 +363,23 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
         new_persona.disease_pack = disease_data.get("condition_name")
         updates_needed = True
 
-    # Generate avatar using DALL-E 3
+    # Generate avatar using fallback (DALL-E 3 generation removed)
     try:
         # Parse the persona JSON to extract additional attributes
         persona_json_parsed = json.loads(full_persona_json)
-        specialty = persona_json_parsed.get("specialty")
-        if not specialty and isinstance(persona_json_parsed.get("demographics"), dict):
-            specialty = persona_json_parsed.get("demographics", {}).get("specialty")
         persona_type_raw = persona_json_parsed.get("persona_type", "Patient")
         persona_type = "HCP" if str(persona_type_raw).lower() == "hcp" else "Patient"
         
-        avatar_url = avatar_engine.generate_avatar(
-            age=persona_data.age,
-            gender=persona_data.gender,
+        avatar_url = avatar_engine.get_fallback_avatar(
             persona_type=persona_type,
-            specialty=specialty,
-            name=new_persona.name
+            gender=persona_data.gender
         )
         
         if avatar_url:
             # Update the persona with the avatar URL
             new_persona.avatar_url = avatar_url
             updates_needed = True
-            logger.info(f"✅ Avatar generated for persona {new_persona.id}: {avatar_url[:50]}...")
+            logger.info(f"✅ Fallback avatar generated for persona {new_persona.id}")
             
     except Exception as avatar_error:
         logger.warning(f"⚠️ Avatar generation failed for persona {new_persona.id}: {avatar_error}")
@@ -832,53 +827,6 @@ async def delete_persona(persona_id: int, db: Session = Depends(get_db)):
     return Response(status_code=204)
 
 
-@app.post("/api/personas/{persona_id}/regenerate-avatar", response_model=schemas.Persona)
-async def regenerate_persona_avatar(persona_id: int, db: Session = Depends(get_db)):
-    """
-    Regenerate the avatar for an existing persona using DALL-E 3.
-    
-    This will generate a new, unique avatar based on the persona's demographics
-    and replace the existing avatar URL.
-    """
-    # Get the persona
-    persona = crud.get_persona(db, persona_id)
-    if not persona:
-        raise HTTPException(status_code=404, detail="Persona not found")
-    
-    # Parse persona JSON for additional attributes
-    try:
-        persona_json = json.loads(persona.full_persona_json or "{}")
-    except json.JSONDecodeError:
-        persona_json = {}
-    
-    specialty = persona_json.get("specialty") or persona_json.get("demographics", {}).get("specialty")
-    persona_type = persona.persona_type or "Patient"
-    
-    # Generate new avatar
-    try:
-        import random
-        avatar_url = avatar_engine.generate_avatar(
-            age=persona.age,
-            gender=persona.gender,
-            persona_type=persona_type,
-            specialty=specialty,
-            name=f"{persona.name}_regen_{random.randint(1, 10000)}"  # Unique seed for new result
-        )
-        
-        if not avatar_url:
-            raise HTTPException(status_code=500, detail="Failed to generate avatar")
-        
-        # Update the persona with new avatar URL
-        persona.avatar_url = avatar_url
-        db.commit()
-        db.refresh(persona)
-        
-        logger.info(f"✅ Avatar regenerated for persona {persona_id}: {avatar_url[:50]}...")
-        return persona
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to regenerate avatar for persona {persona_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to regenerate avatar: {str(e)}")
 
 # --- Saved Simulation Endpoints ---
 
@@ -3070,6 +3018,58 @@ async def auto_merge_duplicate_nodes(
     )
     
     return result
+
+
+
+# --- Chat Endpoints ---
+
+@app.post("/api/chat/sessions", response_model=schemas.ChatSession)
+async def create_chat_session(
+    session_data: schemas.ChatSessionCreate, 
+    db: Session = Depends(get_db)
+):
+    """Start a new chat session with a persona."""
+    engine = ChatEngine(db)
+    return engine.create_session(session_data.persona_id, session_data.brand_id)
+
+@app.get("/api/chat/sessions/{session_id}", response_model=schemas.ChatSession)
+async def get_chat_session(session_id: int, db: Session = Depends(get_db)):
+    """Get chat session details."""
+    session = crud.get_chat_session(db, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    return session
+
+@app.get("/api/chat/sessions/{session_id}/messages", response_model=List[schemas.ChatMessage])
+async def get_chat_history_endpoint(
+    session_id: int, 
+    limit: int = 50, 
+    db: Session = Depends(get_db)
+):
+    """Get message history for a session."""
+    if not crud.get_chat_session(db, session_id):
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    return crud.get_chat_history(db, session_id, limit)
+
+@app.post("/api/chat/sessions/{session_id}/messages", response_model=schemas.ChatMessage)
+async def send_chat_message(
+    session_id: int,
+    message: schemas.ChatMessageCreate,
+    db: Session = Depends(get_db)
+):
+    """Send a message to the persona and get a response."""
+    engine = ChatEngine(db)
+    
+    try:
+        # process_message handles saving the user message and generating/saving the assistant response
+        response_msg = engine.process_message(session_id, message.content)
+        return response_msg
+    except ValueError as e:
+        # Typically means session or persona not found
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Chat error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process chat message: {str(e)}")
 
 
 if __name__ == "__main__":

@@ -217,15 +217,13 @@ class BrandInsight(BaseModel):
 class BrandDocumentBase(BaseModel):
     brand_id: int
     filename: str
-
-    document_type: Optional[str] = None  # New field: DocumentType enum value
+    category: Optional[str] = None  # Document category/classification
+    document_type: Optional[str] = None  # DocumentType enum value
     summary: Optional[str] = None
     extracted_insights: Optional[List[BrandInsight]] = None
     vector_store_id: Optional[str] = None
     chunk_size: Optional[int] = None
     chunk_ids: Optional[List[str]] = None
-    file_type: Optional[str] = None
-    upload_date: Optional[datetime] = None
 
 class BrandDocumentCreate(BrandDocumentBase):
     filepath: Optional[str] = None  # Made optional for flexibility
@@ -267,3 +265,40 @@ class BrandSuggestionResponse(BaseModel):
     motivations: List[str]
     beliefs: List[str]
     tensions: List[str]
+
+
+# === Chat Schemas ===
+
+class ChatMessageBase(BaseModel):
+    role: str
+    content: str
+    citations: Optional[List[Dict[str, Any]]] = None
+    thought_process: Optional[str] = None
+
+class ChatMessageCreate(ChatMessageBase):
+    pass
+
+class ChatMessage(ChatMessageBase):
+    id: int
+    session_id: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class ChatSessionBase(BaseModel):
+    persona_id: int
+    brand_id: Optional[int] = None
+    name: Optional[str] = None
+
+class ChatSessionCreate(ChatSessionBase):
+    pass
+
+class ChatSession(ChatSessionBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    # messages list can be populated manually or via ORM if relationships are set
+    
+    class Config:
+        from_attributes = True

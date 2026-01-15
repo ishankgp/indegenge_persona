@@ -59,6 +59,7 @@ const BrandLibrary = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isCreatingBrand, setIsCreatingBrand] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isIngesting, setIsIngesting] = useState(false);
   const [personaCount, setPersonaCount] = useState<number>(0);
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
@@ -143,6 +144,37 @@ const BrandLibrary = () => {
       toast({ title: "Error", description: errorMessage, variant: "destructive" });
     } finally {
       setIsSeeding(false);
+    }
+  };
+
+  const handleBulkIngest = async () => {
+    if (!selectedBrandId) return;
+
+    // Simple prompt for now - could be a dialog in future
+    const folderPath = window.prompt(
+      "Enter absolute folder path to ingest (on server):",
+      "data/mounjaro_resources"
+    );
+
+    if (!folderPath) return;
+
+    setIsIngesting(true);
+    try {
+      const result = await BrandsAPI.ingestFolder(parseInt(selectedBrandId), folderPath);
+
+      // Refresh documents
+      fetchDocuments(parseInt(selectedBrandId));
+
+      toast({
+        title: "Ingestion Complete",
+        description: `Processed ${result.total_files} files. Created ${result.total_nodes_created} knowledge nodes.`
+      });
+    } catch (error: any) {
+      console.error("Failed to ingest folder", error);
+      const errorMessage = error?.response?.data?.detail || "Failed to ingest folder.";
+      toast({ title: "Ingestion Failed", description: errorMessage, variant: "destructive" });
+    } finally {
+      setIsIngesting(false);
     }
   };
 
@@ -270,7 +302,7 @@ const BrandLibrary = () => {
 
               <div className="flex items-center gap-2">
                 <label className="cursor-pointer">
-                  <Button size="sm" variant="default" disabled={isUploading} className="pointer-events-none">
+                  <Button size="sm" variant="default" disabled={isUploading || isIngesting} className="pointer-events-none">
                     <Upload className="h-3.5 w-3.5 mr-2" />
                     {isUploading ? "Uploading..." : "Upload PDF/Doc"}
                   </Button>
@@ -278,7 +310,7 @@ const BrandLibrary = () => {
                     type="file"
                     className="hidden"
                     onChange={handleFileUpload}
-                    disabled={isUploading}
+                    disabled={isUploading || isIngesting}
                     accept=".pdf,.txt,.docx,.md"
                   />
                 </label>
@@ -290,9 +322,13 @@ const BrandLibrary = () => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={handleSeedData} disabled={isSeeding}>
+                    <DropdownMenuItem onClick={handleSeedData} disabled={isSeeding || isIngesting}>
                       <Sparkles className="h-4 w-4 mr-2" />
                       {isSeeding ? "Seeding..." : "Populate Demo Data"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleBulkIngest} disabled={isSeeding || isIngesting}>
+                      {isIngesting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Library className="h-4 w-4 mr-2" />}
+                      {isIngesting ? "Ingesting..." : "Bulk Ingest Folder"}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

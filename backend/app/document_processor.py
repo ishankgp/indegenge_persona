@@ -123,15 +123,12 @@ def classify_document(text: str) -> str:
     truncated_text = text[:1000]
 
     prompt = f"""
-    You are an expert pharma brand strategist. Classify the following document text into EXACTLY ONE of these 7 categories:
+    You are an expert pharma brand strategist. Classify the following document text into EXACTLY ONE of these 4 categories:
 
-    1. Disease & Patient Journey Overview
-    2. Treatment Landscape / SoC
-    3. Brand Value Proposition & Core Messaging
-    4. Safety & Tolerability Summary
-    5. HCP & Patient Segmentation
-    6. Market Research & Insight Summaries
-    7. Adherence / Persistence / Discontinuation Insights
+    1. Clinical Data - Clinical trials, safety info, disease state, medical literature
+    2. Marketing Content - Value proposition, messaging, visual aids, brand guidelines
+    3. Patient Insights - Patient journey, segmentation, interviews, behavior
+    4. Other - Regulatory, competitive intel, or unclassified
 
     If the text doesn't fit well, choose the closest match.
     Return ONLY the category name, nothing else.
@@ -154,13 +151,10 @@ def classify_document(text: str) -> str:
         
         # Validate category against list to ensure exact match
         valid_categories = [
-            "Disease & Patient Journey Overview",
-            "Treatment Landscape / SoC",
-            "Brand Value Proposition & Core Messaging",
-            "Safety & Tolerability Summary",
-            "HCP & Patient Segmentation",
-            "Market Research & Insight Summaries",
-            "Adherence / Persistence / Discontinuation Insights"
+            "Clinical Data",
+            "Marketing Content",
+            "Patient Insights",
+            "Other"
         ]
         
         # Simple fuzzy match or exact match check
@@ -168,7 +162,7 @@ def classify_document(text: str) -> str:
             if valid.lower() in category.lower():
                 return valid
                 
-        return "Unclassified"
+        return "Other"
         
     except Exception as e:
         logger.error(f"Error classifying document: {e}")

@@ -11,10 +11,13 @@ import { PersonaCoverage } from './pages/PersonaCoverage';
 import { ComparePersonas } from './pages/ComparePersonas';
 import { KnowledgeGraphPage } from './pages/KnowledgeGraphPage';
 
+import { PersonaChat } from './pages/PersonaChat';
+
 function App() {
   return (
     <Router>
       <Routes>
+        <Route path="/chat/:sessionId" element={<PersonaChat />} />
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
           <Route path="personas" element={<PersonaLibrary />} />

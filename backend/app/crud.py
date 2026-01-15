@@ -615,3 +615,49 @@ def delete_cached_analysis(db: Session, analysis_id: int) -> bool:
         db.commit()
         return True
     return False
+
+
+# CRUD for Chat Sessions
+def create_chat_session(db: Session, session: schemas.ChatSessionCreate):
+    db_session = models.ChatSession(**session.dict())
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+    return db_session
+
+def get_chat_session(db: Session, session_id: int):
+    return db.query(models.ChatSession).filter(models.ChatSession.id == session_id).first()
+
+def get_chat_sessions_by_persona(db: Session, persona_id: int, skip: int = 0, limit: int = 50):
+    return db.query(models.ChatSession).filter(
+        models.ChatSession.persona_id == persona_id
+    ).order_by(models.ChatSession.updated_at.desc()).offset(skip).limit(limit).all()
+
+def create_chat_message(db: Session, message: schemas.ChatMessageCreate, session_id: int):
+    db_message = models.ChatMessage(**message.dict(), session_id=session_id)
+    db.add(db_message)
+    
+    # Update parent session "updated_at"
+    session = get_chat_session(db, session_id)
+    if session:
+        from datetime import datetime
+        session.updated_at = datetime.utcnow()
+        
+    db.commit()
+    db.refresh(db_message)
+    return db_message
+
+def get_chat_history(db: Session, session_id: int, limit: int = 50):
+    return db.query(models.ChatMessage).filter(
+        models.ChatMessage.session_id == session_id
+    ).order_by(models.ChatMessage.created_at.asc()).limit(limit).all()
+
+def delete_chat_session(db: Session, session_id: int):
+    session = get_chat_session(db, session_id)
+    if session:
+        # Delete messages first (manual cascade)
+        db.query(models.ChatMessage).filter(models.ChatMessage.session_id == session_id).delete()
+        db.delete(session)
+        db.commit()
+        return True
+    return False
