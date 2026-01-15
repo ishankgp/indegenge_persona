@@ -47,6 +47,7 @@ interface Persona {
   location: string
   persona_type: string
   specialty?: string | null
+  brand_id?: number | null
 }
 
 const SAMPLE_MESSAGES = [
@@ -91,7 +92,7 @@ export function SimulationHub() {
   const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
-  const [progress, setProgress] = useState(0)
+
   const [filters, setFilters] = useState<PersonaFilters>({
     ageRange: [...DEFAULT_AGE_RANGE] as [number, number],
     personaTypes: [...PERSONA_TYPES],
@@ -103,9 +104,8 @@ export function SimulationHub() {
   const [recruitmentMode, setRecruitmentMode] = useState<"manual" | "ai">("manual")
   const [recruitmentPrompt, setRecruitmentPrompt] = useState("")
   const [isRecruiting, setIsRecruiting] = useState(false)
-  const [isVariant, setIsVariant] = useState(false)
-  const [originalMessage, setOriginalMessage] = useState("")
-  const [showMetricWeights, setShowMetricWeights] = useState(false)
+
+
 
   // Asset Intelligence Mode
   const [simulationMode, setSimulationMode] = useState<"text" | "asset">("text")
@@ -131,8 +131,6 @@ export function SimulationHub() {
 
     if (state?.prefillMessage) {
       setStimulusText(state.prefillMessage)
-      setIsVariant(state.isVariant ?? false)
-      setOriginalMessage(state.originalMessage ?? "")
     }
 
     if (state?.preselectedPersonaIds?.length) {
@@ -227,20 +225,7 @@ export function SimulationHub() {
   const personaTypeOptions =
     filterOptions.personaTypes.length > 0 ? filterOptions.personaTypes : [...PERSONA_TYPES]
 
-  const personaTypeCounts = useMemo(() => {
-    return personas.reduce<Record<PersonaType, number>>(
-      (acc, persona) => {
-        const normalized = (persona.persona_type || "Patient").trim().toLowerCase()
-        if (normalized === "hcp") {
-          acc.HCP = (acc.HCP || 0) + 1
-        } else {
-          acc.Patient = (acc.Patient || 0) + 1
-        }
-        return acc
-      },
-      { HCP: 0, Patient: 0 },
-    )
-  }, [personas])
+
 
 
 
@@ -312,16 +297,7 @@ export function SimulationHub() {
     fetchPersonas()
   }, [])
 
-  useEffect(() => {
-    if (analyzing) {
-      const timer = setInterval(() => {
-        setProgress((prev) => Math.min(prev + 10, 90))
-      }, 200)
-      return () => clearInterval(timer)
-    } else {
-      setProgress(0)
-    }
-  }, [analyzing])
+
 
   const fetchPersonas = async () => {
     setLoading(true)
@@ -393,16 +369,12 @@ export function SimulationHub() {
     setStimulusImages((prev) => [...prev, ...newImages])
   }
 
-  const addQuestion = () => {
+  const addQuestion = (text: string = "") => {
     if (questions.length >= MAX_QUESTIONS) {
       alert(`You can add up to ${MAX_QUESTIONS} questions.`)
       return
     }
-    setQuestions((prev) => [...prev, ""])
-  }
-
-  const updateQuestion = (index: number, value: string) => {
-    setQuestions((prev) => prev.map((q, i) => (i === index ? value : q)))
+    setQuestions((prev) => [...prev, text])
   }
 
   const removeQuestion = (index: number) => {
@@ -617,7 +589,7 @@ export function SimulationHub() {
         throw new Error("Response contains no individual responses")
       }
 
-      setProgress(100)
+
       setTimeout(() => {
         console.log("🧭 Navigating to analytics with data:", {
           cohort_size: response.cohort_size,
@@ -759,6 +731,11 @@ export function SimulationHub() {
             onBack={() => setSimulationMode("text")}
             assetPreview={assetPreview}
             selectedPersonasCount={selectedPersonas.size}
+            brandId={personas[0]?.brand_id ?? null}
+            selectedPersonaIds={Array.from(selectedPersonas)}
+            onViewKnowledgeGraph={() => navigate('/knowledge-graph')}
+            allPersonas={personas}
+            onTogglePersona={togglePersona}
           />
         ) : (
           <div className="flex h-full w-full">

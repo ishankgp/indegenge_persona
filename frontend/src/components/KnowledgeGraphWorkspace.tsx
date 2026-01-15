@@ -17,7 +17,7 @@ import { api } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Loader2, RefreshCw, Network, AlertTriangle, Filter, X, Search, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
+import { Loader2, RefreshCw, Network, AlertTriangle, Filter, X, Search, ZoomIn, ZoomOut } from 'lucide-react'
 import {
     Select,
     SelectContent,
@@ -482,8 +482,8 @@ export function KnowledgeGraphWorkspace({ brandId, onNodeSelect }: KnowledgeGrap
             <div className={`w-[350px] border-l bg-background p-4 shadow-xl z-10 transition-transform duration-300 ${selectedNode || selectedEdge ? 'translate-x-0' : 'translate-x-full absolute right-0'}`}>
                 <div className="flex items-center justify-between mb-6">
                     <span className={`px-2 py-1 rounded-full text-xs font-semibold ${selectedEdge
-                            ? 'bg-purple-100 text-purple-700'
-                            : 'bg-indigo-100 text-indigo-700'
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'bg-indigo-100 text-indigo-700'
                         }`}>
                         {selectedEdge ? (selectedEdge.relation_type || 'relationship').replace(/_/g, ' ') : (selectedNode?.node_type?.replace(/_/g, ' ') || 'insight details')}
                     </span>

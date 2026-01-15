@@ -16,6 +16,7 @@ import {
     AlertCircle
 } from 'lucide-react'
 import type { AssetAnalysisResult, AssetHistoryItem } from '@/lib/api'
+import { PreFlightCheckBanner } from './PreFlightCheckBanner'
 
 interface AssetIntelligenceWorkspaceProps {
     results: AssetAnalysisResult[]
@@ -28,6 +29,13 @@ interface AssetIntelligenceWorkspaceProps {
     onBack: () => void
     assetPreview: string | null
     selectedPersonasCount: number
+    // New props for pre-flight check
+    brandId?: number | null
+    selectedPersonaIds?: number[]
+    onViewKnowledgeGraph?: () => void
+    // New props for persona selection
+    allPersonas?: { id: number; name: string; persona_type: string }[]
+    onTogglePersona?: (id: number) => void
 }
 
 export function AssetIntelligenceWorkspace({
@@ -40,7 +48,12 @@ export function AssetIntelligenceWorkspace({
     onLoadHistory,
     onBack,
     assetPreview,
-    selectedPersonasCount
+    selectedPersonasCount,
+    brandId,
+    selectedPersonaIds = [],
+    onViewKnowledgeGraph,
+    allPersonas = [],
+    onTogglePersona
 }: AssetIntelligenceWorkspaceProps) {
     const [zoom, setZoom] = useState(1)
     const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -90,7 +103,7 @@ export function AssetIntelligenceWorkspace({
             ? activeResult.annotated_image
             : `data:image/png;base64,${activeResult.annotated_image}`
         link.href = imageData
-        link.download = `${activeResult.persona_name.replace(/\s+/g, '_')}_feedback.png`
+        link.download = `${(activeResult.persona_name || 'asset').replace(/\s+/g, '_')}_feedback.png`
         link.click()
     }
 
@@ -237,15 +250,15 @@ export function AssetIntelligenceWorkspace({
                                         key={idx}
                                         onClick={() => setActivePersonaIndex(idx)}
                                         className={`flex flex-col items-center p-2 rounded-lg border min-w-[80px] transition-all ${idx === activePersonaIndex
-                                                ? 'bg-violet-50 border-violet-500 ring-1 ring-violet-500 dark:bg-violet-900/20'
-                                                : 'bg-background border-border hover:border-violet-300'
+                                            ? 'bg-violet-50 border-violet-500 ring-1 ring-violet-500 dark:bg-violet-900/20'
+                                            : 'bg-background border-border hover:border-violet-300'
                                             }`}
                                     >
                                         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs mb-1">
-                                            {result.persona_name.charAt(0)}
+                                            {(result.persona_name || '?').charAt(0)}
                                         </div>
                                         <span className="text-[10px] font-medium max-w-full truncate px-1">
-                                            {result.persona_name.split(' ')[0]}
+                                            {(result.persona_name || `Persona ${result.persona_id}`).split(' ')[0]}
                                         </span>
                                     </button>
                                 ))}
@@ -256,15 +269,14 @@ export function AssetIntelligenceWorkspace({
                     <ScrollArea className="flex-1 p-6">
                         {activeResult && (
                             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-
                                 {/* Header */}
                                 <div>
                                     <div className="flex items-center justify-between mb-1">
                                         <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-violet-600 to-indigo-600">
-                                            {activeResult.persona_name}
+                                            {activeResult.persona_name || "Unknown Persona"}
                                         </h2>
                                         {activeResult.research_alignment_score != null && (
-                                            <Badge variant={activeResult.research_alignment_score && activeResult.research_alignment_score > 70 ? 'default' : 'secondary'}>
+                                            <Badge variant={activeResult.research_alignment_score > 70 ? 'default' : 'secondary'}>
                                                 {activeResult.research_alignment_score}% Aligned
                                             </Badge>
                                         )}
@@ -322,20 +334,70 @@ export function AssetIntelligenceWorkspace({
                 </div>
             )}
 
-            {/* If no results and not analyzing, but we have preview */}
-            {!hasResults && assetPreview && (
-                <div className="w-96 flex-shrink-0 border-l bg-background p-6 flex flex-col justify-center items-center text-center">
-                    <ImageIcon className="h-16 w-16 text-violet-200 mb-4" />
-                    <h3 className="font-semibold text-lg mb-2">Ready to Analyze</h3>
-                    <p className="text-muted-foreground text-sm mb-6">
-                        You've selected {selectedPersonasCount} personas. <br />
-                        Click the button below to generate AI-powered feedback.
-                    </p>
-                    <Button size="lg" className="w-full bg-violet-600 hover:bg-violet-700" onClick={onAnalyze} disabled={isAnalyzing}>
-                        {isAnalyzing ? 'Analyzing...' : 'Run Asset Intelligence'}
-                    </Button>
-                </div>
-            )}
+            {
+                !hasResults && assetPreview && (
+                    <div className="w-96 flex-shrink-0 border-l bg-background p-6 flex flex-col overflow-y-auto">
+                        <div className="flex flex-col items-center text-center mb-6">
+                            <ImageIcon className="h-16 w-16 text-violet-200 mb-4" />
+                            <h3 className="font-semibold text-lg mb-2">Ready to Analyze</h3>
+                            <p className="text-muted-foreground text-sm">
+                                Generate AI-powered feedback for your selected audience.
+                            </p>
+                        </div>
+
+                        {/* Pre-flight Check Banner - Moved here */}
+                        {selectedPersonaIds.length > 0 && (
+                            <div className="mb-6">
+                                <PreFlightCheckBanner
+                                    brandId={brandId ?? null}
+                                    personaIds={selectedPersonaIds}
+                                    onViewKnowledgeGraph={onViewKnowledgeGraph}
+                                />
+                            </div>
+                        )}
+
+                        {/* Persona Selector */}
+                        <div className="space-y-3 mb-6 flex-1">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-medium">Selected Personas ({selectedPersonasCount})</h4>
+                            </div>
+                            <ScrollArea className="h-64 rounded-md border p-2">
+                                <div className="space-y-1">
+                                    {allPersonas.map(persona => {
+                                        const isSelected = selectedPersonaIds.includes(persona.id)
+                                        return (
+                                            <button
+                                                key={persona.id}
+                                                onClick={() => onTogglePersona?.(persona.id)}
+                                                className={`w-full text-left px-2 py-1.5 rounded text-sm flex items-center gap-2 transition-colors ${isSelected
+                                                    ? 'bg-violet-50 text-violet-900 font-medium'
+                                                    : 'hover:bg-muted text-muted-foreground'
+                                                    }`}
+                                            >
+                                                <div className={`w-3 h-3 rounded-full border ${isSelected ? 'bg-violet-500 border-violet-500' : 'border-gray-300'
+                                                    }`} />
+                                                <span className="truncate flex-1">{persona.name}</span>
+                                                <Badge variant="outline" className="text-[10px] h-4 px-1">
+                                                    {persona.persona_type}
+                                                </Badge>
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                            </ScrollArea>
+                        </div>
+
+                        <Button
+                            size="lg"
+                            className="w-full bg-violet-600 hover:bg-violet-700 mt-auto"
+                            onClick={onAnalyze}
+                            disabled={isAnalyzing || selectedPersonasCount === 0}
+                        >
+                            {isAnalyzing ? 'Analyzing...' : 'Run Asset Intelligence'}
+                        </Button>
+                    </div>
+                )
+            }
         </div>
     )
 }

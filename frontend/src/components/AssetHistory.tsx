@@ -33,7 +33,7 @@ export function AssetHistory({ onLoadResults }: AssetHistoryProps) {
         setError(null)
         try {
             const response = await AssetIntelligenceAPI.getHistory()
-            setHistory(response.history)
+            setHistory(response.assets)
         } catch (err) {
             setError('Failed to load history')
             console.error('Error fetching history:', err)
@@ -56,11 +56,11 @@ export function AssetHistory({ onLoadResults }: AssetHistoryProps) {
                     if (asset.image_hash === assetHash) {
                         return {
                             ...asset,
-                            personas: asset.personas.filter(p => p.id !== analysisId)
+                            results: asset.results.filter(r => r.id !== analysisId)
                         }
                     }
                     return asset
-                }).filter(asset => asset.personas.length > 0)
+                }).filter(asset => asset.results.length > 0)
             })
         } catch (err) {
             console.error('Error deleting analysis:', err)
@@ -76,7 +76,7 @@ export function AssetHistory({ onLoadResults }: AssetHistoryProps) {
 
     const handleLoadAsset = (asset: AssetHistoryItem) => {
         if (!onLoadResults) return
-        const results: AssetAnalysisResult[] = asset.personas.map(p => p.result_json)
+        const results = asset.results
         onLoadResults(results, asset.asset_name || 'Unknown Asset')
     }
 
@@ -199,7 +199,7 @@ export function AssetHistory({ onLoadResults }: AssetHistoryProps) {
                                             </p>
                                             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                                                 <Clock className="h-3 w-3" />
-                                                {formatDate(asset.first_analyzed)}
+                                                {formatDate(asset.created_at)}
                                             </div>
                                         </div>
                                     </div>
@@ -218,7 +218,7 @@ export function AssetHistory({ onLoadResults }: AssetHistoryProps) {
                                 <div className="flex items-center gap-2 mb-3">
                                     <Badge variant="secondary" className="gap-1">
                                         <Users className="h-3 w-3" />
-                                        {asset.personas.length} persona{asset.personas.length !== 1 ? 's' : ''}
+                                        {asset.results.length} persona{asset.results.length !== 1 ? 's' : ''}
                                     </Badge>
                                     <Badge variant="outline" className="text-xs font-mono">
                                         {asset.image_hash.slice(0, 12)}...
@@ -226,27 +226,27 @@ export function AssetHistory({ onLoadResults }: AssetHistoryProps) {
                                 </div>
 
                                 <div className="space-y-2">
-                                    {asset.personas.map(persona => (
+                                    {asset.results.map(result => (
                                         <div
-                                            key={persona.id}
+                                            key={result.id || `p-${result.persona_id}`}
                                             className="flex items-center justify-between bg-muted/50 rounded px-3 py-2 text-sm"
                                         >
                                             <div className="flex items-center gap-2">
                                                 <span className="font-medium">
-                                                    {persona.result_json?.persona_name || `Persona ${persona.persona_id}`}
+                                                    {result.persona_name || `Persona ${result.persona_id}`}
                                                 </span>
                                                 <span className="text-muted-foreground">
-                                                    #{persona.persona_id}
+                                                    #{result.persona_id}
                                                 </span>
                                             </div>
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                onClick={() => handleDelete(persona.id, asset.image_hash)}
-                                                disabled={deletingIds.has(persona.id)}
+                                                onClick={() => result.id && handleDelete(result.id, asset.image_hash)}
+                                                disabled={!result.id || deletingIds.has(result.id)}
                                                 className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                                             >
-                                                {deletingIds.has(persona.id) ? (
+                                                {result.id && deletingIds.has(result.id) ? (
                                                     <RefreshCw className="h-3 w-3 animate-spin" />
                                                 ) : (
                                                     <Trash2 className="h-3 w-3" />

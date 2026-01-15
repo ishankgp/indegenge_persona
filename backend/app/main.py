@@ -2313,6 +2313,7 @@ async def get_full_asset_history(
         # Include full result_json with annotated image
         result = cached.result_json.copy() if cached.result_json else {}
         result["persona_id"] = cached.persona_id
+        result["id"] = cached.id  # Include analysis record ID
         result["analyzed_at"] = cached.created_at.isoformat() if cached.created_at else None
         assets[asset_key]["results"].append(result)
     
@@ -2344,6 +2345,30 @@ async def clear_asset_analysis_cache(
         db.rollback()
         logger.error(f"Error clearing cache: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+
+
+@app.delete("/api/assets/history/{analysis_id}")
+async def delete_asset_analysis_history(
+    analysis_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a specific asset analysis result by ID
+    """
+    try:
+        analysis = db.query(models.CachedAssetAnalysis).filter(models.CachedAssetAnalysis.id == analysis_id).first()
+        if not analysis:
+            raise HTTPException(status_code=404, detail="Analysis result not found")
+        
+        db.delete(analysis)
+        db.commit()
+        return {"success": True, "message": "Analysis result deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete analysis: {str(e)}")
 
 
 # === Knowledge Graph API Endpoints ===
@@ -2619,6 +2644,39 @@ async def enrich_persona_from_graph(
         "nodes_applied": result.get("knowledge_graph_enrichment", {}).get("nodes_applied", 0)
     }
 
+
+@app.get("/api/knowledge/brands/{brand_id}/persona-check")
+async def check_persona_alignment(
+    brand_id: int,
+    persona_ids: str,  # Comma-separated list of persona IDs
+    db: Session = Depends(get_db)
+):
+    """
+    Pre-flight check: Validate if selected personas have known triggers or gaps
+    in brand messaging before asset analysis.
+    
+    Returns alignment status, triggers, gaps, and recommendations.
+    """
+    from . import persona_check
+    
+    # Parse persona IDs
+    try:
+        ids = [int(id.strip()) for id in persona_ids.split(",") if id.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid persona_ids format")
+    
+    if not ids:
+        raise HTTPException(status_code=400, detail="At least one persona_id is required")
+    
+    result = persona_check.check_persona_alignment(
+        brand_id=brand_id,
+        persona_ids=ids,
+        db=db
+    )
+    
+    result["summary"] = persona_check.get_persona_check_summary(result)
+    
+    return result
 
 @app.delete("/api/knowledge/nodes/{node_id}")
 async def delete_knowledge_node(
