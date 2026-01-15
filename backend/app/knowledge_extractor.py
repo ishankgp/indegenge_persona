@@ -671,6 +671,174 @@ Return ONLY the category name (e.g., "brand_messaging"), nothing else."""
         return "brand_messaging"
 
 
+def parse_structured_relationships(
+    document_text: str,
+    nodes: List[models.KnowledgeNode],
+    brand_id: int,
+    db: Session
+) -> List[models.KnowledgeRelation]:
+    """
+    Parse explicit relationship syntax from markdown like:
+    RELATIONSHIP: Drives
+    ├── Education_Understanding → Information_Seeking
+    ├── Self_Efficacy → Self_Management
+    
+    Args:
+        document_text: Markdown text with relationship syntax
+        nodes: List of nodes created from this document
+        brand_id: Brand ID
+        db: Database session
+        
+    Returns:
+        List of created KnowledgeRelation objects
+    """
+    import re
+    
+    relationships = []
+    
+    # Create lookup by text similarity
+    def find_node_by_text_fragment(fragment: str) -> Optional[models.KnowledgeNode]:
+        """Find node matching a text fragment from markdown."""
+        fragment_cleaned = fragment.strip().replace("_", " ").lower()
+        
+        for node in nodes:
+            node_text_cleaned = node.text.lower()
+            node_summary_cleaned = (node.summary or "").lower()
+            
+            # Check if fragment appears in node text or summary
+            if fragment_cleaned in node_text_cleaned or fragment_cleaned in node_summary_cleaned:
+                return node
+            
+            # Check word overlap
+            fragment_words = set(fragment_cleaned.split())
+            text_words = set(node_text_cleaned.split())
+            summary_words = set(node_summary_cleaned.split())
+            
+            if len(fragment_words.intersection(text_words)) >= len(fragment_words) * 0.7:
+                return node
+            if len(fragment_words.intersection(summary_words)) >= len(fragment_words) * 0.7:
+                return node
+        
+        return None
+    
+    # Parse relationship blocks
+    # Pattern: RELATIONSHIP: <Type>
+    relationship_blocks = re.findall(
+        r'RELATIONSHIP:\s*(\w+)\s*\n((?:[├│└]──[^\n]+\n?)+)',
+        document_text,
+        re.MULTILINE
+    )
+    
+    for rel_type_raw, block in relationship_blocks:
+        rel_type = rel_type_raw.lower()
+        
+        # Parse individual relationships: ├── Source → Target
+        relations_in_block = re.findall(
+            r'[├│└]──\s+([^\s→]+)\s*→\s*([^\s\n]+)',
+            block
+        )
+        
+        for source_frag, target_frag in relations_in_block:
+            source_node = find_node_by_text_fragment(source_frag)
+            target_node = find_node_by_text_fragment(target_frag)
+            
+            if not source_node or not target_node:
+                logger.debug(f"⚠️ Could not find nodes for: {source_frag} → {target_frag}")
+                continue
+            
+            if source_node.id == target_node.id:
+                continue
+            
+            # Check if relationship already exists
+            existing = db.query(models.KnowledgeRelation).filter(
+                models.KnowledgeRelation.brand_id == brand_id,
+                models.KnowledgeRelation.from_node_id == source_node.id,
+                models.KnowledgeRelation.to_node_id == target_node.id,
+                models.KnowledgeRelation.relation_type == rel_type
+            ).first()
+            
+            if existing:
+                continue
+            
+            # Create relationship
+            relation = models.KnowledgeRelation(
+                brand_id=brand_id,
+                from_node_id=source_node.id,
+                to_node_id=target_node.id,
+                relation_type=rel_type,
+                strength=0.9,  # High confidence for explicit relationships
+                context=f"Explicit relationship from document structure",
+                inferred_by="structured_parser"
+            )
+            db.add(relation)
+            relationships.append(relation)
+    
+    if relationships:
+        db.commit()
+        logger.info(f"✅ Parsed {len(relationships)} structured relationships from markdown")
+    
+    return relationships
+
+
+async def create_comprehensive_relationships(
+    brand_id: int,
+    db: Session,
+    batch_size: int = 25
+) -> List[models.KnowledgeRelation]:
+    """
+    Create comprehensive relationships between ALL nodes for a brand.
+    This is much more aggressive than the default inference which only
+    connects new nodes to 50 existing ones.
+    
+    Args:
+        brand_id: Brand ID
+        db: Database session
+        batch_size: Process this many nodes at a time (default 25)
+        
+    Returns:
+        List of created KnowledgeRelation objects
+    """
+    client = get_openai_client()
+    if not client:
+        logger.warning("OpenAI client not available")
+        return []
+    
+    # Get ALL nodes for this brand
+    all_nodes = db.query(models.KnowledgeNode).filter(
+        models.KnowledgeNode.brand_id == brand_id
+    ).all()
+    
+    if len(all_nodes) < 2:
+        return []
+    
+    logger.info(f"🔄 Creating comprehensive relationships for {len(all_nodes)} nodes...")
+    
+    all_relationships = []
+    
+    # Process in batches
+    for i in range(0, len(all_nodes), batch_size):
+        batch = all_nodes[i:i+batch_size]
+        
+        # For each batch, find relationships with all other nodes
+        other_nodes = [n for n in all_nodes if n not in batch]
+        
+        if not other_nodes:
+            continue
+        
+        # Call infer_relationships with this batch
+        batch_relations = await infer_relationships(
+            brand_id=brand_id,
+            new_nodes=batch,
+            db=db
+        )
+        
+        all_relationships.extend(batch_relations)
+        logger.info(f"   Processed batch {i//batch_size + 1}/{(len(all_nodes) + batch_size - 1)//batch_size}: +{len(batch_relations)} relations")
+    
+    logger.info(f"✅ Created {len(all_relationships)} total relationships")
+    return all_relationships
+
+
 # Synchronous wrappers for non-async contexts
 def extract_knowledge_from_document_sync(
     document_id: int,

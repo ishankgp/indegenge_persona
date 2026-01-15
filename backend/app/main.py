@@ -2998,6 +2998,61 @@ async def delete_knowledge_node(
     return result
 
 
+@app.post("/api/knowledge/brands/{brand_id}/rebuild-relationships")
+async def rebuild_brand_relationships(
+    brand_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Rebuild all relationships for a brand using comprehensive inference.
+    
+    This will:
+    1. Delete existing LLM-generated relationships
+    2. Create new relationships using batch inference across ALL nodes
+    
+    This is a heavy operation and runs in the background.
+    """
+    from . import knowledge_extractor
+    
+    def rebuild_task():
+        """Background task to rebuild relationships."""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            # Delete existing LLM relationships
+            deleted = db.query(models.KnowledgeRelation).filter(
+                models.KnowledgeRelation.brand_id == brand_id,
+                models.KnowledgeRelation.inferred_by == "llm"
+            ).delete()
+            db.commit()
+            
+            logger.info(f"🗑️  Deleted {deleted} existing LLM relationships for brand {brand_id}")
+            
+            # Run comprehensive inference
+            new_rels = loop.run_until_complete(
+                knowledge_extractor.create_comprehensive_relationships(
+                    brand_id=brand_id,
+                    db=db,
+                    batch_size=20
+                )
+            )
+            
+            logger.info(f"✅ Created {len(new_rels)} new relationships for brand {brand_id}")
+            
+        finally:
+            loop.close()
+    
+    background_tasks.add_task(rebuild_task)
+    
+    return {
+        "success": True,
+        "message": "Relationship rebuild started in background",
+        "brand_id": brand_id
+    }
+
+
 @app.post("/api/knowledge/brands/{brand_id}/auto-merge")
 async def auto_merge_duplicate_nodes(
     brand_id: int,

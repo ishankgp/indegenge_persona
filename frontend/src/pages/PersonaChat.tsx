@@ -2,13 +2,12 @@
 
 import React, { useState, useEffect, useRef } from "react"
 import { useParams, useNavigate } from "react-router-dom"
-import { ChatAPI, PersonasAPI, ChatMessage, ChatSession } from "@/lib/api"
+import { ChatAPI, PersonasAPI } from "@/lib/api"
+import type { ChatMessage, ChatSession } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/components/ui/use-toast"
 import {
     Send,
@@ -210,8 +209,8 @@ export function PersonaChat() {
 
                                     <div className={`flex flex-col max-w-[80%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                                         <div className={`rounded-2xl px-5 py-3 text-sm shadow-sm ${msg.role === 'user'
-                                                ? 'bg-primary text-primary-foreground rounded-tr-none'
-                                                : 'bg-muted/50 border rounded-tl-none'
+                                            ? 'bg-primary text-primary-foreground rounded-tr-none'
+                                            : 'bg-muted/50 border rounded-tl-none'
                                             }`}>
                                             <p className="whitespace-pre-wrap">{msg.content}</p>
                                         </div>
