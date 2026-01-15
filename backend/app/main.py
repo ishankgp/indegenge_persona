@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, Form, Req
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict
 import uvicorn
@@ -1792,6 +1793,214 @@ async def seed_brand_documents(brand_id: int, db: Session = Depends(get_db)):
             logger.error(f"❌ Knowledge extraction failed for seeded document {new_doc.id}: {e}")
 
     return created_docs
+
+
+# --- Bulk Folder Ingestion Endpoint ---
+
+class FolderIngestRequest(BaseModel):
+    """Request model for folder ingestion."""
+    folder_path: str
+    recursive: bool = True
+
+class IngestResult(BaseModel):
+    """Result of ingesting a single file."""
+    filename: str
+    status: str
+    document_id: Optional[int] = None
+    nodes_created: int = 0
+    error: Optional[str] = None
+
+class FolderIngestResponse(BaseModel):
+    """Response for folder ingestion."""
+    total_files: int
+    successful: int
+    failed: int
+    total_nodes_created: int
+    results: List[IngestResult]
+
+@app.post("/api/brands/{brand_id}/ingest-folder", response_model=FolderIngestResponse)
+async def ingest_folder(
+    brand_id: int,
+    request: FolderIngestRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Ingest all documents from a folder into the brand's knowledge graph.
+    
+    Supports: PDF, TXT, MD, CSV files.
+    Automatically extracts knowledge nodes and infers relationships.
+    """
+    # Verify brand exists
+    brand = db.query(models.Brand).filter(models.Brand.id == brand_id).first()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    
+    folder_path = request.folder_path
+    
+    # Handle relative paths from project root
+    if not os.path.isabs(folder_path):
+        # Try relative to current working directory
+        if not os.path.exists(folder_path):
+            # Try relative to backend directory
+            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            project_root = os.path.dirname(backend_dir)
+            folder_path = os.path.join(project_root, request.folder_path)
+    
+    if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Folder not found: {request.folder_path}"
+        )
+    
+    # Collect files
+    supported_extensions = {'.pdf', '.txt', '.md', '.csv'}
+    files_to_process = []
+    
+    if request.recursive:
+        for root, dirs, files in os.walk(folder_path):
+            for file in files:
+                ext = os.path.splitext(file)[1].lower()
+                if ext in supported_extensions:
+                    files_to_process.append(os.path.join(root, file))
+    else:
+        for file in os.listdir(folder_path):
+            ext = os.path.splitext(file)[1].lower()
+            if ext in supported_extensions:
+                files_to_process.append(os.path.join(folder_path, file))
+    
+    if not files_to_process:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No supported files found in folder (PDF, TXT, MD, CSV)"
+        )
+    
+    logger.info(f"📁 Found {len(files_to_process)} files to ingest for brand {brand.name}")
+    
+    results: List[IngestResult] = []
+    total_nodes_created = 0
+    all_new_nodes = []
+    
+    upload_dir = "uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    for filepath in files_to_process:
+        filename = os.path.basename(filepath)
+        logger.info(f"📄 Processing: {filename}")
+        
+        try:
+            # Extract text
+            text = document_processor.extract_text(filepath)
+            
+            if not text or len(text.strip()) < 50:
+                results.append(IngestResult(
+                    filename=filename,
+                    status="skipped",
+                    error="No text content or too short"
+                ))
+                continue
+            
+            # Classify document
+            category = document_processor.classify_document(text)
+            
+            # Extract MBT insights
+            extracted_insights = [
+                {**insight, "source_document": filename}
+                for insight in persona_engine.extract_mbt_from_text(text)
+            ]
+            
+            # Create chunks and embeddings
+            chunk_size = 800
+            chunks = document_processor.chunk_text(text, chunk_size=chunk_size)
+            
+            _, vector_store_id, chunk_ids = document_processor.generate_vector_embeddings(
+                chunks,
+                brand_id=brand_id,
+                filename=filename,
+                chunk_size=chunk_size,
+                insights=extracted_insights
+            )
+            
+            # Copy file to uploads with unique prefix
+            unique_prefix = uuid.uuid4().hex
+            safe_filename = re.sub(r"[^A-Za-z0-9._-]", "_", filename).lstrip(".") or "upload"
+            dest_path = os.path.join(upload_dir, f"{unique_prefix}_{safe_filename}")
+            shutil.copy2(filepath, dest_path)
+            
+            # Create document record
+            doc_create = schemas.BrandDocumentCreate(
+                brand_id=brand_id,
+                filename=safe_filename,
+                filepath=dest_path,
+                category=category,
+                summary=text[:200] + "..." if len(text) > 200 else text,
+                extracted_insights=extracted_insights,
+                vector_store_id=vector_store_id,
+                chunk_size=chunk_size if chunks else None,
+                chunk_ids=chunk_ids or None,
+            )
+            
+            new_doc = crud.upsert_brand_document(db, doc_create)
+            
+            # Extract knowledge graph nodes
+            nodes_created = 0
+            try:
+                from . import knowledge_extractor
+                nodes = await knowledge_extractor.extract_knowledge_from_document(
+                    document_id=new_doc.id,
+                    document_text=text,
+                    document_type=category or "brand_messaging",
+                    brand_id=brand_id,
+                    brand_name=brand.name,
+                    db=db
+                )
+                nodes_created = len(nodes) if nodes else 0
+                total_nodes_created += nodes_created
+                if nodes:
+                    all_new_nodes.extend(nodes)
+            except Exception as e:
+                logger.error(f"❌ Knowledge extraction failed for {filename}: {e}")
+            
+            results.append(IngestResult(
+                filename=filename,
+                status="success",
+                document_id=new_doc.id,
+                nodes_created=nodes_created
+            ))
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to process {filename}: {e}")
+            results.append(IngestResult(
+                filename=filename,
+                status="failed",
+                error=str(e)
+            ))
+    
+    # Infer relationships for all new nodes at the end
+    if all_new_nodes:
+        try:
+            from . import knowledge_extractor
+            logger.info(f"🧠 Inferring relationships for {len(all_new_nodes)} new nodes")
+            await knowledge_extractor.infer_relationships(
+                brand_id=brand_id,
+                new_nodes=all_new_nodes,
+                db=db
+            )
+        except Exception as e:
+            logger.error(f"❌ Relationship inference failed: {e}")
+    
+    successful = sum(1 for r in results if r.status == "success")
+    failed = sum(1 for r in results if r.status == "failed")
+    
+    logger.info(f"✅ Ingestion complete: {successful} successful, {failed} failed, {total_nodes_created} nodes created")
+    
+    return FolderIngestResponse(
+        total_files=len(files_to_process),
+        successful=successful,
+        failed=failed,
+        total_nodes_created=total_nodes_created,
+        results=results
+    )
+
 
 # --- Veeva CRM Integration Simulation Endpoints ---
 # Mock data moved to separate module for cleaner code organization

@@ -117,10 +117,11 @@ class BrandDocument(Base):
     id = Column(Integer, primary_key=True, index=True)
     brand_id = Column(Integer, index=True)
     filename = Column(String)
-    file_type = Column(String)
+    filepath = Column(String, nullable=True)  # Path to uploaded file
+    category = Column(String, nullable=True)  # Document category/classification
+    summary = Column(Text, nullable=True)  # Document summary
     document_type = Column(String, default="brand_messaging")  # DocumentType enum value
-    upload_date = Column(DateTime, default=datetime.datetime.utcnow)
-    vector_store_id = Column(String) # OpenAI Vector Store ID
+    vector_store_id = Column(String, nullable=True) # OpenAI Vector Store ID
     extracted_insights = Column(JSON, nullable=True)
     gemini_document_name = Column(String, nullable=True)
     chunk_size = Column(Integer, nullable=True)
