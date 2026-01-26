@@ -220,6 +220,33 @@ export interface PersonaExport {
   };
 }
 
+// Persona Comparison Types
+export interface ComparisonInsightItem {
+  title: string;
+  description: string;
+}
+
+export interface AttributeDifferentiation {
+  similarity_score: number;
+  highlight_level: 'high' | 'medium' | 'low';
+  values: any[];
+}
+
+export interface ComparisonInsights {
+  key_similarities: ComparisonInsightItem[];
+  key_differences: ComparisonInsightItem[];
+  strategic_insights: string[];
+  attribute_scores: Record<string, AttributeDifferentiation>;
+  suggested_questions: string[];
+  personas_compared: Array<{ id: number; name: string }>;
+}
+
+export interface ComparisonAnswer {
+  answer: string;
+  reasoning: string;
+  relevant_attributes: string[];
+}
+
 export const PersonasAPI = {
   list: (brandId?: number) => {
     const params = brandId !== undefined ? { brand_id: brandId } : {};
@@ -288,6 +315,13 @@ export const PersonasAPI = {
     key_differences?: string[];
     recommendation: 'use_existing' | 'proceed_with_caution' | 'safe_to_create';
   }> => api.post('/api/personas/check-similarity', payload).then(r => r.data),
+
+  // Persona Comparison APIs
+  compareAnalyze: (personaIds: number[]): Promise<ComparisonInsights> =>
+    api.post('/api/personas/compare/analyze', { persona_ids: personaIds }).then(r => r.data),
+
+  compareAsk: (personaIds: number[], question: string): Promise<ComparisonAnswer> =>
+    api.post('/api/personas/compare/ask', { persona_ids: personaIds, question }).then(r => r.data),
 };
 
 export interface BrandInsight {

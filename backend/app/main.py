@@ -23,6 +23,7 @@ from .chat_engine import ChatEngine
 from . import models, schemas, crud, persona_engine, cohort_engine, auto_enrichment, database, vector_search
 from . import archetypes, disease_packs
 from . import asset_analyzer
+from . import comparison_engine
 from .database import engine, get_db
 import shutil
 
@@ -826,6 +827,122 @@ async def delete_persona(persona_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Persona not found")
     return Response(status_code=204)
 
+
+# --- Persona Comparison Endpoints ---
+
+class CompareAnalyzeRequest(BaseModel):
+    persona_ids: List[int]
+
+class CompareAskRequest(BaseModel):
+    persona_ids: List[int]
+    question: str
+
+@app.post("/api/personas/compare/analyze")
+async def analyze_persona_comparison_endpoint(
+    request: CompareAnalyzeRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Analyze personas and generate AI-powered comparison insights.
+    
+    Returns:
+    - key_similarities: Notable similarities with strategic implications
+    - key_differences: Notable differences requiring different approaches
+    - strategic_insights: Narrative marketing strategy insights
+    - attribute_scores: Per-attribute differentiation scores for highlighting
+    - suggested_questions: Relevant questions for comparative Q&A
+    """
+    if len(request.persona_ids) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 personas to compare")
+    
+    # Fetch personas from database
+    personas = []
+    for persona_id in request.persona_ids:
+        persona = crud.get_persona(db, persona_id)
+        if not persona:
+            raise HTTPException(status_code=404, detail=f"Persona with ID {persona_id} not found")
+        # Convert to dict for engine
+        persona_dict = {
+            "id": persona.id,
+            "name": persona.name,
+            "age": persona.age,
+            "gender": persona.gender,
+            "condition": persona.condition,
+            "location": persona.location,
+            "persona_type": persona.persona_type,
+            "persona_subtype": persona.persona_subtype,
+            "specialty": persona.specialty,
+            "practice_setup": persona.practice_setup,
+            "decision_influencers": persona.decision_influencers,
+            "adherence_to_protocols": persona.adherence_to_protocols,
+            "channel_use": persona.channel_use,
+            "decision_style": persona.decision_style,
+            "core_insight": persona.core_insight,
+            "tagline": persona.tagline,
+            "full_persona_json": persona.full_persona_json,
+        }
+        personas.append(persona_dict)
+    
+    try:
+        result = comparison_engine.analyze_persona_comparison(personas)
+        return result
+    except Exception as e:
+        logger.error(f"Error in persona comparison analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"Comparison analysis failed: {str(e)}")
+
+
+@app.post("/api/personas/compare/ask")
+async def answer_comparison_question_endpoint(
+    request: CompareAskRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Answer a natural language question about compared personas.
+    
+    Returns:
+    - answer: The AI-generated answer
+    - reasoning: Explanation of how the answer was derived
+    - relevant_attributes: Which persona attributes informed the answer
+    """
+    if len(request.persona_ids) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 personas to compare")
+    
+    if not request.question or not request.question.strip():
+        raise HTTPException(status_code=400, detail="Question is required")
+    
+    # Fetch personas from database
+    personas = []
+    for persona_id in request.persona_ids:
+        persona = crud.get_persona(db, persona_id)
+        if not persona:
+            raise HTTPException(status_code=404, detail=f"Persona with ID {persona_id} not found")
+        persona_dict = {
+            "id": persona.id,
+            "name": persona.name,
+            "age": persona.age,
+            "gender": persona.gender,
+            "condition": persona.condition,
+            "location": persona.location,
+            "persona_type": persona.persona_type,
+            "persona_subtype": persona.persona_subtype,
+            "specialty": persona.specialty,
+            "practice_setup": persona.practice_setup,
+            "decision_influencers": persona.decision_influencers,
+            "adherence_to_protocols": persona.adherence_to_protocols,
+            "channel_use": persona.channel_use,
+            "decision_style": persona.decision_style,
+            "core_insight": persona.core_insight,
+            "tagline": persona.tagline,
+            "full_persona_json": persona.full_persona_json,
+        }
+        personas.append(persona_dict)
+    
+    try:
+        result = comparison_engine.answer_comparison_question(personas, request.question)
+        return result
+    except Exception as e:
+        logger.error(f"Error in comparison Q&A: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to answer question: {str(e)}")
 
 
 # --- Saved Simulation Endpoints ---
