@@ -301,7 +301,7 @@ Return as JSON array:
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
             response_format=CoverageSuggestionsResponse,
-            max_tokens=1500,
+            max_completion_tokens=1500,
         )
         
         result = response.choices[0].message.parsed

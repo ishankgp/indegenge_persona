@@ -183,7 +183,7 @@ Scoring guide:
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
             response_format=SimilarityCheckResponse,
-            max_tokens=800,
+            max_completion_tokens=800,
         )
         
         result = response.choices[0].message.parsed

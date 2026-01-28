@@ -370,7 +370,7 @@ CREATE TABLE persona_campaign_memory (
 **The Problem**: Simulations are only as good as the population diversity. Groups of 10 generic personas create "echo chambers."
 
 **Mechanism:**
-1.  **Search**: `ResearchAgent` finds external segmentation (e.g., "Market is 40% Conservative, 20% Aggressive").
+1.  **Source**: `ResearchAgent` extracts segmentation from **Internal Brand Library** (e.g., uploaded Market Research decks) first. Falls back to trusted external sources (PubMed) only if internal data is missing.
 2.  **Audit**: `AuditAgent` maps your current personas to these segments (e.g., "You have 100% Aggressive").
 3.  **Fix**: `GapCloser` automatically generates new personas to fill the empty "Conservative" bucket.
 
