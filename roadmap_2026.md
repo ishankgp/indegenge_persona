@@ -12,7 +12,7 @@
 | Quarter | Strategic Theme | Focus Areas |
 |:--------|:---------------|:------------|
 | **Q1 2026** | **Intelligent Foundation** | Knowledge Graph Upgrade, Precision Feedback Phase 1-2, Agentic Architecture (Tool-Enabled Agents) |
-| **Q2 2026** | **Collaborative Agents** | Agent State & Memory, Multi-Agent Focus Groups (Core Handoff), Living Personas |
+| **Q2 2026** | **Collaborative Agents** | Agent State & Memory, Multi-Agent Focus Groups (Core Handoff), Market Mirror (Gap Analysis) |
 | **Q3 2026** | **Advanced Orchestration** | The Orchestrator, Focus Group Features (Influence Mapping, Adversarial), Precision Feedback Phase 3 |
 | **Q4 2026** | **Backlog & Refinement** | Bug fixes, performance tuning, UX polish, documentation |
 
@@ -361,7 +361,24 @@ CREATE TABLE persona_campaign_memory (
 
 ---
 
-## 2.3 The Orchestrator (Autonomous Optimization)
+---
+
+## 2.3 Market Mirror (Population Gap Analysis)
+
+**Goal**: Ensure persona rosters statistically represent the real market dynamics.
+
+**The Problem**: Simulations are only as good as the population diversity. Groups of 10 generic personas create "echo chambers."
+
+**Mechanism:**
+1.  **Search**: `ResearchAgent` finds external segmentation (e.g., "Market is 40% Conservative, 20% Aggressive").
+2.  **Audit**: `AuditAgent` maps your current personas to these segments (e.g., "You have 100% Aggressive").
+3.  **Fix**: `GapCloser` automatically generates new personas to fill the empty "Conservative" bucket.
+
+**User Value**: One-click "Normalize to Market" button ensures valid focus group results.
+
+---
+
+## 2.4 The Orchestrator (Autonomous Optimization)
 
 **Feature**: Self-driving campaign optimization
 
