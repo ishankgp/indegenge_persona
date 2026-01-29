@@ -723,3 +723,52 @@ export const ChatAPI = {
   sendMessage: (sessionId: number, content: string) =>
     api.post<ChatMessage>(`/api/chat/sessions/${sessionId}/messages`, { content, role: 'user' }).then(r => r.data),
 };
+
+// Panel Feedback API - Structured persona feedback for marketing assets
+export interface PersonaFeedbackCard {
+  persona_id: number;
+  persona_name: string;
+  role: string;
+  archetype: string;
+  key_characteristics: string[];
+  avatar_url?: string;
+  clean_read: string;
+  key_themes: string[];
+  strengths: string[];
+  weaknesses: string[];
+  error?: string;
+}
+
+export interface PanelFeedbackSummary {
+  aggregated_themes: string[];
+  dissent_highlights: string[];
+  recommendations: Array<{
+    suggestion: string;
+    reasoning: string;
+  }>;
+}
+
+export interface PanelFeedbackResponse {
+  persona_cards: PersonaFeedbackCard[];
+  summary: PanelFeedbackSummary;
+  metadata: {
+    persona_count: number;
+    content_type: string;
+    created_at: string;
+  };
+}
+
+export const PanelFeedbackAPI = {
+  analyze: (
+    personaIds: number[],
+    stimulusText: string,
+    stimulusImages?: Array<{ filename: string; content_type: string; data: string }>,
+    contentType: string = 'text'
+  ): Promise<PanelFeedbackResponse> =>
+    api.post('/api/panel-feedback', {
+      persona_ids: personaIds,
+      stimulus_text: stimulusText,
+      stimulus_images: stimulusImages,
+      content_type: contentType
+    }).then(r => r.data),
+};

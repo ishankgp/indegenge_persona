@@ -1,10 +1,12 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { PersonasAPI, CohortAPI, AssetIntelligenceAPI, type AssetAnalysisResult, type AssetHistoryItem } from "@/lib/api"
+import { PersonasAPI, CohortAPI, AssetIntelligenceAPI, PanelFeedbackAPI, type AssetAnalysisResult, type AssetHistoryItem, type PanelFeedbackResponse } from "@/lib/api"
 import { metricRegistry } from "@/lib/metricsRegistry"
 
 import { AssetIntelligenceWorkspace } from "@/components/AssetIntelligenceWorkspace"
+import { PersonaFeedbackPanel } from "@/components/PersonaFeedbackPanel"
+import { PanelFeedbackSummaryComponent } from "@/components/PanelFeedbackSummary"
 import { useNavigate, useLocation } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
@@ -108,11 +110,18 @@ export function SimulationHub() {
 
 
   // Asset Intelligence Mode
-  const [simulationMode, setSimulationMode] = useState<"text" | "asset">("text")
+  const [simulationMode, setSimulationMode] = useState<"text" | "asset" | "panel">("text")
   const [assetAnalysisResults, setAssetAnalysisResults] = useState<AssetAnalysisResult[]>([])
   const [assetAnalyzing, setAssetAnalyzing] = useState(false)
   const [assetFile, setAssetFile] = useState<File | null>(null)
   const [assetPreview, setAssetPreview] = useState<string | null>(null)
+
+  // Panel Feedback Mode
+  const [panelFeedbackResults, setPanelFeedbackResults] = useState<PanelFeedbackResponse | null>(null)
+  const [panelFeedbackLoading, setPanelFeedbackLoading] = useState(false)
+  const [panelStimulusText, setPanelStimulusText] = useState("")
+  const [panelImages, setPanelImages] = useState<File[]>([])
+  const [panelImagePreviews, setPanelImagePreviews] = useState<string[]>([])
 
   // Asset History
   const [assetHistory, setAssetHistory] = useState<AssetHistoryItem[]>([])
@@ -474,6 +483,97 @@ export function SimulationHub() {
     setAssetPreview(null)
   }
 
+  const handlePanelImageUpload = (files: FileList | null) => {
+    if (!files) return
+    const newImages: File[] = []
+    Array.from(files).forEach((file) => {
+      if (file.type.startsWith("image/")) {
+        newImages.push(file)
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          setPanelImagePreviews((prev) => [...prev, e.target?.result as string])
+        }
+        reader.readAsDataURL(file)
+      }
+    })
+    setPanelImages((prev) => [...prev, ...newImages])
+  }
+
+  const removePanelImage = (index: number) => {
+    setPanelImages((prev) => prev.filter((_, i) => i !== index))
+    setPanelImagePreviews((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  // Panel Feedback handler
+  const handlePanelFeedback = async () => {
+    if (selectedPersonas.size === 0) {
+      alert('Please select at least one persona')
+      return
+    }
+
+    const hasText = panelStimulusText.trim().length > 0
+    const hasImages = panelImages.length > 0
+
+    if (!hasText && !hasImages) {
+      alert('Please enter marketing content or upload an image to analyze')
+      return
+    }
+
+    setPanelFeedbackLoading(true)
+    setPanelFeedbackResults(null)
+
+    try {
+      const personaIds = Array.from(selectedPersonas)
+
+      // Convert images to base64 if present
+      let processedImages = undefined
+      if (hasImages) {
+        processedImages = await Promise.all(
+          panelImages.map(async (file) => {
+            return new Promise<{ filename: string; content_type: string; data: string }>((resolve, reject) => {
+              const reader = new FileReader()
+              reader.onload = () => {
+                const base64String = (reader.result as string).split(',')[1]
+                resolve({
+                  filename: file.name,
+                  content_type: file.type,
+                  data: base64String
+                })
+              }
+              reader.onerror = reject
+              reader.readAsDataURL(file)
+            })
+          })
+        )
+      }
+
+      // Determine content type
+      let panelContentType: 'text' | 'image' | 'both' = 'text'
+      if (hasText && hasImages) panelContentType = 'both'
+      else if (hasImages) panelContentType = 'image'
+
+      console.log('🎯 Starting Panel Feedback analysis...', {
+        personas: personaIds.length,
+        contentType: panelContentType,
+        textLength: panelStimulusText.length,
+        imageCount: panelImages.length
+      })
+
+      const response = await PanelFeedbackAPI.analyze(
+        personaIds,
+        panelStimulusText,
+        processedImages,
+        panelContentType
+      )
+      console.log('✅ Panel feedback complete:', response)
+      setPanelFeedbackResults(response)
+    } catch (error) {
+      console.error('❌ Panel feedback failed:', error)
+      alert(`Panel feedback failed: ${String(error)}`)
+    } finally {
+      setPanelFeedbackLoading(false)
+    }
+  }
 
 
 
@@ -697,6 +797,18 @@ export function SimulationHub() {
               </div>
               <span>Asset Intelligence</span>
             </button>
+            <button
+              onClick={() => setSimulationMode("panel")}
+              className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${simulationMode === "panel"
+                ? "bg-background shadow text-primary ring-1 ring-black/5"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                }`}
+            >
+              <div className={`p-1 rounded-md ${simulationMode === "panel" ? "bg-primary/10 text-primary" : "bg-transparent"}`}>
+                <Users className="h-4 w-4" />
+              </div>
+              <span>Panel Feedback</span>
+            </button>
           </div>
         </div>
 
@@ -737,6 +849,144 @@ export function SimulationHub() {
             allPersonas={personas}
             onTogglePersona={togglePersona}
           />
+        ) : simulationMode === "panel" ? (
+          <div className="flex h-full">
+            {/* LEFT: Input Panel */}
+            <aside className="w-[400px] border-r bg-muted/10 flex flex-col shrink-0 p-4 space-y-4">
+              <div className="space-y-2">
+                <h3 className="font-semibold text-base flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Panel Feedback
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Get structured feedback from multiple personas on your marketing content.
+                </p>
+              </div>
+
+              {/* Persona Selection Summary */}
+              <div className="p-3 bg-background rounded-lg border">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Selected Personas</span>
+                  <Badge variant="secondary">{selectedPersonas.size}</Badge>
+                </div>
+                {selectedPersonas.size === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Use the Persona Simulation tab to select personas first.
+                  </p>
+                )}
+              </div>
+
+              {/* Marketing Content Input */}
+              <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Marketing Content (Optional if image provided)</Label>
+                  <Textarea
+                    placeholder="Enter your marketing message, email copy, or campaign text here..."
+                    className="min-h-[150px] resize-none"
+                    value={panelStimulusText}
+                    onChange={(e) => setPanelStimulusText(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2 flex-1 flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Visual Assets (Optional)</Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => document.getElementById('panel-image-upload')?.click()}
+                    >
+                      <Upload className="h-3 w-3 mr-2" />
+                      Add Images
+                    </Button>
+                    <input
+                      id="panel-image-upload"
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handlePanelImageUpload(e.target.files)}
+                    />
+                  </div>
+
+                  <div className="flex-1 overflow-auto border rounded-lg bg-background/50 p-2">
+                    {panelImagePreviews.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {panelImagePreviews.map((preview, idx) => (
+                          <div key={idx} className="relative group aspect-square rounded-md overflow-hidden border">
+                            <img src={preview} alt="Preview" className="w-full h-full object-cover" />
+                            <button
+                              onClick={() => removePanelImage(idx)}
+                              className="absolute top-1 right-1 p-1 bg-background/80 hover:bg-destructive hover:text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground py-8">
+                        <ImageIcon className="h-8 w-8 mb-2 opacity-20" />
+                        <p className="text-xs">No images uploaded</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Run Analysis Button */}
+              <Button
+                onClick={handlePanelFeedback}
+                disabled={panelFeedbackLoading || selectedPersonas.size === 0 || (!panelStimulusText.trim() && panelImages.length === 0)}
+                className="w-full"
+              >
+                {panelFeedbackLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <PlayCircle className="h-4 w-4 mr-2" />
+                    Get Panel Feedback
+                  </>
+                )}
+              </Button>
+            </aside>
+
+            {/* RIGHT: Results Panel */}
+            <main className="flex-1 overflow-auto p-6 space-y-6">
+              {panelFeedbackLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center space-y-4">
+                    <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
+                    <p className="text-muted-foreground">Analyzing with {selectedPersonas.size} personas...</p>
+                  </div>
+                </div>
+              ) : panelFeedbackResults ? (
+                <div className="space-y-6">
+                  <PanelFeedbackSummaryComponent
+                    summary={panelFeedbackResults.summary}
+                    personaCount={panelFeedbackResults.metadata.persona_count}
+                  />
+                  <PersonaFeedbackPanel cards={panelFeedbackResults.persona_cards} />
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full text-center">
+                  <div className="space-y-4 max-w-md">
+                    <div className="p-4 bg-primary/5 rounded-full w-fit mx-auto">
+                      <Users className="h-12 w-12 text-primary" />
+                    </div>
+                    <h3 className="text-lg font-semibold">Panel Feedback</h3>
+                    <p className="text-muted-foreground">
+                      Select personas and enter your marketing content to get structured feedback with Clean Read, Key Themes, Strengths, and Weaknesses from each persona.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </main>
+          </div>
         ) : (
           <div className="flex h-full w-full">
             {/* LEFT PANE: Audience Selection (Wider, Studio Style) */}

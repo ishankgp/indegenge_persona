@@ -24,6 +24,7 @@ from . import models, schemas, crud, persona_engine, cohort_engine, auto_enrichm
 from . import archetypes, disease_packs
 from . import asset_analyzer
 from . import comparison_engine
+from . import panel_feedback_engine
 from .database import engine, get_db
 import shutil
 
@@ -1216,6 +1217,75 @@ async def analyze_multimodal_cohort(
         raise HTTPException(status_code=400, detail=f"Invalid JSON in form data: {str(e)}")
     except Exception as e:
         logger.error("❌ Unexpected error in multimodal cohort analysis: %s", str(e))
+        logger.error("❌ Full traceback:", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# --- Panel Feedback Endpoint ---
+
+class PanelFeedbackRequest(BaseModel):
+    """Request model for panel feedback analysis."""
+    persona_ids: List[int]
+    stimulus_text: str
+    stimulus_images: Optional[List[Dict]] = None
+    content_type: str = "text"  # text, image, both
+
+
+@app.post("/api/panel-feedback")
+async def run_panel_feedback(
+    request: PanelFeedbackRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Run structured panel feedback analysis on a marketing asset.
+    
+    Each persona provides independent feedback with standardized sections:
+    - Clean Read (initial interpretation)
+    - Key Themes (what resonates)
+    - Strengths (what works)
+    - Weaknesses (concerns/issues)
+    
+    Returns per-persona structured cards + synthesized summary with
+    aggregated themes, dissent highlights, and recommendations.
+    """
+    try:
+        logger.info("🎯 Panel feedback request: %d personas, content_type=%s", 
+                   len(request.persona_ids), request.content_type)
+        
+        # Validate personas exist
+        for persona_id in request.persona_ids:
+            persona = crud.get_persona(db, persona_id)
+            if not persona:
+                raise HTTPException(status_code=404, detail=f"Persona with ID {persona_id} not found")
+        
+        # Content validation
+        has_text = request.stimulus_text and request.stimulus_text.strip()
+        has_images = request.stimulus_images and len(request.stimulus_images) > 0
+        
+        if request.content_type == 'text' and not has_text:
+            raise HTTPException(status_code=400, detail="Content type 'text' requires stimulus_text")
+        elif request.content_type == 'image' and not has_images:
+            raise HTTPException(status_code=400, detail="Content type 'image' requires stimulus_images")
+        elif request.content_type == 'both' and (not has_text or not has_images):
+            raise HTTPException(status_code=400, detail="Content type 'both' requires both text and images")
+        
+        # Run panel feedback analysis
+        result = panel_feedback_engine.run_panel_feedback_analysis(
+            persona_ids=request.persona_ids,
+            stimulus_text=request.stimulus_text,
+            stimulus_images=request.stimulus_images,
+            content_type=request.content_type,
+            db=db
+        )
+        
+        logger.info("✅ Panel feedback completed for %d personas", len(request.persona_ids))
+        return result
+        
+    except ValueError as e:
+        logger.error("❌ ValueError in panel feedback: %s", str(e))
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("❌ Error in panel feedback analysis: %s", str(e))
         logger.error("❌ Full traceback:", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
