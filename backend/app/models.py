@@ -104,6 +104,16 @@ class SavedSimulation(Base):
     simulation_data = Column(JSON)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+class SyntheticTestRun(Base):
+    __tablename__ = "synthetic_test_runs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    persona_ids = Column(JSON) # List of IDs
+    assets = Column(JSON) # List of {id, name, preview} (preview is base64 or url)
+    results = Column(JSON) # The full API response
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 class Brand(Base):
     __tablename__ = "brands"
     

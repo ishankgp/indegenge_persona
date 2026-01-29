@@ -215,84 +215,91 @@ def run_synthetic_testing(
     """
     
     # Fetch personas
-    personas = []
-    for pid in persona_ids:
-        p = crud.get_persona(db, pid)
-        if p:
-            personas.append({
-                'id': p.id,
-                'name': p.name,
-                'age': p.age,
-                'gender': p.gender,
-                'location': p.location,
-                'condition': p.condition,
-                'full_persona': p.full_persona
-            })
-            
-    if not personas:
-        return {"error": "No valid personas found"}
-
-    results = []
-    
-    # Process all combinations in parallel
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = []
-        for persona in personas:
-            for asset in assets:
-                futures.append(
-                    executor.submit(analyze_single_asset_persona, persona, asset)
-                )
+    try:
+        personas = []
+        for pid in persona_ids:
+            p = crud.get_persona(db, pid)
+            if p:
+                personas.append({
+                    'id': p.id,
+                    'name': p.name,
+                    'age': p.age,
+                    'gender': p.gender,
+                    'location': p.location,
+                    'condition': p.condition,
+                    'full_persona': json.loads(p.full_persona_json) if getattr(p, 'full_persona_json', None) else {}
+                })
                 
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                res = future.result()
-                results.append(res)
-            except Exception as e:
-                logger.error(f"Analysis task failed: {e}")
+        if not personas:
+            return {"error": "No valid personas found"}
 
-    # Aggregation
-    aggregated_results = {} # asset_id -> {metrics_avg, feedback_summary}
-    
-    for asset in assets:
-        a_id = asset['id']
-        asset_responses = [r for r in results if r.get('asset_id') == a_id and 'error' not in r]
+        results = []
         
-        if not asset_responses:
-            continue
+        # Process all combinations in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futures = []
+            for persona in personas:
+                for asset in assets:
+                    futures.append(
+                        executor.submit(analyze_single_asset_persona, persona, asset)
+                    )
+                    
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    res = future.result()
+                    results.append(res)
+                except Exception as e:
+                    import traceback
+                    logger.error(f"Analysis task failed: {e}\n{traceback.format_exc()}")
+
+        # Aggregation
+        aggregated_results = {} # asset_id -> {metrics_avg, feedback_summary}
+        
+        for asset in assets:
+            a_id = asset['id']
+            asset_responses = [r for r in results if r.get('asset_id') == a_id and 'error' not in r]
             
-        # Calc averages
-        count = len(asset_responses)
-        avg_scores = {
-            "motivation_to_prescribe": 0.0,
-            "connection_to_story": 0.0,
-            "differentiation": 0.0,
-            "believability": 0.0,
-            "stopping_power": 0.0
-        }
-        avg_pref = 0.0
-        
-        for r in asset_responses:
-            s = r['scores']
+            if not asset_responses:
+                continue
+                
+            # Calc averages
+            count = len(asset_responses)
+            avg_scores = {
+                "motivation_to_prescribe": 0.0,
+                "connection_to_story": 0.0,
+                "differentiation": 0.0,
+                "believability": 0.0,
+                "stopping_power": 0.0
+            }
+            avg_pref = 0.0
+            
+            for r in asset_responses:
+                s = r.get('scores', {})
+                if not s: continue # Skip if scores missing
+                for k in avg_scores:
+                    avg_scores[k] += s.get(k, 0)
+                avg_pref += r.get('overall_preference_score', 0)
+                
             for k in avg_scores:
-                avg_scores[k] += s.get(k, 0)
-            avg_pref += r.get('overall_preference_score', 0)
+                avg_scores[k] = round(avg_scores[k] / count, 1) if count > 0 else 0
             
-        for k in avg_scores:
-            avg_scores[k] = round(avg_scores[k] / count, 1)
-        
-        aggregated_results[a_id] = {
-            "asset_name": asset['name'],
-            "average_scores": avg_scores,
-            "average_preference": int(avg_pref / count),
-            "respondent_count": count
-        }
+            aggregated_results[a_id] = {
+                "asset_name": asset['name'],
+                "average_scores": avg_scores,
+                "average_preference": int(avg_pref / count) if count > 0 else 0,
+                "respondent_count": count
+            }
 
-    return {
-        "results": results,
-        "aggregated": aggregated_results,
-        "metadata": {
-            "personas_count": len(personas),
-            "assets_count": len(assets),
-            "timestamp": datetime.now().isoformat()
+        return {
+            "results": results,
+            "aggregated": aggregated_results,
+            "metadata": {
+                "personas_count": len(personas),
+                "assets_count": len(assets),
+                "timestamp": datetime.now().isoformat()
+            }
         }
-    }
+    except Exception as e:
+        import traceback
+        logger.error(f"Global synthetic testing error: {e}\n{traceback.format_exc()}")
+        raise e

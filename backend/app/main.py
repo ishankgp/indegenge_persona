@@ -143,6 +143,20 @@ def run_startup_migration():
             """
         )
 
+        synthetic_runs_created = create_table_if_missing(
+            'synthetic_test_runs',
+            """
+            CREATE TABLE synthetic_test_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name VARCHAR,
+                persona_ids JSON,
+                assets JSON,
+                results JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
         with engine.connect() as conn:
             final_count = conn.execute(text("SELECT COUNT(*) FROM personas")).scalar() or 0
 
@@ -160,7 +174,7 @@ def run_startup_migration():
 
         migrations_run = [brand_added, avatar_added, vector_store_added, chunk_size_added, 
                          chunk_ids_added, document_type_added, knowledge_nodes_created, 
-                         knowledge_relations_created]
+                         knowledge_relations_created, synthetic_runs_created]
         if not any(migrations_run):
             logger.info("ℹ️ No schema changes required during startup migration")
 
@@ -297,6 +311,41 @@ async def root():
 @app.get("/")
 async def root_redirect():
     return {"message": "PharmaPersonaSim API - use /api endpoints"}
+
+
+# --- Synthetic Testing Persistence ---
+
+@app.get("/api/synthetic/runs")
+async def get_synthetic_runs(db: Session = Depends(get_db)):
+    """List all saved synthetic test runs."""
+    runs = db.query(models.SyntheticTestRun).order_by(models.SyntheticTestRun.created_at.desc()).all()
+    return runs
+
+@app.post("/api/synthetic/runs")
+async def save_synthetic_run(run_data: dict, db: Session = Depends(get_db)):
+    """Save a synthetic test run."""
+    try:
+        new_run = models.SyntheticTestRun(
+            name=run_data.get("name"),
+            persona_ids=run_data.get("persona_ids"),
+            assets=run_data.get("assets"), # Should remove large base64 strings if possible, but for local it's fine
+            results=run_data.get("results")
+        )
+        db.add(new_run)
+        db.commit()
+        db.refresh(new_run)
+        return new_run
+    except Exception as e:
+        logger.error(f"Failed to save run: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/synthetic/runs/{run_id}")
+async def get_synthetic_run(run_id: int, db: Session = Depends(get_db)):
+    """Get a specific run."""
+    run = db.query(models.SyntheticTestRun).filter(models.SyntheticTestRun.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run
 
 # --- Persona Endpoints ---
 

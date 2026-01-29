@@ -331,9 +331,9 @@ class SyntheticResultItem(BaseModel):
     persona_id: int
     persona_name: str
     asset_id: str
-    scores: AssetScores
-    overall_preference_score: int
-    feedback: QualitativeFeedback
+    scores: Optional[AssetScores] = None
+    overall_preference_score: Optional[int] = None
+    feedback: Optional[QualitativeFeedback] = None
     error: Optional[str] = None
 
 class AggregatedAssetResult(BaseModel):

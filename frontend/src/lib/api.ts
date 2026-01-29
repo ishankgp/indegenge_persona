@@ -815,13 +815,31 @@ export interface SyntheticTestingResponse {
   };
 }
 
+export interface SyntheticTestRun {
+  id: number;
+  name: string;
+  persona_ids: number[];
+  assets: any[];
+  results: SyntheticTestingResponse;
+  created_at: string;
+}
+
 export const SyntheticTestingAPI = {
   analyze: (
     personaIds: number[],
-    assets: Array<{ id: string; name: string; image_data?: string; text_content?: string }>
+    assets: Array<{ id: string; name: string; image_data?: string; text_content: string }>
   ): Promise<SyntheticTestingResponse> =>
     api.post('/api/synthetic-testing/analyze', {
       persona_ids: personaIds,
       assets: assets
     }).then(r => r.data),
+
+  listRuns: (): Promise<SyntheticTestRun[]> =>
+    api.get('/api/synthetic/runs').then(r => r.data),
+
+  saveRun: (payload: { name: string; persona_ids: number[]; assets: any[]; results: SyntheticTestingResponse }): Promise<SyntheticTestRun> =>
+    api.post('/api/synthetic/runs', payload).then(r => r.data),
+
+  getRun: (id: number): Promise<SyntheticTestRun> =>
+    api.get(`/api/synthetic/runs/${id}`).then(r => r.data),
 };
