@@ -772,3 +772,56 @@ export const PanelFeedbackAPI = {
       content_type: contentType
     }).then(r => r.data),
 };
+
+// Synthetic Testing API
+export interface AssetScores {
+  motivation_to_prescribe: number;
+  connection_to_story: number;
+  differentiation: number;
+  believability: number;
+  stopping_power: number;
+}
+
+export interface QualitativeFeedback {
+  does_well: string[];
+  does_not_do_well: string[];
+  considerations: string[];
+}
+
+export interface SyntheticResultItem {
+  persona_id: number;
+  persona_name: string;
+  asset_id: string;
+  scores: AssetScores;
+  overall_preference_score: number;
+  feedback: QualitativeFeedback;
+  error?: string;
+}
+
+export interface AggregatedAssetResult {
+  asset_name: string;
+  average_scores: Record<string, number>;
+  average_preference: number;
+  respondent_count: number;
+}
+
+export interface SyntheticTestingResponse {
+  results: SyntheticResultItem[];
+  aggregated: Record<string, AggregatedAssetResult>;
+  metadata: {
+    personas_count: number;
+    assets_count: number;
+    timestamp: string;
+  };
+}
+
+export const SyntheticTestingAPI = {
+  analyze: (
+    personaIds: number[],
+    assets: Array<{ id: string; name: string; image_data?: string; text_content?: string }>
+  ): Promise<SyntheticTestingResponse> =>
+    api.post('/api/synthetic-testing/analyze', {
+      persona_ids: personaIds,
+      assets: assets
+    }).then(r => r.data),
+};

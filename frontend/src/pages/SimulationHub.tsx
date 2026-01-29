@@ -5,6 +5,7 @@ import { PersonasAPI, CohortAPI, AssetIntelligenceAPI, PanelFeedbackAPI, type As
 import { metricRegistry } from "@/lib/metricsRegistry"
 
 import { AssetIntelligenceWorkspace } from "@/components/AssetIntelligenceWorkspace"
+import { SyntheticTestingWorkspace } from "@/components/SyntheticTestingWorkspace"
 import { PersonaFeedbackPanel } from "@/components/PersonaFeedbackPanel"
 import { PanelFeedbackSummaryComponent } from "@/components/PanelFeedbackSummary"
 import { useNavigate, useLocation } from "react-router-dom"
@@ -110,7 +111,7 @@ export function SimulationHub() {
 
 
   // Asset Intelligence Mode
-  const [simulationMode, setSimulationMode] = useState<"text" | "asset" | "panel">("text")
+  const [simulationMode, setSimulationMode] = useState<"text" | "asset" | "panel" | "synthetic">("text")
   const [assetAnalysisResults, setAssetAnalysisResults] = useState<AssetAnalysisResult[]>([])
   const [assetAnalyzing, setAssetAnalyzing] = useState(false)
   const [assetFile, setAssetFile] = useState<File | null>(null)
@@ -809,6 +810,18 @@ export function SimulationHub() {
               </div>
               <span>Panel Feedback</span>
             </button>
+            <button
+              onClick={() => setSimulationMode("synthetic")}
+              className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${simulationMode === "synthetic"
+                ? "bg-background shadow text-primary ring-1 ring-black/5"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                }`}
+            >
+              <div className={`p-1 rounded-md ${simulationMode === "synthetic" ? "bg-primary/10 text-primary" : "bg-transparent"}`}>
+                <Gauge className="h-4 w-4" />
+              </div>
+              <span>Synthetic Testing</span>
+            </button>
           </div>
         </div>
 
@@ -848,6 +861,11 @@ export function SimulationHub() {
             onViewKnowledgeGraph={() => navigate('/knowledge-graph')}
             allPersonas={personas}
             onTogglePersona={togglePersona}
+          />
+        ) : simulationMode === "synthetic" ? (
+          <SyntheticTestingWorkspace
+            selectedPersonaIds={Array.from(selectedPersonas)}
+            allPersonas={personas}
           />
         ) : simulationMode === "panel" ? (
           <div className="flex h-full">

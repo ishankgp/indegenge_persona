@@ -302,3 +302,47 @@ class ChatSession(ChatSessionBase):
     
     class Config:
         from_attributes = True
+
+# === Synthetic Testing Schemas ===
+
+class SyntheticAsset(BaseModel):
+    id: str  # Frontend generated UUID
+    name: str
+    text_content: Optional[str] = ""
+    image_data: Optional[str] = None # Base64
+
+class SyntheticTestingRequest(BaseModel):
+    persona_ids: List[int]
+    assets: List[SyntheticAsset]
+
+class AssetScores(BaseModel):
+    motivation_to_prescribe: int
+    connection_to_story: int
+    differentiation: int
+    believability: int
+    stopping_power: int
+
+class QualitativeFeedback(BaseModel):
+    does_well: List[str]
+    does_not_do_well: List[str]
+    considerations: List[str]
+
+class SyntheticResultItem(BaseModel):
+    persona_id: int
+    persona_name: str
+    asset_id: str
+    scores: AssetScores
+    overall_preference_score: int
+    feedback: QualitativeFeedback
+    error: Optional[str] = None
+
+class AggregatedAssetResult(BaseModel):
+    asset_name: str
+    average_scores: Dict[str, float]
+    average_preference: int
+    respondent_count: int
+
+class SyntheticTestingResponse(BaseModel):
+    results: List[SyntheticResultItem]
+    aggregated: Dict[str, AggregatedAssetResult]
+    metadata: Dict[str, Any]

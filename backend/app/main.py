@@ -25,6 +25,7 @@ from . import archetypes, disease_packs
 from . import asset_analyzer
 from . import comparison_engine
 from . import panel_feedback_engine
+from . import synthetic_testing_engine
 from .database import engine, get_db
 import shutil
 
@@ -3312,6 +3313,33 @@ async def send_chat_message(
     except Exception as e:
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process chat message: {str(e)}")
+
+
+# --- Synthetic Testing Endpoints ---
+
+@app.post("/api/synthetic-testing/analyze", response_model=schemas.SyntheticTestingResponse)
+async def synthetic_testing_analyze(
+    request: schemas.SyntheticTestingRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Run synthetic testing of marketing assets against selected personas.
+    """
+    assets_data = [
+        {
+            "id": asset.id,
+            "name": asset.name,
+            "data": asset.image_data,
+            "text": asset.text_content
+        }
+        for asset in request.assets
+    ]
+    
+    return synthetic_testing_engine.run_synthetic_testing(
+        request.persona_ids,
+        assets_data,
+        db
+    )
 
 
 if __name__ == "__main__":
