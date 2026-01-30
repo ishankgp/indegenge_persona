@@ -95,7 +95,7 @@ def create_synthetic_prompt(
     
     # Extract key persona attributes
     full_persona = persona.get('full_persona', {})
-    archetype = full_persona.get('persona_subtype') or full_persona.get('archetype', 'Standard')
+    segment = full_persona.get('persona_subtype') or full_persona.get('segment', 'Standard')
     role = full_persona.get('specialty') or persona.get('condition', 'Patient')
     
     content_desc = f"Message: \"{stimulus_text}\"" if stimulus_text else ""
@@ -103,7 +103,7 @@ def create_synthetic_prompt(
         content_desc += "\n(See attached image)"
 
     return f"""
-You are simulating {persona['name']}, a {role} ({archetype}), evaluating a pharmaceutical marketing asset named "{asset_name}".
+You are simulating {persona['name']}, a {role} ({segment}), evaluating a pharmaceutical marketing asset named "{asset_name}".
 
 **YOUR PROFILE:**
 - Age: {persona['age']}
@@ -115,7 +115,12 @@ You are simulating {persona['name']}, a {role} ({archetype}), evaluating a pharm
 {content_desc}
 
 **TASK:**
-Evaluate this asset objectively on a 1-7 scale (1 = Poor/Low, 7 = Excellent/High) and provide specific structural feedback.
+Evaluate this asset objectively on a 1-7 scale (1 = Poor/Low, 7 = Excellent/High) and provide specific qualitative feedback.
+
+**GUIDELINES FOR FEEDBACK:**
+- **BE CONCISE**: Use short, punchy bullet points (maximum 15 words per bullet).
+- **BE DIRECT**: Go straight to the point. No fluff.
+- **AVOID MARKETER ARGOT**: Speak as the patient/HCP would naturally but clearly.
 
 **METRICS TO SCORE (1-7):**
 1. **Motivation to Prescribe** (or "Ask for" if patient): How strongly does this motivate action?
@@ -125,9 +130,9 @@ Evaluate this asset objectively on a 1-7 scale (1 = Poor/Low, 7 = Excellent/High
 5. **Stopping Power**: Does this grab your attention immediately?
 
 **QUALITATIVE FEEDBACK SECTIONS:**
-1. **What This Cover Concept Does Well**: Specific strengths.
-2. **What This Cover Concept Does Not Do as Well**: Specific weaknesses/misses.
-3. **Considerations to Improve**: Actionable suggestions.
+1. **Does Well**: What this cover concept does well.
+2. **Challenges**: What this cover concept does NOT do as well.
+3. **Considerations**: Considerations to improve the cover concept.
 
 **OUTPUT JSON FORMAT:**
 {{
@@ -139,9 +144,9 @@ Evaluate this asset objectively on a 1-7 scale (1 = Poor/Low, 7 = Excellent/High
         "stopping_power": <1-7 int>
     }},
     "feedback": {{
-        "does_well": ["<point 1>", "<point 2>"],
-        "does_not_do_well": ["<point 1>", "<point 2>"],
-        "considerations": ["<suggestion 1>", "<suggestion 2>"]
+        "does_well": ["<concise bullet 1>", "<concise bullet 2>"],
+        "does_not_do_well": ["<concise bullet 1>", "<concise bullet 2>"],
+        "considerations": ["<concise bullet 1>", "<concise bullet 2>"]
     }}
 }}
 """

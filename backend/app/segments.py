@@ -1,10 +1,10 @@
 from typing import List, Dict, Any
 
-# Initial set of persona archetypes
+# Initial set of persona segments
 # These serve as base layers for persona generation
 
-ARCHETYPES: List[Dict[str, Any]] = [
-    # --- Patient Archetypes ---
+SEGMENTS: List[Dict[str, Any]] = [
+    # --- Patient Segments ---
     {
         "name": "Overwhelmed Struggler",
         "persona_type": "Patient",
@@ -65,7 +65,7 @@ ARCHETYPES: List[Dict[str, Any]] = [
             "Loss of control over one's body"
         ]
     },
-    # --- HCP Archetypes ---
+    # --- HCP Segments ---
     {
         "name": "Evidence-Based Academic",
         "persona_type": "HCP",
@@ -108,8 +108,8 @@ ARCHETYPES: List[Dict[str, Any]] = [
     }
 ]
 
-def get_archetype_by_name(name: str) -> Dict[str, Any] | None:
-    for arch in ARCHETYPES:
-        if arch["name"] == name:
-            return arch
+def get_segment_by_name(name: str) -> Dict[str, Any] | None:
+    for seg in SEGMENTS:
+        if seg["name"] == name:
+            return seg
     return None

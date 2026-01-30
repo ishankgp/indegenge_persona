@@ -24,6 +24,7 @@ import {
     type SyntheticResultItem,
     type SyntheticTestRun
 } from '@/lib/api';
+import { ComparativeAnalysisTable } from './ComparativeAnalysisTable';
 
 interface Asset {
     id: string;
@@ -567,63 +568,73 @@ export function SyntheticTestingWorkspace({
                         </Card>
 
                         {/* 3. QUALITATIVE COMPARISON */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {results.results.slice(0, 4).map((res) => ( // Show first 4 individual results for now
-                                <Card key={res.asset_id + res.persona_id} className="h-full flex flex-col">
-                                    <CardHeader className="pb-3 bg-muted/10 border-b">
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <Badge variant="outline">{res.persona_name}</Badge>
-                                                    <span className="text-muted-foreground text-xs">evaluated</span>
+                        <Tabs defaultValue="comparative" className="w-full">
+                            <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
+                                <TabsTrigger value="comparative">Comparative View</TabsTrigger>
+                                <TabsTrigger value="detailed">Detailed Breakdown</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="comparative" className="mt-4">
+                                <ComparativeAnalysisTable results={results} assets={assets} />
+                            </TabsContent>
+                            <TabsContent value="detailed" className="mt-4">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    {results.results.map((res) => (
+                                        <Card key={res.asset_id + res.persona_id} className="h-full flex flex-col">
+                                            <CardHeader className="pb-3 bg-muted/10 border-b">
+                                                <div className="flex justify-between items-start">
+                                                    <div>
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <Badge variant="outline">{res.persona_name}</Badge>
+                                                            <span className="text-muted-foreground text-xs">evaluated</span>
+                                                        </div>
+                                                        <CardTitle className="text-base truncate" title={assets.find(a => a.id === res.asset_id)?.name}>
+                                                            {assets.find(a => a.id === res.asset_id)?.name || 'Asset'}
+                                                        </CardTitle>
+                                                    </div>
+                                                    <Badge className={getMetricColor(res.overall_preference_score / 14)}>
+                                                        {res.overall_preference_score}% Pref
+                                                    </Badge>
                                                 </div>
-                                                <CardTitle className="text-base truncate" title={assets.find(a => a.id === res.asset_id)?.name}>
-                                                    {assets.find(a => a.id === res.asset_id)?.name || 'Asset'}
-                                                </CardTitle>
-                                            </div>
-                                            <Badge className={getMetricColor(res.overall_preference_score / 14)}>
-                                                {/* Hacky normalization for color, real score is pct */}
-                                                {res.overall_preference_score}% Pref
-                                            </Badge>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="p-0 flex-1 flex flex-col">
-                                        <div className="p-4 space-y-4">
-                                            <div>
-                                                <h4 className="text-xs font-bold uppercase tracking-wider text-green-700 dark:text-green-400 mb-2 flex items-center gap-1">
-                                                    <CheckCircle2 className="h-3 w-3" /> Does Well
-                                                </h4>
-                                                <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
-                                                    {res.feedback.does_well.slice(0, 3).map((pt, i) => <li key={i}>{pt}</li>)}
-                                                </ul>
-                                            </div>
+                                            </CardHeader>
+                                            <CardContent className="p-0 flex-1 flex flex-col">
+                                                <div className="p-4 space-y-4">
+                                                    <div>
+                                                        <h4 className="text-xs font-bold uppercase tracking-wider text-green-700 dark:text-green-400 mb-2 flex items-center gap-1">
+                                                            <CheckCircle2 className="h-3 w-3" /> Does Well
+                                                        </h4>
+                                                        <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
+                                                            {res.feedback?.does_well?.slice(0, 3).map((pt, i) => <li key={i}>{pt}</li>)}
+                                                        </ul>
+                                                    </div>
 
-                                            <Separator />
+                                                    <Separator />
 
-                                            <div>
-                                                <h4 className="text-xs font-bold uppercase tracking-wider text-red-700 dark:text-red-400 mb-2 flex items-center gap-1">
-                                                    <AlertCircle className="h-3 w-3" /> Challenges
-                                                </h4>
-                                                <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
-                                                    {res.feedback.does_not_do_well.slice(0, 3).map((pt, i) => <li key={i}>{pt}</li>)}
-                                                </ul>
-                                            </div>
+                                                    <div>
+                                                        <h4 className="text-xs font-bold uppercase tracking-wider text-red-700 dark:text-red-400 mb-2 flex items-center gap-1">
+                                                            <AlertCircle className="h-3 w-3" /> Challenges
+                                                        </h4>
+                                                        <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
+                                                            {res.feedback?.does_not_do_well?.slice(0, 3).map((pt, i) => <li key={i}>{pt}</li>)}
+                                                        </ul>
+                                                    </div>
 
-                                            <Separator />
+                                                    <Separator />
 
-                                            <div>
-                                                <h4 className="text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400 mb-2 flex items-center gap-1">
-                                                    <Edit2 className="h-3 w-3" /> Considerations
-                                                </h4>
-                                                <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
-                                                    {res.feedback.considerations.slice(0, 3).map((pt, i) => <li key={i}>{pt}</li>)}
-                                                </ul>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
+                                                    <div>
+                                                        <h4 className="text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400 mb-2 flex items-center gap-1">
+                                                            <Edit2 className="h-3 w-3" /> Considerations
+                                                        </h4>
+                                                        <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
+                                                            {res.feedback?.considerations?.slice(0, 3).map((pt, i) => <li key={i}>{pt}</li>)}
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            </TabsContent>
+                        </Tabs>
 
                     </div>
                 )

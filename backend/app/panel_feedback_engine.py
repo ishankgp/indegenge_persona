@@ -125,7 +125,7 @@ def create_panel_feedback_prompt(
     full_persona = persona_data.get('full_persona', {})
     
     # Extract key characteristics from persona
-    archetype = full_persona.get('persona_subtype', '') or full_persona.get('archetype', '')
+    segment = full_persona.get('persona_subtype', '') or full_persona.get('segment', '')
     decision_style = full_persona.get('decision_style', '')
     
     # Get role/specialty for HCPs
@@ -139,8 +139,8 @@ def create_panel_feedback_prompt(
     characteristics = []
     if decision_style:
         characteristics.append(decision_style)
-    if archetype:
-        characteristics.append(archetype)
+    if segment:
+        characteristics.append(segment)
     
     mbt = full_persona.get('core', {}).get('mbt', {})
     if mbt:
@@ -195,7 +195,7 @@ Analyze this marketing asset from the perspective of this persona. Provide your 
     "persona_header": {{
         "name": "{persona_name}",
         "role": "<role/specialty or condition>",
-        "archetype": "<primary archetype or decision style>",
+        "segment": "<primary segment or decision style>",
         "key_characteristics": ["<characteristic 1>", "<characteristic 2>", "<characteristic 3>"]
     }},
     "clean_read": "<1-3 sentences describing initial interpretation>",
@@ -288,7 +288,7 @@ def analyze_single_persona_panel(
             "persona_id": persona_id,
             "persona_name": persona_name,
             "role": header.get("role", persona_dict.get('condition', '')),
-            "archetype": header.get("archetype", full_persona.get('persona_subtype', '')),
+            "segment": header.get("segment", full_persona.get('persona_subtype', '')),
             "key_characteristics": header.get("key_characteristics", []),
             "avatar_url": persona_dict.get('avatar_url'),
             "clean_read": data.get("clean_read", "No interpretation provided."),
@@ -306,7 +306,7 @@ def analyze_single_persona_panel(
             "persona_id": persona_id,
             "persona_name": persona_name,
             "role": persona_dict.get('condition', ''),
-            "archetype": "",
+            "segment": "",
             "key_characteristics": [],
             "avatar_url": persona_dict.get('avatar_url'),
             "clean_read": f"Error in analysis: {str(e)}",

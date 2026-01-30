@@ -72,7 +72,7 @@ class PersonaCreate(BaseModel):
     location: str
     concerns: str
     brand_id: Optional[int] = None
-    archetype: Optional[str] = None
+    segment: Optional[str] = None
     disease: Optional[str] = None
 
 class PersonaUpdate(BaseModel):

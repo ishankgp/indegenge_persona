@@ -52,15 +52,15 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
   if (!persona) return null;
 
   const personaData = editablePersona;
-  const createdDate = persona.created_at 
+  const createdDate = persona.created_at
     ? (() => {
-        try {
-          const date = new Date(persona.created_at);
-          return isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString();
-        } catch {
-          return 'N/A';
-        }
-      })()
+      try {
+        const date = new Date(persona.created_at);
+        return isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString();
+      } catch {
+        return 'N/A';
+      }
+    })()
     : 'N/A';
 
   // Helper to extract value from enriched field structure
@@ -312,7 +312,7 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                 location: persona.location,
                 condition: persona.condition
               }}
-              archetype={persona.persona_subtype}
+              segment={persona.persona_subtype}
               diseasePack={persona.disease_pack}
               brandName={selectedBrandId ? "Mounjaro" : null} // In a real app, fetch brand name
             />
@@ -349,7 +349,7 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                   </p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Archetype</label>
+                  <label className="text-sm font-medium text-gray-600">Segment</label>
                   <p className="text-base flex items-center gap-1">
                     <Users className="h-3 w-3 text-violet-600" />
                     {persona.persona_subtype || 'N/A'}
@@ -516,22 +516,22 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                           </div>
                         ))
                         : typeof mbtData.motivations === 'string'
-                        ? (
-                          <div className="flex items-start gap-2">
-                            <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
-                            <p className="text-base">{mbtData.motivations}</p>
-                          </div>
-                        )
-                        : typeof mbtData.motivations === 'object' && mbtData.motivations !== null
-                        ? Object.entries(mbtData.motivations).map(([key, value]) => (
-                          <div key={key}>
-                            <label className="text-sm font-medium text-gray-600 capitalize">
-                              {key.replace(/_/g, ' ')}
-                            </label>
-                            <p className="text-base">{value as string}</p>
-                          </div>
-                        ))
-                        : null
+                          ? (
+                            <div className="flex items-start gap-2">
+                              <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+                              <p className="text-base">{mbtData.motivations}</p>
+                            </div>
+                          )
+                          : typeof mbtData.motivations === 'object' && mbtData.motivations !== null
+                            ? Object.entries(mbtData.motivations).map(([key, value]) => (
+                              <div key={key}>
+                                <label className="text-sm font-medium text-gray-600 capitalize">
+                                  {key.replace(/_/g, ' ')}
+                                </label>
+                                <p className="text-base">{value as string}</p>
+                              </div>
+                            ))
+                            : null
                       }
                     </div>
                   )}
@@ -566,22 +566,22 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                           </div>
                         ))
                         : typeof mbtData.beliefs === 'string'
-                        ? (
-                          <div className="flex items-start gap-2">
-                            <div className="w-2 h-2 bg-purple-500 rounded-full mt-2"></div>
-                            <p className="text-base">{mbtData.beliefs}</p>
-                          </div>
-                        )
-                        : typeof mbtData.beliefs === 'object' && mbtData.beliefs !== null
-                        ? Object.entries(mbtData.beliefs).map(([key, value]) => (
-                          <div key={key}>
-                            <label className="text-sm font-medium text-gray-600 capitalize">
-                              {key.replace(/_/g, ' ')}
-                            </label>
-                            <p className="text-base">{value as string}</p>
-                          </div>
-                        ))
-                        : null
+                          ? (
+                            <div className="flex items-start gap-2">
+                              <div className="w-2 h-2 bg-purple-500 rounded-full mt-2"></div>
+                              <p className="text-base">{mbtData.beliefs}</p>
+                            </div>
+                          )
+                          : typeof mbtData.beliefs === 'object' && mbtData.beliefs !== null
+                            ? Object.entries(mbtData.beliefs).map(([key, value]) => (
+                              <div key={key}>
+                                <label className="text-sm font-medium text-gray-600 capitalize">
+                                  {key.replace(/_/g, ' ')}
+                                </label>
+                                <p className="text-base">{value as string}</p>
+                              </div>
+                            ))
+                            : null
                       }
                     </div>
                   )}
@@ -616,22 +616,22 @@ export function PersonaDetailModal({ isOpen, onClose, persona }: PersonaDetailMo
                           </div>
                         ))
                         : typeof mbtData.pain_points === 'string'
-                        ? (
-                          <div className="flex items-start gap-2">
-                            <div className="w-2 h-2 bg-red-500 rounded-full mt-2"></div>
-                            <p className="text-base">{mbtData.pain_points}</p>
-                          </div>
-                        )
-                        : typeof mbtData.pain_points === 'object' && mbtData.pain_points !== null
-                        ? Object.entries(mbtData.pain_points).map(([key, value]) => (
-                          <div key={key}>
-                            <label className="text-sm font-medium text-gray-600 capitalize">
-                              {key.replace(/_/g, ' ')}
-                            </label>
-                            <p className="text-base">{value as string}</p>
-                          </div>
-                        ))
-                        : null
+                          ? (
+                            <div className="flex items-start gap-2">
+                              <div className="w-2 h-2 bg-red-500 rounded-full mt-2"></div>
+                              <p className="text-base">{mbtData.pain_points}</p>
+                            </div>
+                          )
+                          : typeof mbtData.pain_points === 'object' && mbtData.pain_points !== null
+                            ? Object.entries(mbtData.pain_points).map(([key, value]) => (
+                              <div key={key}>
+                                <label className="text-sm font-medium text-gray-600 capitalize">
+                                  {key.replace(/_/g, ' ')}
+                                </label>
+                                <p className="text-base">{value as string}</p>
+                              </div>
+                            ))
+                            : null
                       }
                     </div>
                   )}

@@ -373,7 +373,7 @@ export const BrandsAPI = {
     api.post(`/api/personas/${personaId}/enrich-from-brand`, payload).then(r => r.data)
 };
 
-export interface Archetype {
+export interface Segment {
   name: string;
   persona_type: string;
   description: string;
@@ -387,8 +387,8 @@ export interface DiseasePack {
   condition: string;
 }
 
-export const ArchetypesAPI = {
-  list: () => api.get<Archetype[]>('/api/archetypes').then(r => r.data)
+export const SegmentsAPI = {
+  list: () => api.get<Segment[]>('/api/segments').then(r => r.data)
 };
 
 export const DiseasePacksAPI = {
@@ -729,7 +729,7 @@ export interface PersonaFeedbackCard {
   persona_id: number;
   persona_name: string;
   role: string;
-  archetype: string;
+  segment: string;
   key_characteristics: string[];
   avatar_url?: string;
   clean_read: string;

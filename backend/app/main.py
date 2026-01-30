@@ -21,7 +21,7 @@ from datetime import datetime
 
 from .chat_engine import ChatEngine
 from . import models, schemas, crud, persona_engine, cohort_engine, auto_enrichment, database, vector_search
-from . import archetypes, disease_packs
+from . import segments, disease_packs
 from . import asset_analyzer
 from . import comparison_engine
 from . import panel_feedback_engine
@@ -369,10 +369,10 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
         aggregated = _aggregate_brand_insights(documents, target_segment=None, limit_per_category=5)
         brand_insights = _flatten_insights(aggregated)
     
-    # 1. Get Archetype and Disease Context if provided
-    archetype_data = None
-    if persona_data.archetype:
-        archetype_data = archetypes.get_archetype_by_name(persona_data.archetype)
+    # 1. Get Segment and Disease Context if provided
+    segment_data = None
+    if persona_data.segment:
+        segment_data = segments.get_segment_by_name(persona_data.segment)
 
     disease_data = None
     if persona_data.disease:
@@ -386,7 +386,7 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
         condition=persona_data.condition,
         location=persona_data.location,
         concerns=persona_data.concerns,
-        archetype=archetype_data,
+        segment=segment_data,
         disease_context=disease_data,
         brand_insights=brand_insights
     )
@@ -401,14 +401,14 @@ async def generate_and_create_persona(persona_data: schemas.PersonaCreate, db: S
         persona_json=full_persona_json
     )
     
-    # 3. Post-creation updates (Archetype tagging and Avatar)
+    # 3. Post-creation updates (Segment tagging and Avatar)
     updates_needed = False
     
-    if archetype_data:
-        new_persona.persona_subtype = archetype_data.get("name")
-        # Ensure correct type is set if archetype dictates it
-        if archetype_data.get("persona_type"):
-            new_persona.persona_type = archetype_data.get("persona_type")
+    if segment_data:
+        new_persona.persona_subtype = segment_data.get("name")
+        # Ensure correct type is set if segment dictates it
+        if segment_data.get("persona_type"):
+            new_persona.persona_type = segment_data.get("persona_type")
         updates_needed = True
 
     if disease_data:
@@ -1661,13 +1661,13 @@ async def get_brands(skip: int = 0, limit: int = 100, db: Session = Depends(get_
     return crud.get_brands(db, skip, limit)
 
 
-# --- Archetypes & Disease Packs Endpoints ---
+# --- Segments & Disease Packs Endpoints ---
 
-@app.get("/api/archetypes")
-async def get_archetypes():
-    """List all available persona archetypes for grounding persona generation."""
-    from .archetypes import ARCHETYPES
-    return ARCHETYPES
+@app.get("/api/segments")
+async def get_segments():
+    """List all available persona segments for grounding persona generation."""
+    from .segments import SEGMENTS
+    return SEGMENTS
 
 
 @app.get("/api/disease-packs")
@@ -1898,7 +1898,7 @@ async def seed_brand_documents(brand_id: int, db: Session = Depends(get_db)):
         "Treatment Landscape / SoC": "Current Standard of Care involves Metformin as first-line, followed by GLP-1 RAs or SGLT2 inhibitors. This review analyzes the efficacy and safety profiles of leading competitors.",
         "Brand Value Proposition & Core Messaging": "Our brand offers superior glycemic control with weight loss benefits. Key message: 'Power to control, freedom to live.' Differentiators include once-weekly dosing.",
         "Safety & Tolerability Summary": "Summary of adverse events from Phase 3 trials. GI side effects are most common but transient. No new safety signals observed in long-term extension studies.",
-        "HCP & Patient Segmentation": "HCP Segments: 1. Efficacy-Driven Experts, 2. Safety-First Prescribers. Patient Archetypes: 1. The Proactive Manager, 2. The Overwhelmed Struggler.",
+        "HCP & Patient Segmentation": "HCP Segments: 1. Efficacy-Driven Experts, 2. Safety-First Prescribers. Patient Segments: 1. The Proactive Manager, 2. The Overwhelmed Struggler.",
         "Market Research & Insight Summaries": "Qualitative research indicates that HCPs are hesitant to switch stable patients. Patients desire treatments that minimize lifestyle disruption.",
         "Adherence / Persistence / Discontinuation Insights": "Data shows 20% discontinuation rate at 6 months due to cost and GI issues. Persistence is higher with the autoinjector device compared to vials."
     }

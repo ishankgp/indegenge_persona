@@ -45,7 +45,7 @@ def compute_persona_hash(persona: Dict[str, Any]) -> str:
     # Build a dict of the relevant fields
     hash_data = {
         "name": persona.get("name", ""),
-        "archetype": persona.get("persona_subtype", persona.get("decision_style", "")),
+        "segment": persona.get("persona_subtype", persona.get("decision_style", "")),
         "beliefs": mbt.get("beliefs", {}).get("core_belief_statements", {}).get("value", []),
         "main_worry": mbt.get("tension", {}).get("main_worry", {}).get("value", ""),
         "sensitivity_points": mbt.get("tension", {}).get("sensitivity_points", {}).get("value", []),
@@ -101,7 +101,7 @@ def build_annotation_prompt(persona: Dict[str, Any], knowledge_section: Optional
     # Extract persona attributes
     name = persona.get("name", "Healthcare Professional")
     
-    # Try to get archetype from different possible locations
+    # Try to get segment from different possible locations
     persona_json = persona.get("full_persona_json")
     if isinstance(persona_json, str):
         try:
@@ -130,14 +130,14 @@ def build_annotation_prompt(persona: Dict[str, Any], knowledge_section: Optional
         sensitivity_points = [sensitivity_points]
     tensions_str = main_worry if main_worry else ("; ".join(sensitivity_points[:2]) if sensitivity_points else "Time constraints, unverified claims")
     
-    # Get archetype/decision style
+    # Get segment/decision style
     decision_style = persona.get("decision_style", "")
-    archetype = persona.get("persona_subtype", decision_style if decision_style else "Analytical")
+    segment = persona.get("persona_subtype", decision_style if decision_style else "Analytical")
     
     prompt = f"""You are a pharmaceutical marketing reviewer role-playing as: {name}.
 
 Persona Profile:
-- Archetype: {archetype}
+- Segment: {segment}
 - Core Beliefs: {beliefs_str}
 - Key Tensions/Concerns: {tensions_str}
 

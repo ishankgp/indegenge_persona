@@ -33,9 +33,9 @@ const PersonaFeedbackCardComponent: React.FC<{ card: PersonaFeedbackCard }> = ({
                             {card.persona_name}
                         </CardTitle>
                         <p className="text-sm text-muted-foreground truncate">{card.role}</p>
-                        {card.archetype && (
+                        {card.segment && (
                             <Badge variant="outline" className="mt-1 text-xs">
-                                {card.archetype}
+                                {card.segment}
                             </Badge>
                         )}
                     </div>

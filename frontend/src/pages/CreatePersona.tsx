@@ -2,8 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { PersonasAPI, BrandsAPI, ArchetypesAPI, DiseasePacksAPI } from "@/lib/api"
-import type { Archetype, DiseasePack } from "@/lib/api"
+import { PersonasAPI, BrandsAPI, SegmentsAPI, DiseasePacksAPI } from "@/lib/api"
+import type { Segment, DiseasePack } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -96,12 +96,13 @@ export function CreatePersona() {
     region: '',
     concerns: "",
     count: '1',
-    archetype: '',
+    count: '1',
+    segment: '',
     disease: ''
   })
 
   const [brands, setBrands] = useState<BrandOption[]>([])
-  const [archetypes, setArchetypes] = useState<Archetype[]>([])
+  const [segments, setSegments] = useState<Segment[]>([])
   const [diseasePacks, setDiseasePacks] = useState<DiseasePack[]>([])
   const [manualSelectedInsights, setManualSelectedInsights] = useState<BrandInsight[]>([])
   const [manualSuggestions, setManualSuggestions] = useState<SuggestionResponse | null>(null)
@@ -280,13 +281,13 @@ export function CreatePersona() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [brandsData, archetypesData, diseasesData] = await Promise.all([
+        const [brandsData, segmentsData, diseasesData] = await Promise.all([
           BrandsAPI.list(),
-          ArchetypesAPI.list(),
+          SegmentsAPI.list(),
           DiseasePacksAPI.list()
         ])
         setBrands(brandsData)
-        setArchetypes(archetypesData)
+        setSegments(segmentsData)
         setDiseasePacks(diseasesData)
       } catch (err) {
         console.error("Failed to load initial data", err)
@@ -587,7 +588,7 @@ export function CreatePersona() {
         location: aiFormData.region,
         concerns: aiFormData.concerns,
         brand_id: aiBrandId || undefined,
-        archetype: aiFormData.archetype || undefined,
+        segment: aiFormData.segment || undefined,
         disease: aiFormData.disease || undefined
       }
 
@@ -621,7 +622,7 @@ export function CreatePersona() {
         region: '',
         concerns: '',
         count: '1',
-        archetype: '',
+        segment: '',
         disease: ''
       })
       setGenerationProgress({ current: 0, total: 0 })
@@ -1275,23 +1276,23 @@ export function CreatePersona() {
                     </h3>
                     <div className="grid gap-6 md:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="ai-archetype" className="text-sm font-medium">Archetype Base</Label>
-                        <Select name="archetype" value={aiFormData.archetype} onValueChange={(value) => handleAiSelectChange('archetype', value)}>
+                        <Label htmlFor="ai-segment" className="text-sm font-medium">Segment Base</Label>
+                        <Select name="segment" value={aiFormData.segment} onValueChange={(value) => handleAiSelectChange('segment', value)}>
                           <SelectTrigger className="bg-white dark:bg-gray-900 border-indigo-200 dark:border-indigo-800">
-                            <SelectValue placeholder="Select an archetype..." />
+                            <SelectValue placeholder="Select a segment..." />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="none">None (Standard Generation)</SelectItem>
-                            {archetypes.map((arch) => (
-                              <SelectItem key={arch.name} value={arch.name}>
-                                {arch.name} ({arch.persona_type})
+                            {segments.map((seg) => (
+                              <SelectItem key={seg.name} value={seg.name}>
+                                {seg.name} ({seg.persona_type})
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        {aiFormData.archetype && (
+                        {aiFormData.segment && (
                           <p className="text-xs text-indigo-700 dark:text-indigo-300">
-                            {archetypes.find(a => a.name === aiFormData.archetype)?.description}
+                            {segments.find(s => s.name === aiFormData.segment)?.description}
                           </p>
                         )}
                       </div>

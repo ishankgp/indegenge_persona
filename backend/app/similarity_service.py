@@ -90,7 +90,7 @@ def _extract_persona_key_attributes(persona: Dict[str, Any]) -> Dict[str, Any]:
         "age": persona.get("age"),
         "gender": persona.get("gender"),
         "condition": persona.get("condition"),
-        "archetype": persona.get("persona_subtype") or persona.get("decision_style"),
+        "segment": persona.get("persona_subtype") or persona.get("decision_style"),
         "motivations": motivations[:5] if isinstance(motivations, list) else [],
         "beliefs": beliefs[:5] if isinstance(beliefs, list) else [],
         "tensions": tensions[:5] if isinstance(tensions, list) else [],

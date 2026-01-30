@@ -1,6 +1,6 @@
 """
-Script to populate persona_subtype (archetype) for all existing personas.
-Assigns archetypes based on persona_type and characteristics from full_persona_json.
+Script to populate persona_subtype (segment) for all existing personas.
+Assigns segments based on persona_type and characteristics from full_persona_json.
 """
 
 import os
@@ -12,12 +12,12 @@ import random
 # Add backend to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app.archetypes import ARCHETYPES
+from app.segments import SEGMENTS
 
-# Patient archetypes
-PATIENT_ARCHETYPES = [arch["name"] for arch in ARCHETYPES if arch["persona_type"] == "Patient"]
-# HCP archetypes  
-HCP_ARCHETYPES = [arch["name"] for arch in ARCHETYPES if arch["persona_type"] == "HCP"]
+# Patient segments
+PATIENT_SEGMENTS = [seg["name"] for seg in SEGMENTS if seg["persona_type"] == "Patient"]
+# HCP segments  
+HCP_SEGMENTS = [seg["name"] for seg in SEGMENTS if seg["persona_type"] == "HCP"]
 
 
 def get_database_path() -> str:
@@ -25,8 +25,8 @@ def get_database_path() -> str:
     return os.path.join(base_dir, "pharma_personas.db")
 
 
-def analyze_persona_for_archetype(persona_json: dict, persona_type: str) -> str:
-    """Analyze persona characteristics to assign the most fitting archetype."""
+def analyze_persona_for_segment(persona_json: dict, persona_type: str) -> str:
+    """Analyze persona characteristics to assign the most fitting segment."""
     
     # Get MBT data (motivations, beliefs, tensions)
     motivations = []
@@ -62,7 +62,7 @@ def analyze_persona_for_archetype(persona_json: dict, persona_type: str) -> str:
     all_text = " ".join([str(m).lower() for m in motivations + beliefs + pain_points])
     
     if persona_type.lower() == "hcp":
-        # HCP archetype detection
+        # HCP segment detection
         evidence_keywords = ["evidence", "clinical", "trial", "data", "research", "guideline", "protocol", "study", "rct"]
         pragmatic_keywords = ["adherence", "cost", "access", "real-world", "practical", "affordable", "insurance", "burden"]
         
@@ -75,9 +75,9 @@ def analyze_persona_for_archetype(persona_json: dict, persona_type: str) -> str:
             return "Pragmatic Clinician"
         else:
             # Default based on some other heuristics or random
-            return random.choice(HCP_ARCHETYPES)
+            return random.choice(HCP_SEGMENTS)
     else:
-        # Patient archetype detection
+        # Patient segment detection
         proactive_keywords = ["control", "research", "optimize", "understand", "knowledge", "active", "engaged", "informed"]
         overwhelmed_keywords = ["overwhelmed", "struggle", "burden", "complex", "difficult", "stress", "frustrated", "exhausted"]
         skeptical_keywords = ["skeptic", "natural", "avoid", "distrust", "pharma", "side effect", "chemical", "alternative"]
@@ -94,17 +94,17 @@ def analyze_persona_for_archetype(persona_json: dict, persona_type: str) -> str:
         
         max_score = max(scores.values())
         if max_score > 0:
-            # Return archetype with highest score
-            for archetype, score in scores.items():
+            # Return segment with highest score
+            for segment, score in scores.items():
                 if score == max_score:
-                    return archetype
+                    return segment
         
         # Default: distribute evenly
-        return random.choice(PATIENT_ARCHETYPES)
+        return random.choice(PATIENT_SEGMENTS)
 
 
-def populate_archetypes():
-    """Populate persona_subtype for all personas missing it."""
+def populate_segments():
+    """Populate persona_subtype for all existing personas."""
     database_path = get_database_path()
     
     if not os.path.exists(database_path):
@@ -132,22 +132,22 @@ def populate_archetypes():
             except json.JSONDecodeError:
                 persona_json = {}
             
-            # Determine archetype
-            archetype = analyze_persona_for_archetype(persona_json, persona_type or "Patient")
+            # Determine segment
+            segment = analyze_persona_for_segment(persona_json, persona_type or "Patient")
             
             # Update the persona
             cursor.execute("""
                 UPDATE personas 
                 SET persona_subtype = ? 
                 WHERE id = ?
-            """, (archetype, persona_id))
+            """, (segment, persona_id))
             
             status = "[Updated]" if not current_subtype else "[Replaced]"
-            print(f"{status}: {name} ({persona_type}) -> {archetype}")
+            print(f"{status}: {name} ({persona_type}) -> {segment}")
             updated_count += 1
         
         connection.commit()
-        print(f"\nSuccessfully populated archetypes for {updated_count} personas")
+        print(f"\nSuccessfully populated segments for {updated_count} personas")
         
     except sqlite3.Error as e:
         connection.rollback()
@@ -157,5 +157,4 @@ def populate_archetypes():
 
 
 if __name__ == "__main__":
-    populate_archetypes()
-
+    populate_segments()

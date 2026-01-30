@@ -66,7 +66,7 @@ def _build_attribute_based_name(
     """Construct a descriptive persona name based on provided attributes.
 
     The output follows an "adjective + role" pattern such as "Methodical Manager"
-    so personas feel more like archetypes than real individuals.
+    so personas feel more like segments than real individuals.
     """
 
     normalized_condition = (condition or "").lower()
@@ -183,7 +183,7 @@ def _build_schema_persona(
             "persona_id": persona_id,
             "name": name,
             "label": (existing_persona or {}).get("meta", {}).get("label")
-            or f"{condition.title()} {gender.title()} archetype",
+            or f"{condition.title()} {gender.title()} segment",
             "created_at": (existing_persona or {}).get("meta", {}).get("created_at") or now_iso,
             "updated_at": now_iso,
             "brand": (existing_persona or {}).get("meta", {}).get("brand"),
@@ -544,7 +544,7 @@ def create_patient_persona_prompt(
     condition, 
     location, 
     concerns, 
-    archetype: Optional[Dict[str, Any]] = None,
+    segment: Optional[Dict[str, Any]] = None,
     disease_context: Optional[Dict[str, Any]] = None,
     brand_insights: Optional[List[Dict[str, str]]] = None
 ):
@@ -564,14 +564,14 @@ def create_patient_persona_prompt(
     - Key Concerns: "{concerns}"
 """
     
-    # Add Archetype layer if provided
-    if archetype:
+    # Add Segment layer if provided
+    if segment:
         prompt += f"""
-    **Persona Archetype:** {archetype.get('name')} – {archetype.get('description')}
+    **Persona Segment:** {segment.get('name')} – {segment.get('description')}
     This persona is typically characterized by:
-    - Core Motivations: {archetype.get('motivations', [])}
-    - Core Beliefs: {archetype.get('beliefs', [])}
-    - Core Pain Points: {archetype.get('pain_points', [])}
+    - Core Motivations: {segment.get('motivations', [])}
+    - Core Beliefs: {segment.get('beliefs', [])}
+    - Core Pain Points: {segment.get('pain_points', [])}
 """
 
     # Add Disease Context layer if provided
@@ -608,7 +608,7 @@ def create_patient_persona_prompt(
       "meta": {
         "persona_id": "unique string",
         "name": "<full name>",
-        "label": "short archetype label",
+        "label": "short segment label",
         "created_at": "<ISO timestamp>",
         "updated_at": "<ISO timestamp>",
         "brand": "",
@@ -695,7 +695,7 @@ def generate_persona_from_attributes(
     condition: str, 
     location: str, 
     concerns: str,
-    archetype: Optional[Dict[str, Any]] = None,
+    segment: Optional[Dict[str, Any]] = None,
     disease_context: Optional[Dict[str, Any]] = None,
     brand_insights: Optional[List[Dict[str, str]]] = None
 ) -> str:
@@ -705,13 +705,13 @@ def generate_persona_from_attributes(
     
     If brand_insights is provided, the persona will be grounded in those MBT insights.
     """
-    prompt = create_patient_persona_prompt(age, gender, condition, location, concerns, archetype, disease_context, brand_insights)
+    prompt = create_patient_persona_prompt(age, gender, condition, location, concerns, segment, disease_context, brand_insights)
     
     # First check if OpenAI API key is available in environment
     client = get_openai_client()
     if client is None:
         print("OpenAI API key not found in environment, generating mock persona")
-        return generate_mock_persona(age, gender, condition, location, concerns, archetype, disease_context, brand_insights)
+        return generate_mock_persona(age, gender, condition, location, concerns, segment, disease_context, brand_insights)
 
     try:
         response = client.chat.completions.create(
@@ -727,7 +727,7 @@ def generate_persona_from_attributes(
             parsed_json = json.loads(content)
         except json.JSONDecodeError as e:
             print(f"Invalid JSON from OpenAI API, using mock: {e}")
-            return generate_mock_persona(age, gender, condition, location, concerns, archetype, disease_context, brand_insights)
+            return generate_mock_persona(age, gender, condition, location, concerns, segment, disease_context, brand_insights)
 
         demographics = parsed_json.get("demographics", {}) if isinstance(parsed_json, dict) else {}
         occupation = demographics.get("occupation") or "Professional"
@@ -763,7 +763,7 @@ def generate_persona_from_attributes(
 
     except Exception as e:
         print(f"OpenAI API error, falling back to mock persona: {e}")
-        return generate_mock_persona(age, gender, condition, location, concerns, archetype, disease_context, brand_insights)
+        return generate_mock_persona(age, gender, condition, location, concerns, segment, disease_context, brand_insights)
 
 def generate_mock_persona(
     age: int, 
@@ -771,7 +771,7 @@ def generate_mock_persona(
     condition: str,
     location: str,
     concerns: str,
-    archetype: Optional[Dict[str, Any]] = None,
+    segment: Optional[Dict[str, Any]] = None,
     disease_context: Optional[Dict[str, Any]] = None,
     brand_insights: Optional[List[Dict[str, str]]] = None
 ) -> str:
@@ -1589,10 +1589,10 @@ def extract_persona_from_transcript(transcript_text: str) -> Dict[str, Any]:
     }
 
 
-def extract_persona_archetypes(brand_insights: List[Dict[str, str]], limit: int = 3) -> List[Dict[str, Any]]:
+def extract_persona_segments(brand_insights: List[Dict[str, str]], limit: int = 3) -> List[Dict[str, Any]]:
     """
-    Analyze brand insights to identify distinct persona archetypes.
-    Returns a list of archetype definitions (name, description, key traits).
+    Analyze brand insights to identify distinct persona segments.
+    Returns a list of segment definitions (name, description, key traits).
     """
     client = get_openai_client()
     if client is None:

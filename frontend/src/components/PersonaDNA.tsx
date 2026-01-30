@@ -9,12 +9,12 @@ interface PersonaDNAProps {
     location: string;
     condition: string;
   };
-  archetype?: string;
+  segment?: string;
   diseasePack?: string;
   brandName?: string | null;
 }
 
-export function PersonaDNA({ baseAttributes, archetype, diseasePack, brandName }: PersonaDNAProps) {
+export function PersonaDNA({ baseAttributes, segment, diseasePack, brandName }: PersonaDNAProps) {
   return (
     <Card className="bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-950 border-dashed border-2">
       <CardHeader className="pb-3">
@@ -42,17 +42,17 @@ export function PersonaDNA({ baseAttributes, archetype, diseasePack, brandName }
             </div>
           </div>
 
-          {/* Layer 2: Archetype */}
+          {/* Layer 2: Segment */}
           <div className="relative">
             <div className="absolute -left-[31px] top-0 bg-violet-100 dark:bg-violet-900/30 rounded-full p-1.5 border-2 border-white dark:border-slate-950">
               <Activity className="h-4 w-4 text-violet-600 dark:text-violet-400" />
             </div>
             <div>
-              <span className="text-xs font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wider">Layer 2: Archetype</span>
+              <span className="text-xs font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wider">Layer 2: Segment</span>
               <div className="mt-1">
-                {archetype ? (
+                {segment ? (
                   <Badge className="bg-violet-600 hover:bg-violet-700 text-white border-0">
-                    {archetype}
+                    {segment}
                   </Badge>
                 ) : (
                   <span className="text-sm text-slate-400 italic">None applied</span>
