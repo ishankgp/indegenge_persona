@@ -96,7 +96,7 @@ export function CreatePersona() {
     region: '',
     concerns: "",
     count: '1',
-    count: '1',
+
     segment: '',
     disease: ''
   })
