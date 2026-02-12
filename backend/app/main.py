@@ -26,6 +26,7 @@ from . import asset_analyzer
 from . import comparison_engine
 from . import panel_feedback_engine
 from . import synthetic_testing_engine
+from . import persona_discovery
 from .database import engine, get_db
 import shutil
 
@@ -770,6 +771,82 @@ async def extract_persona_from_transcript(
     suggestions["extraction_summary"] = extraction_summary
 
     return suggestions
+
+
+# --- Persona Discovery Endpoints ---
+
+class DiscoveryRequest(BaseModel):
+    brand_id: int
+    limit: int = 5
+
+class GenerationRequest(BaseModel):
+    brand_id: int
+    segment_name: str
+    segment_description: str
+
+@app.post("/api/personas/discover-from-docs")
+async def discover_personas_endpoint(
+    request: DiscoveryRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Scans brand documents to discover potential customer segments/personas.
+    """
+    # Fetch brand documents
+    documents = crud.get_brand_documents(db, request.brand_id)
+    if not documents:
+        raise HTTPException(status_code=404, detail="No documents found for this brand")
+    
+    # Run discovery
+    segments = persona_discovery.discover_segments_from_documents(documents, request.limit)
+    return {"segments": segments}
+
+@app.post("/api/personas/generate-from-discovery")
+async def generate_persona_from_discovery_endpoint(
+    request: GenerationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Generates a full persona profile for a discovered segment using Multi-Pass Extraction.
+    """
+    try:
+        # 1. Extract Profile (Multi-Pass)
+        persona_profile = persona_discovery.extract_persona_from_segment(
+            segment_name=request.segment_name,
+            segment_description=request.segment_description,
+            brand_id=request.brand_id,
+            db_session=db
+        )
+        
+        if not persona_profile:
+             raise HTTPException(status_code=500, detail="Failed to extract persona profile")
+
+        # 2. Save as new Persona
+        # Map additional_context correctly
+        additional_ctx = persona_profile.get("additional_context", {})
+        
+        db_persona = models.Persona(
+            name=persona_profile.get("name", request.segment_name)[0:50], # Limit name length
+            age=persona_profile.get("age", 40),
+            gender=persona_profile.get("gender", "Unknown"),
+            condition=persona_profile.get("condition", "Unknown"),
+            location=persona_profile.get("location", "Unknown"),
+            brand_id=request.brand_id,
+            persona_type="Patient",
+            persona_subtype=request.segment_name,
+            full_persona_json=json.dumps(persona_profile),
+            additional_context=additional_ctx
+        )
+        
+        db.add(db_persona)
+        db.commit()
+        db.refresh(db_persona)
+        
+        return db_persona
+
+    except Exception as e:
+        logger.error(f"Generation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/personas/{persona_id}/export")
