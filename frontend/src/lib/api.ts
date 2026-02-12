@@ -324,6 +324,46 @@ export const PersonasAPI = {
     api.post('/api/personas/compare/ask', { persona_ids: personaIds, question }).then(r => r.data),
 };
 
+// Persona Discovery API - Research-driven persona creation
+export interface DiscoveredSegment {
+  name: string;
+  description: string;
+  differentiators: string[];
+  evidence: string;
+}
+
+export interface DiscoveryResponse {
+  segments: DiscoveredSegment[];
+}
+
+export interface GeneratedPersonaProfile {
+  name: string;
+  age: number;
+  gender: string;
+  condition: string;
+  location: string;
+  persona_type: string;
+  tagline?: string;
+  core_insight?: string;
+  core?: Record<string, any>;
+  additional_context?: Record<string, any>;
+  [key: string]: any;
+}
+
+export const DiscoveryAPI = {
+  // Step 1: Discover segments from brand documents
+  discoverSegments: (brandId: number, limit: number = 5): Promise<DiscoveryResponse> =>
+    api.post('/api/personas/discover-from-docs', { brand_id: brandId, limit }).then(r => r.data),
+
+  // Step 2: Generate a full persona from a discovered or manually entered segment
+  generateFromSegment: (brandId: number, segmentName: string, segmentDescription: string): Promise<any> =>
+    api.post('/api/personas/generate-from-discovery', {
+      brand_id: brandId,
+      segment_name: segmentName,
+      segment_description: segmentDescription,
+    }).then(r => r.data),
+};
+
 export interface BrandInsight {
   type: "Motivation" | "Belief" | "Tension";
   text: string;

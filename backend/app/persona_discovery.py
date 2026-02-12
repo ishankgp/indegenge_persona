@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 import os
 from openai import OpenAI
 
-from . import schemas, models, vector_search, persona_engine
+from . import schemas, models, vector_search, persona_engine, crud
 from .utils import get_openai_client, MODEL_NAME
 
 logger = logging.getLogger(__name__)
@@ -76,24 +76,99 @@ EXTRACTION_PASSES = {
     }
 }
 
+PASS_PROMPT_TEMPLATE = """
+You are extracting {focus} insights about a specific patient/HCP segment from research documents.
+
+**Target Segment:** "{segment_name}"
+**Segment Description:** {segment_description}
+
+**Research Context (Retrieved from Documents):**
+{rag_context}
+
+**Your Task:**
+{prompt_instruction}
+
+**Fields to populate:**
+{schema_fields}
+
+**Rules:**
+- ONLY extract information relevant to "{segment_name}". Ignore data about other segments.
+- If a field cannot be found in the context, set it to null.
+- Be specific — use exact quotes or data points from the context when possible.
+
+**Output:** Return a JSON object with the requested fields.
+"""
+
 MERGE_PROMPT = """
 You are aggregating research insights into a single, coherent persona profile for "{segment_name}".
 
 **Inputs from Research Passes:**
-1. **Demographics**: {demo_json}
-2. **Psychographics**: {psych_json}
-3. **Behavioral**: {behav_json}
+1. **Demographics & Life Context**: {demo_json}
+2. **Psychographics & Motivations**: {psych_json}
+3. **Behavioral & Decision Patterns**: {behav_json}
 
 **Task:**
-Merge these inputs into a final JSON structure that matches our system schema.
-Ensure consistency (e.g., if Demographics says "Age 70", Behavioral shouldn't say "Uses TikTok heavily" unless substantiated).
+Merge these inputs into a SINGLE, coherent persona profile JSON.
+Resolve any contradictions (e.g., if Demographics says "Age 70", Behavioral shouldn't say "Uses TikTok heavily" unless substantiated).
 
-**Schema Requirements:**
-- **Full Persona JSON**: Must include `core` objects, `mbt`, `decision_drivers`.
-- **Additional Context**: Capture unique details that don't fit ("nuances").
-
-**Output Format:**
-Return valid JSON matching the system's simple persona structure + 'additional_context'.
+**Required Output Structure:**
+{
+  "name": "<persona name>",
+  "age": <int>,
+  "gender": "<string>",
+  "condition": "<primary condition>",
+  "location": "<location>",
+  "persona_type": "Patient" or "HCP",
+  "tagline": "<one-line essence of this persona>",
+  "core_insight": "<the single most important truth about them>",
+  "specialty": "<if HCP, their specialty>",
+  "practice_setup": "<if HCP, their practice context>",
+  "decision_style": "<how they make decisions>",
+  "decision_influencers": "<who influences their decisions>",
+  "adherence_to_protocols": "<their adherence pattern>",
+  "channel_use": "<preferred information channels>",
+  "core": {
+    "snapshot": {
+      "life_context": { "value": "<daily life description>" },
+      "occupation": { "value": "<job or role>" }
+    },
+    "mbt": {
+      "motivation": {
+        "primary_motivation": { "value": "<m1>" },
+        "top_outcomes": { "value": ["<m1>", "<m2>", "<m3>"] }
+      },
+      "beliefs": {
+        "core_belief_statements": { "value": ["<b1>", "<b2>", "<b3>"] }
+      },
+      "tension": {
+        "main_worry": { "value": "<t1>" },
+        "sensitivity_points": { "value": ["<t1>", "<t2>", "<t3>"] }
+      }
+    },
+    "decision_drivers": {
+      "ranked_drivers": [
+        {"rank": 1, "driver": "<d1>", "detail": "<details>"},
+        {"rank": 2, "driver": "<d2>", "detail": "<details>"}
+      ],
+      "tie_breakers": { "value": ["<tb1>", "<tb2>"] }
+    },
+    "messaging": {
+      "what_lands": { "value": ["<proof1>", "<proof2>"], "evidence": ["<quote1>", "<quote2>"] },
+      "what_fails": { "value": ["<fail1>"], "evidence": ["<quote3>"] },
+      "preferred_voice": { "value": "<tone description>" }
+    },
+    "barriers_objections": {
+        "objections": { "value": ["<obj1>"], "evidence": ["<quote4>"] },
+        "practical_barriers": { "value": ["<pb1>"] },
+        "perceptual_barriers": { "value": ["<psb1>"] }
+    }
+  },
+  "additional_context": {
+    "nuances": ["<unique detail 1>", "<unique detail 2>"],
+    "quote_style": "<how they talk>",
+    "raw_evidence": ["<key quote from research>"]
+  }
+}
 """
 
 # === Engine Functions ===
@@ -103,23 +178,34 @@ def discover_segments_from_documents(
     limit: int = 5
 ) -> List[Dict[str, Any]]:
     """
-    Scans the provided documents (summaries or chunks) to discover potential personas.
+    Scans the provided brand documents (summaries) to discover potential personas/segments.
     """
     client = get_openai_client()
     if not client:
         return [{"name": "Error", "description": "OpenAI API not available"}]
 
-    # 1. Aggregate context from documents
+    # 1. Aggregate context from document summaries
     context_parts = []
     for doc in documents:
         info = f"Document: {doc.filename}\n"
         if doc.summary:
             info += f"Summary: {doc.summary}\n"
+        if doc.extracted_insights:
+            # Include key insights if available
+            insights = doc.extracted_insights
+            if isinstance(insights, dict):
+                for key, val in list(insights.items())[:5]:
+                    info += f"  - {key}: {val}\n"
         context_parts.append(info)
         
-    # Limit context size roughly
+    # Limit context size to avoid token overflow
     context_text = "\n---\n".join(context_parts)[:20000] 
     
+    if not context_text.strip():
+        logger.warning("No document summaries available for discovery")
+        return [{"name": "No Data", "description": "Documents have no summaries. Please process documents first."}]
+    
+    # 2. Call LLM for segment discovery
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
@@ -128,15 +214,57 @@ def discover_segments_from_documents(
                 {"role": "user", "content": DISCOVERY_PROMPT.format(context_text=context_text)}
             ],
             response_format={"type": "json_object"},
-            temperature=0.7 
+            temperature=0.7  # Higher temp for creative discovery
         )
         
         result_json = json.loads(response.choices[0].message.content)
-        return result_json.get("segments", [])
+        segments = result_json.get("segments", [])
+        return segments[:limit]
         
     except Exception as e:
         logger.error(f"Discovery failed: {e}")
         return []
+
+
+def _retrieve_rag_context(
+    brand_id: int,
+    query: str,
+    documents: List[models.BrandDocument],
+    segment_name: str
+) -> str:
+    """
+    Retrieves relevant context from OpenAI Vector Stores for a given query.
+    Falls back to document summaries if no vector stores are available.
+    """
+    # Try vector search first
+    try:
+        results = vector_search.search_brand_chunks(
+            brand_id=brand_id,
+            documents=documents,
+            query_text=query,
+            top_k=5,
+            target_segment=segment_name
+        )
+        
+        if results:
+            context_parts = []
+            for r in results:
+                context_parts.append(f"[Source: {r.get('source_document', 'unknown')}]\n{r['text']}")
+            return "\n\n---\n\n".join(context_parts)
+    except Exception as e:
+        logger.warning(f"Vector search failed, falling back to summaries: {e}")
+    
+    # Fallback: use document summaries
+    fallback_parts = []
+    for doc in documents:
+        if doc.summary:
+            fallback_parts.append(f"[{doc.filename}] {doc.summary}")
+    
+    if fallback_parts:
+        return "\n\n".join(fallback_parts)
+    
+    return f"No detailed context available for {segment_name}. Generate a reasonable profile based on the segment description."
+
 
 def extract_persona_from_segment(
     segment_name: str,
@@ -146,67 +274,236 @@ def extract_persona_from_segment(
 ) -> Dict[str, Any]:
     """
     Generates a full persona profile for a chosen segment using Multi-Pass RAG.
+    
+    Steps:
+    1. For each extraction pass (demographics, psychographics, behavioral),
+       query the vector store with a targeted query.
+    2. Feed the retrieved context + schema fields to the LLM.
+    3. Merge all pass results into a single coherent profile.
     """
     client = get_openai_client()
     if not client:
         return {}
 
+    # Fetch brand documents for RAG
+    documents = crud.get_brand_documents(db_session, brand_id)
+    
     pass_results = {}
     
     # 1. Execute 3 Extraction Passes
     for pass_name, config in EXTRACTION_PASSES.items():
-        # A. Construct Query
+        logger.info(f"🔍 Running {pass_name} pass for '{segment_name}'...")
+        
+        # A. Construct targeted RAG query
         query = config["query_template"].format(
             segment_name=segment_name, 
             segment_description=segment_description
         )
         
-        # B. RAG Retrieval (Mocked for now, assumes vector_search integration later)
-        # In production: chunks = vector_search.search_brand_context(brand_id, query)
-        rag_context = f"[Simulated RAG content for {pass_name} pass about {segment_name}]"
+        # B. Retrieve relevant context from vector stores
+        rag_context = _retrieve_rag_context(
+            brand_id=brand_id,
+            query=query,
+            documents=documents,
+            segment_name=segment_name
+        )
         
-        # C. LLM Extraction
-        pass_prompt = f"""
-        Extract insights for {segment_name} based on this context.
-        Focus: {config['focus']}
-        Fields to find: {", ".join(config['schema_fields'])}
-        Instruction: {config['prompt_instruction']}
-        
-        Context:
-        {rag_context}
-        
-        Return JSON.
-        """
+        # C. LLM Extraction with structured prompt
+        pass_prompt = PASS_PROMPT_TEMPLATE.format(
+            focus=config["focus"],
+            segment_name=segment_name,
+            segment_description=segment_description,
+            rag_context=rag_context,
+            prompt_instruction=config["prompt_instruction"],
+            schema_fields=", ".join(config["schema_fields"])
+        )
         
         try:
             response = client.chat.completions.create(
                 model=MODEL_NAME,
-                messages=[{"role": "user", "content": pass_prompt}],
-                response_format={"type": "json_object"}
+                messages=[
+                    {"role": "system", "content": "You are an expert persona researcher. Extract structured insights from research documents."},
+                    {"role": "user", "content": pass_prompt}
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.3  # Low temp for factual extraction
             )
             pass_results[pass_name] = response.choices[0].message.content
+            logger.info(f"✅ {pass_name} pass complete")
         except Exception as e:
             logger.error(f"Pass {pass_name} failed: {e}")
             pass_results[pass_name] = "{}"
 
-    # 2. Merge Results
+    # 2. Merge all pass results into final profile
+    logger.info(f"🔄 Merging passes for '{segment_name}'...")
     try:
         merge_response = client.chat.completions.create(
             model=MODEL_NAME,
-            messages=[{
-                "role": "user", 
-                "content": MERGE_PROMPT.format(
+            messages=[
+                {"role": "system", "content": "You are a persona synthesis expert. Merge research findings into a single coherent profile."},
+                {"role": "user", "content": MERGE_PROMPT.format(
                     segment_name=segment_name,
-                    demo_json=pass_results.get("demographics"),
-                    psych_json=pass_results.get("psychographics"),
-                    behav_json=pass_results.get("behavioral")
-                )
-            }],
-            response_format={"type": "json_object"}
+                    demo_json=pass_results.get("demographics", "{}"),
+                    psych_json=pass_results.get("psychographics", "{}"),
+                    behav_json=pass_results.get("behavioral", "{}")
+                )}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2  # Very low temp for consistent output
         )
         final_profile = json.loads(merge_response.choices[0].message.content)
+        
+        # Ensure flat legacy keys exist for UI fallback compatibility
+        if "core" in final_profile and "mbt" in final_profile["core"]:
+            mbt = final_profile["core"]["mbt"]
+            final_profile["motivations"] = mbt.get("motivation", {}).get("top_outcomes", {}).get("value", [])
+            final_profile["beliefs"] = mbt.get("beliefs", {}).get("core_belief_statements", {}).get("value", [])
+            final_profile["pain_points"] = mbt.get("tension", {}).get("sensitivity_points", {}).get("value", [])
+            
+        logger.info(f"✅ Persona profile merged for '{segment_name}'")
         return final_profile
         
     except Exception as e:
         logger.error(f"Merge failed: {e}")
         return {}
+
+
+async def stream_persona_generation(
+    segment_name: str,
+    segment_description: str,
+    brand_id: int,
+    db_session: Any
+):
+    """
+    Async generator that streams the persona generation process.
+    Yields JSON strings for SSE events.
+    """
+    yield json.dumps({"type": "progress", "step": "initializing", "percentage": 10})
+    
+    client = get_openai_client()
+    if not client:
+        yield json.dumps({"type": "error", "message": "OpenAI API not available"})
+        return
+
+    # Fetch brand documents for RAG
+    documents = crud.get_brand_documents(db_session, brand_id)
+    yield json.dumps({"type": "log", "message": f"Found {len(documents)} brand documents for context.", "step": "initializing"})
+
+    pass_results = {}
+    total_passes = len(EXTRACTION_PASSES)
+    current_pass_idx = 0
+
+    # 1. Execute 3 Extraction Passes
+    for pass_name, config in EXTRACTION_PASSES.items():
+        current_pass_idx += 1
+        progress = 10 + (current_pass_idx / total_passes) * 60  # Scale up to 70%
+        
+        yield json.dumps({
+            "type": "progress", 
+            "step": pass_name, 
+            "percentage": progress
+        })
+        
+        logger.info(f"🔍 Running {pass_name} pass for '{segment_name}'...")
+        yield json.dumps({"type": "log", "message": f"Running {pass_name} analysis...", "step": pass_name})
+
+        # A. Construct targeted RAG query
+        query = config["query_template"].format(
+            segment_name=segment_name, 
+            segment_description=segment_description
+        )
+        
+        # B. Retrieve relevant context (Synchronous call, might block slightly but usually fast)
+        rag_context = _retrieve_rag_context(
+            brand_id=brand_id,
+            query=query,
+            documents=documents,
+            segment_name=segment_name
+        )
+        
+        yield json.dumps({"type": "log", "message": f"Retrieved context for {pass_name}.", "step": pass_name})
+
+        # C. LLM Extraction
+        pass_prompt = PASS_PROMPT_TEMPLATE.format(
+            focus=config["focus"],
+            segment_name=segment_name,
+            segment_description=segment_description,
+            rag_context=rag_context,
+            prompt_instruction=config["prompt_instruction"],
+            schema_fields=", ".join(config["schema_fields"])
+        )
+        
+        try:
+            # Note: client.chat.completions.create is synchronous. 
+            # In a true async app, we should use AsyncOpenAI client or run_in_executor.
+            # For now, we accept the blocking call as it's the pattern used elsewhere, 
+            # but we yield before and after.
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": "You are an expert persona researcher. Extract structured insights from research documents."},
+                    {"role": "user", "content": pass_prompt}
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.3
+            )
+            pass_content = response.choices[0].message.content
+            pass_results[pass_name] = pass_content
+            
+            # Yield partial result
+            try:
+                pass_data = json.loads(pass_content)
+                yield json.dumps({
+                    "type": "partial_result", 
+                    "data": {pass_name: pass_data},
+                    "step": pass_name
+                })
+            except:
+                pass
+
+            logger.info(f"✅ {pass_name} pass complete")
+            pass_title = pass_name.capitalize()
+            yield json.dumps({"type": "log", "message": f"{pass_title} analysis complete.", "step": pass_name})
+
+        except Exception as e:
+            logger.error(f"Pass {pass_name} failed: {e}")
+            yield json.dumps({"type": "log", "message": f"Error in {pass_name}: {str(e)}", "step": pass_name})
+            pass_results[pass_name] = "{}"
+
+    # 2. Merge all pass results
+    yield json.dumps({"type": "progress", "step": "synthesizing", "percentage": 80})
+    yield json.dumps({"type": "log", "message": "Synthesizing final persona profile...", "step": "synthesizing"})
+    
+    logger.info(f"🔄 Merging passes for '{segment_name}'...")
+    
+    try:
+        merge_response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": "You are a persona synthesis expert. Merge research findings into a single coherent profile."},
+                {"role": "user", "content": MERGE_PROMPT.format(
+                    segment_name=segment_name,
+                    demo_json=pass_results.get("demographics", "{}"),
+                    psych_json=pass_results.get("psychographics", "{}"),
+                    behav_json=pass_results.get("behavioral", "{}")
+                )}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2
+        )
+        final_profile_json = json.loads(merge_response.choices[0].message.content)
+        
+        # Ensure flat legacy keys
+        if "core" in final_profile_json and "mbt" in final_profile_json["core"]:
+            mbt = final_profile_json["core"]["mbt"]
+            final_profile_json["motivations"] = mbt.get("motivation", {}).get("top_outcomes", {}).get("value", [])
+            final_profile_json["beliefs"] = mbt.get("beliefs", {}).get("core_belief_statements", {}).get("value", [])
+            final_profile_json["pain_points"] = mbt.get("tension", {}).get("sensitivity_points", {}).get("value", [])
+            
+        logger.info(f"✅ Persona profile merged for '{segment_name}'")
+        yield json.dumps({"type": "progress", "step": "synthesizing", "percentage": 100})
+        yield json.dumps({"type": "complete", "persona": final_profile_json})
+        
+    except Exception as e:
+        logger.error(f"Merge failed: {e}")
+        yield json.dumps({"type": "error", "message": f"Merge failed: {str(e)}"})

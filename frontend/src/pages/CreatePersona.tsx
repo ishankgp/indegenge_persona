@@ -2,7 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { PersonasAPI, BrandsAPI, SegmentsAPI, DiseasePacksAPI } from "@/lib/api"
+import { PersonasAPI, BrandsAPI, SegmentsAPI, DiseasePacksAPI, DiscoveryAPI } from "@/lib/api"
+import type { DiscoveredSegment } from "@/lib/api"
 import type { Segment, DiseasePack } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -13,9 +14,6 @@ import { Badge } from "../components/ui/badge"
 import { Separator } from "../components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { VeevaCRMImporter } from "../components/VeevaCRMImporter"
-import BrandInsightSelector from "@/components/BrandInsightSelector"
-import type { BrandInsight, SuggestionResponse } from "@/components/BrandInsightSelector"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip"
 import {
   User,
   MapPin,
@@ -31,7 +29,12 @@ import {
   UserPlus,
   ArrowLeft,
   Database,
+  Search,
+  FileText,
+  Zap,
+  BookOpen,
 } from "lucide-react"
+import { LiveGenerationFeed } from "@/components/LiveGenerationFeed"
 
 interface BrandOption {
   id: number
@@ -65,7 +68,18 @@ export function CreatePersona() {
 
   const [generating, setGenerating] = useState(false)
   const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 })
-  const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual")
+  const [creationMode, setCreationMode] = useState<"research" | "manual" | "ai">("research")
+
+  // === Research Discovery State ===
+  const [discoveryBrandId, setDiscoveryBrandId] = useState<number | null>(urlBrandId ? parseInt(urlBrandId) : null)
+  const [discoveredSegments, setDiscoveredSegments] = useState<DiscoveredSegment[]>([])
+  const [discovering, setDiscovering] = useState(false)
+  const [directEntryName, setDirectEntryName] = useState("")
+  const [directEntryDescription, setDirectEntryDescription] = useState("")
+  const [selectedSegment, setSelectedSegment] = useState<DiscoveredSegment | null>(null)
+  const [generatingFromDiscovery, setGeneratingFromDiscovery] = useState(false)
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null)
+  const [generationTarget, setGenerationTarget] = useState<{ name: string, description: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Form data for manual persona creation
@@ -567,6 +581,64 @@ export function CreatePersona() {
     }
   }
 
+  // === Research Discovery Handlers ===
+  const handleDiscoverSegments = async () => {
+    if (!discoveryBrandId) {
+      setDiscoveryError("Please select a brand first.")
+      return
+    }
+    setDiscovering(true)
+    setDiscoveryError(null)
+    setDiscoveredSegments([])
+    try {
+      const result = await DiscoveryAPI.discoverSegments(discoveryBrandId)
+      setDiscoveredSegments(result.segments || [])
+      if ((result.segments || []).length === 0) {
+        setDiscoveryError("No segments found. Ensure documents have been uploaded and processed for this brand.")
+      }
+    } catch (err: any) {
+      setDiscoveryError(err?.response?.data?.detail || "Discovery failed. Check that brand has documents.")
+    } finally {
+      setDiscovering(false)
+    }
+  }
+
+  const handleGenerateFromSegment = async (segmentName: string, segmentDescription: string) => {
+    if (!discoveryBrandId) return
+
+    // Set state to trigger the LiveGenerationFeed modal
+    setGenerationTarget({ name: segmentName, description: segmentDescription })
+    setGeneratingFromDiscovery(true)
+  }
+
+  const handleGenerationComplete = (persona: any) => {
+    setGeneratingFromDiscovery(false)
+    setGenerationTarget(null)
+
+    if (persona?.id) {
+      setRecentlyCreated({ ids: [persona.id], names: [persona.name] })
+      // Optional: Auto-redirect or let the user choose
+      // navigate(`/personas/${persona.id}`)
+    }
+  }
+
+  const handleGenerationError = (error: string) => {
+    setGeneratingFromDiscovery(false)
+    setGenerationTarget(null)
+    setDiscoveryError(error)
+  }
+
+  const handleDirectEntry = async () => {
+    if (!directEntryName.trim()) {
+      setDiscoveryError("Please enter a segment name.")
+      return
+    }
+    await handleGenerateFromSegment(
+      directEntryName.trim(),
+      directEntryDescription.trim() || `A persona segment called "${directEntryName.trim()}"`
+    )
+  }
+
   const handleAiSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -829,11 +901,20 @@ export function CreatePersona() {
               <CardDescription>Choose how you want to create personas</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
+                <Button
+                  variant={creationMode === "research" ? "default" : "outline"}
+                  onClick={() => setCreationMode("research")}
+                  className={`h-24 flex flex-col items-center gap-2 relative ${creationMode === "research" ? "ring-2 ring-violet-400" : ""}`}
+                >
+                  <BookOpen className="h-6 w-6" />
+                  <span>Research Discovery</span>
+                  <Badge className="absolute -top-2 -right-2 bg-violet-500 text-white text-[10px] px-1.5">Primary</Badge>
+                </Button>
                 <Button
                   variant={creationMode === "manual" ? "default" : "outline"}
                   onClick={() => setCreationMode("manual")}
-                  className="h-20 flex flex-col items-center gap-2"
+                  className="h-24 flex flex-col items-center gap-2"
                 >
                   <User className="h-6 w-6" />
                   <span>Manual Persona</span>
@@ -841,7 +922,7 @@ export function CreatePersona() {
                 <Button
                   variant={creationMode === "ai" ? "default" : "outline"}
                   onClick={() => setCreationMode("ai")}
-                  className="h-20 flex flex-col items-center gap-2"
+                  className="h-24 flex flex-col items-center gap-2"
                 >
                   <Brain className="h-6 w-6" />
                   <span>AI Generated</span>
@@ -868,6 +949,183 @@ export function CreatePersona() {
               </div>
             </CardContent>
           </Card>
+
+          {/* === RESEARCH DISCOVERY MODE === */}
+          {creationMode === "research" && (
+            <div className="space-y-6">
+              {/* Live Generation Feed - INLINE */}
+              {generatingFromDiscovery && discoveryBrandId && generationTarget && (
+                <LiveGenerationFeed
+                  isVisible={true}
+                  brandId={discoveryBrandId}
+                  segmentName={generationTarget.name}
+                  segmentDescription={generationTarget.description}
+                  onComplete={handleGenerationComplete}
+                  onError={handleGenerationError}
+                />
+              )}
+              {/* Step 1: Brand Selection + Discovery */}
+              <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-violet-100 dark:bg-violet-900/50 rounded-lg">
+                      <Search className="h-5 w-5 text-violet-600" />
+                    </div>
+                    <div>
+                      <CardTitle>Step 1: Discover Segments</CardTitle>
+                      <CardDescription>Select a brand and scan its documents for hidden personas</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex gap-4">
+                    <div className="flex-1">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Brand</label>
+                      <select
+                        value={discoveryBrandId ?? ""}
+                        onChange={(e) => setDiscoveryBrandId(e.target.value ? parseInt(e.target.value) : null)}
+                        className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800"
+                      >
+                        <option value="">Select a brand...</option>
+                        {brands.map((b) => (
+                          <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        onClick={handleDiscoverSegments}
+                        disabled={!discoveryBrandId || discovering}
+                        className="bg-violet-600 hover:bg-violet-700"
+                      >
+                        {discovering ? (
+                          <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Scanning Documents...</>
+                        ) : (
+                          <><Search className="h-4 w-4 mr-2" /> Discover Segments</>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Discovered Segments List */}
+                  {discoveredSegments.length > 0 && (
+                    <div className="mt-6">
+                      <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-violet-500" />
+                        Discovered Segments ({discoveredSegments.length})
+                      </h3>
+                      <div className="grid gap-3">
+                        {discoveredSegments.map((seg, idx) => (
+                          <div
+                            key={idx}
+                            className={`p-4 rounded-xl border-2 cursor-pointer transition-all hover:shadow-md ${selectedSegment?.name === seg.name
+                              ? "border-violet-500 bg-violet-50 dark:bg-violet-950/30"
+                              : "border-gray-200 dark:border-gray-700 hover:border-violet-300"
+                              }`}
+                            onClick={() => setSelectedSegment(seg)}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <h4 className="font-bold text-gray-900 dark:text-gray-100">{seg.name}</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{seg.description}</p>
+                                {seg.differentiators && seg.differentiators.length > 0 && (
+                                  <div className="flex flex-wrap gap-1.5 mt-2">
+                                    {seg.differentiators.map((d, i) => (
+                                      <Badge key={i} variant="secondary" className="text-xs">{d}</Badge>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <Button
+                                size="sm"
+                                variant={selectedSegment?.name === seg.name ? "default" : "outline"}
+                                className="ml-3 shrink-0"
+                                disabled={generatingFromDiscovery}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleGenerateFromSegment(seg.name, seg.description)
+                                }}
+                              >
+                                {generatingFromDiscovery && selectedSegment?.name === seg.name ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <><Zap className="h-4 w-4 mr-1" /> Generate</>
+                                )}
+                              </Button>
+                            </div>
+                            {seg.evidence && (
+                              <p className="text-xs text-gray-500 mt-2 italic">
+                                <FileText className="h-3 w-3 inline mr-1" />{seg.evidence}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {discoveryError && (
+                    <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300">
+                      {discoveryError}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Step 2: Direct Entry (Always Visible) */}
+              <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-emerald-100 dark:bg-emerald-900/50 rounded-lg">
+                      <Target className="h-5 w-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <CardTitle>Or: Direct Entry</CardTitle>
+                      <CardDescription>Already know the segment? Type it directly and we'll build the persona from brand documents.</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Segment Name *</label>
+                      <input
+                        type="text"
+                        placeholder='e.g. "The Skeptical Specialist"'
+                        value={directEntryName}
+                        onChange={(e) => setDirectEntryName(e.target.value)}
+                        className="w-full p-2.5 border rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Brief Description (optional)</label>
+                      <input
+                        type="text"
+                        placeholder='e.g. "An oncologist who questions new treatments"'
+                        value={directEntryDescription}
+                        onChange={(e) => setDirectEntryDescription(e.target.value)}
+                        className="w-full p-2.5 border rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleDirectEntry}
+                    disabled={!directEntryName.trim() || !discoveryBrandId || generatingFromDiscovery}
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    {generatingFromDiscovery ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating Persona (Multi-Pass)...</>
+                    ) : (
+                      <><Zap className="h-4 w-4 mr-2" /> Generate Persona</>
+                    )}
+                  </Button>
+                  {!discoveryBrandId && (
+                    <p className="text-xs text-amber-600">⚠️ Select a brand above first — it provides the research documents for extraction.</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
           {/* Manual Persona Creation */}
           {creationMode === "manual" && (
@@ -1533,11 +1791,12 @@ export function CreatePersona() {
                   </Button>
                 </form>
               </CardContent>
-            </Card>
-          )}
+            </Card >
+          )
+          }
 
-        </div>
-      </div>
-    </div>
+        </div >
+      </div >
+    </div >
   )
 }
