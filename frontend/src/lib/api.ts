@@ -414,7 +414,9 @@ export const BrandsAPI = {
   getSuggestions: (brandId: number, payload: { target_segment?: string; persona_type?: string; limit_per_category?: number }) =>
     api.post<BrandSuggestionResponse>(`/api/brands/${brandId}/persona-suggestions`, payload).then(r => r.data),
   enrichPersona: (personaId: number, payload: { brand_id: number; target_segment?: string; target_fields?: string[] }) =>
-    api.post(`/api/personas/${personaId}/enrich-from-brand`, payload).then(r => r.data)
+    api.post(`/api/personas/${personaId}/enrich-from-brand`, payload).then(r => r.data),
+  getDocumentContent: (brandId: number, documentId: number): Promise<{ content: string }> =>
+    api.get(`/api/brands/${brandId}/documents/${documentId}/content`).then(r => r.data)
 };
 
 export interface Segment {
@@ -712,27 +714,7 @@ export const KnowledgeGraphAPI = {
     api.put(`/api/knowledge/nodes/${nodeId}/verify`, null, { params: { verified } }).then(r => r.data),
 };
 
-// Coverage API
-export interface CoverageSuggestion {
-  name: string;
-  persona_type: string;
-  age?: number;
-  gender?: string;
-  fill_gap?: string;
-  rationale: string;
-  priority: 'high' | 'medium' | 'low';
-  [key: string]: any;
-}
 
-export const CoverageAPI = {
-  // Get coverage analysis
-  getAnalysis: (brandId?: number): Promise<any> =>
-    api.get(`/api/coverage/analysis`, { params: { brand_id: brandId } }).then(r => r.data),
-
-  // Get AI suggestions
-  getSuggestions: (brandId?: number, limit: number = 5): Promise<{ success: boolean; suggestions: CoverageSuggestion[] }> =>
-    api.post(`/api/coverage/suggestions`, { brand_id: brandId, limit }).then(r => r.data),
-};
 
 // Chat API
 export interface ChatSession {

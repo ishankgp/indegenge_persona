@@ -38,12 +38,6 @@ const navigation = [
     icon: Users,
   },
   {
-    name: 'Persona Coverage',
-    description: 'Quick view for marketers',
-    href: '/coverage',
-    icon: PieChart,
-  },
-  {
     name: 'Brand Library',
     description: 'Brand knowledge & assets',
     href: '/brand-library',
@@ -84,11 +78,6 @@ const guidedFlow = [
     title: 'Persona Library',
     description: 'Manage and compare personas in the library.',
     href: '/personas',
-  },
-  {
-    title: 'Check coverage & gaps',
-    description: 'Use Persona Coverage to spot priority segments.',
-    href: '/coverage',
   },
   {
     title: 'Run simulations',

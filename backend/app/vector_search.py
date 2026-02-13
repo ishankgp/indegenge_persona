@@ -116,6 +116,7 @@ If you don't find relevant information in the files, state that clearly.""",
                                                 "quote": annotation.text if hasattr(annotation, 'text') else ""
                                             }
                                             citations.append(citation_data)
+                                            logger.info(f"[DEBUG] Extracted citation: {citation_data['file_id']} - '{citation_data['quote'][:30]}...'")
                                             # Optional: Remove citation markers from text if desired
                                             # text_content = text_content.replace(annotation.text, "")
                                 

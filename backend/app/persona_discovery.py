@@ -469,7 +469,11 @@ async def stream_persona_generation(
 
     # Fetch brand documents for RAG (Sync call, but fast enough)
     documents = crud.get_brand_documents(db_session, brand_id)
-    yield json.dumps({"type": "log", "message": f"Found {len(documents)} brand documents for context.", "step": "initializing"})
+    docs_with_vs = [d for d in documents if d.vector_store_id]
+    yield json.dumps({"type": "log", "message": f"📁 Attached {len(documents)} brand documents. {len(docs_with_vs)} have active vector index.", "step": "initializing"})
+    if len(docs_with_vs) == 0:
+        yield json.dumps({"type": "log", "message": "⚠️ Warning: No documents have vector indices. Falling back to semantic summaries.", "step": "initializing"})
+    yield json.dumps({"type": "log", "message": f"⚙️ Search Parameters: top_k=5, model='gpt-4o', strategy='file_search'", "step": "initializing"})
 
     pass_results = {}
     total_passes = len(EXTRACTION_PASSES)
@@ -491,11 +495,10 @@ async def stream_persona_generation(
         yield json.dumps({"type": "log", "message": f"Running {pass_name} analysis...", "step": pass_name})
 
         # A. Construct targeted RAG query
-        query = config["query_template"].format(
-            segment_name=segment_name, 
-            segment_description=segment_description
-        )
-        yield json.dumps({"type": "log", "message": f"🔍 Researching: '{query}'", "step": pass_name})
+        query = config["query_template"].replace("{segment_name}", segment_name or "").replace("{segment_description}", segment_description or "")
+        logger.info(f"🔍 Research Query: \"{query}\"")
+        yield json.dumps({"type": "log", "message": f"🔍 Research Query: \"{query}\"", "step": pass_name})
+        yield json.dumps({"type": "log", "message": f"🎯 Primary Focus: {config['focus']} extraction patterns.", "step": pass_name})
         
         # B. Retrieve relevant context (run sync call in thread pool to avoid blocking event loop)
         try:
@@ -529,6 +532,7 @@ async def stream_persona_generation(
             citations = []
 
         debug_log(f"RAG context retrieved for {pass_name}, length={len(rag_context)} chars, citations={len(citations)}")
+        yield json.dumps({"type": "log", "message": f"📘 Context Dense: Analyzed ~{max(1, len(rag_context)//4)} tokens of research material.", "step": pass_name})
         
         # Resolve citation filenames (Sync call wrapped in thread if we want to be pure, but for now we do it inline or simple)
         # For better UX, let's resolve them in a thread
@@ -547,14 +551,12 @@ async def stream_persona_generation(
         yield json.dumps({"type": "log", "message": f"🤖 Synthesizing {pass_name} analysis...", "step": pass_name})
 
         # C. LLM Extraction (Async)
-        pass_prompt = PASS_PROMPT_TEMPLATE.format(
-            focus=config["focus"],
-            segment_name=segment_name,
-            segment_description=segment_description,
-            rag_context=rag_context,
-            prompt_instruction=config["prompt_instruction"],
-            schema_fields=", ".join(config["schema_fields"])
-        )
+        pass_prompt = PASS_PROMPT_TEMPLATE.replace("{focus}", config["focus"])\
+            .replace("{segment_name}", segment_name or "")\
+            .replace("{segment_description}", segment_description or "")\
+            .replace("{rag_context}", rag_context or "No context found.")\
+            .replace("{prompt_instruction}", config["prompt_instruction"])\
+            .replace("{schema_fields}", ", ".join(config["schema_fields"]))
         
         try:
             debug_log(f"LLM call START for {pass_name}")
@@ -595,22 +597,24 @@ async def stream_persona_generation(
     # 2. Merge all pass results (Async)
     debug_log("=== MERGE STEP START ===")
     yield json.dumps({"type": "progress", "step": "synthesizing", "percentage": 80})
-    yield json.dumps({"type": "log", "message": "Synthesizing final persona profile...", "step": "synthesizing"})
+    yield json.dumps({"type": "log", "message": "🔄 Merging research findings from all passes into a unified persona model...", "step": "synthesizing"})
+    yield json.dumps({"type": "log", "message": "⚖️ Resolving cross-dimensional attributes and validating consistency...", "step": "synthesizing"})
     
     logger.info(f"🔄 Merging passes for '{segment_name}'...")
     
     try:
         debug_log("Merge LLM call START")
+        
+        merge_prompt = MERGE_PROMPT.replace("{segment_name}", segment_name or "")\
+            .replace("{demo_json}", pass_results.get("demographics", "{}"))\
+            .replace("{psych_json}", pass_results.get("psychographics", "{}"))\
+            .replace("{behav_json}", pass_results.get("behavioral", "{}"))
+
         merge_response = await async_client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": "You are a persona synthesis expert. Merge research findings into a single coherent profile."},
-                {"role": "user", "content": MERGE_PROMPT.format(
-                    segment_name=segment_name,
-                    demo_json=pass_results.get("demographics", "{}"),
-                    psych_json=pass_results.get("psychographics", "{}"),
-                    behav_json=pass_results.get("behavioral", "{}")
-                )}
+                {"role": "user", "content": merge_prompt}
             ],
             response_format={"type": "json_object"},
             temperature=0.2

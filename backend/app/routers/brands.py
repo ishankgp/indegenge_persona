@@ -13,7 +13,7 @@ import asyncio
 from .. import models, schemas, crud, persona_engine, document_processor
 from ..database import get_db
 from ..services import brand_service
-from .. import knowledge_extractor, knowledge_merger, coverage_engine, persona_check, auto_enrichment
+from .. import knowledge_extractor, knowledge_merger, persona_check, auto_enrichment
 
 router = APIRouter(
     tags=["brands"]
@@ -139,6 +139,30 @@ async def upload_brand_document(
 async def get_brand_documents(brand_id: int, db: Session = Depends(get_db)):
     """List documents for a specific brand."""
     return crud.get_brand_documents(db, brand_id)
+
+
+@router.get("/api/brands/{brand_id}/documents/{document_id}/content")
+async def get_brand_document_content(brand_id: int, document_id: int, db: Session = Depends(get_db)):
+    """Get the text content of a specific brand document."""
+    doc = db.query(models.BrandDocument).filter(
+        models.BrandDocument.id == document_id, 
+        models.BrandDocument.brand_id == brand_id
+    ).first()
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if not doc.filepath or not os.path.exists(doc.filepath):
+        # Fallback to summary if file is missing
+        return {"content": doc.summary or "No content available."}
+    
+    try:
+        # We reuse extract_text which handles PDF/Text etc.
+        text = document_processor.extract_text(doc.filepath)
+        return {"content": text}
+    except Exception as e:
+        logger.error(f"Error extracting text for document {document_id}: {e}")
+        return {"content": doc.summary or "Error extracting content."}
 
 
 @router.delete("/api/brands/{brand_id}/documents/{document_id}", status_code=204)
@@ -872,38 +896,7 @@ async def verify_knowledge_node(
     return {"success": True, "node_id": node_id, "verified": verified}
 
 
-@router.get("/api/coverage/analysis")
-async def get_coverage_analysis(
-    brand_id: Optional[int] = None,
-    db: Session = Depends(get_db)
-):
-    """
-    Analyze persona library for coverage gaps.
-    """
-    return coverage_engine.get_coverage_summary(brand_id, db)
 
-
-@router.post("/api/coverage/suggestions")
-async def get_coverage_suggestions(
-    payload: dict = Body(...),
-    db: Session = Depends(get_db)
-):
-    """
-    Get AI suggestions for new personas to fill gaps.
-    """
-    brand_id = payload.get("brand_id")
-    limit = payload.get("limit", 5)
-    
-    suggestions = coverage_engine.suggest_next_personas_sync(
-        brand_id=brand_id,
-        db=db,
-        limit=limit
-    )
-    
-    return {
-        "success": True,
-        "suggestions": suggestions
-    }
 
 
 @router.get("/api/knowledge/brands/{brand_id}/duplicates")
