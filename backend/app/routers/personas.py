@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from fastapi.responses import StreamingResponse
 
-from .. import models, schemas, crud, persona_engine, similarity_service, assessment_engine
+from .. import models, schemas, crud, persona_engine, similarity_service
 from ..database import get_db
 from .. import comparison_engine, persona_discovery, avatar_engine
 from ..services import brand_service

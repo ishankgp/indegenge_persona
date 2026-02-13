@@ -349,3 +349,8 @@ class SyntheticTestingResponse(BaseModel):
     results: List[SyntheticResultItem]
     aggregated: Dict[str, AggregatedAssetResult]
     metadata: Dict[str, Any]
+
+class GenerationRequest(BaseModel):
+    segment_name: str
+    segment_description: str
+    brand_id: int
