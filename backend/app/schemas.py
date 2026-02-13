@@ -354,3 +354,8 @@ class GenerationRequest(BaseModel):
     segment_name: str
     segment_description: str
     brand_id: int
+
+class SaveGeneratedPersonaRequest(BaseModel):
+    brand_id: int
+    segment_name: str
+    persona_profile: Dict[str, Any]

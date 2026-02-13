@@ -237,8 +237,6 @@ async def stream_persona_generation_endpoint(
     
     async def event_generator():
         try:
-            # Re-fetch new session for generator to avoid threading issues
-            # Note: In a production app, we'd manage session lifecycle more carefully
             async for event_json in persona_discovery.stream_persona_generation(
                 segment_name, segment_description, brand_id, db
             ):
@@ -322,6 +320,51 @@ async def generate_persona_from_discovery_endpoint(
     except Exception as e:
         logger.error(f"Generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/save-generated", response_model=schemas.Persona)
+async def save_generated_persona_endpoint(
+    request: schemas.SaveGeneratedPersonaRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Saves a persona that was generated and reviewed by the user.
+    """
+    try:
+        persona_profile = request.persona_profile
+        brand_id = request.brand_id
+        segment_name = request.segment_name
+        
+        # Validate profile minimally
+        if not persona_profile or not isinstance(persona_profile, dict):
+            raise HTTPException(status_code=400, detail="Invalid persona profile data")
+
+        # Map additional_context correctly
+        additional_ctx = persona_profile.get("additional_context", {})
+        
+        db_persona = models.Persona(
+            name=persona_profile.get("name", segment_name)[0:50], # Limit name length
+            age=persona_profile.get("age", 40),
+            gender=persona_profile.get("gender", "Unknown"),
+            condition=persona_profile.get("condition", "Unknown"),
+            location=persona_profile.get("location", "Unknown"),
+            brand_id=brand_id,
+            persona_type=persona_profile.get("persona_type", "Patient"),
+            persona_subtype=segment_name,
+            full_persona_json=json.dumps(persona_profile),
+            additional_context=additional_ctx
+        )
+        
+        db.add(db_persona)
+        db.commit()
+        db.refresh(db_persona)
+        logger.info(f"✅ Saved generated persona '{db_persona.name}' (ID: {db_persona.id})")
+        
+        return db_persona
+
+    except Exception as e:
+        logger.error(f"Save generated persona failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/{persona_id}", response_model=schemas.Persona)
 def get_persona(persona_id: int, db: Session = Depends(get_db)):

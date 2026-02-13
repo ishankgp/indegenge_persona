@@ -12,8 +12,15 @@ from .database import get_db
 from . import models, segments, disease_packs
 from sqlalchemy.orm import Session
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging - write to both console and file for debugging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(name)s %(levelname)s %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('debug_server.log', mode='w'),
+    ]
+)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(

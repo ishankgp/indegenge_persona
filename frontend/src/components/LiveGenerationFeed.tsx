@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Badge } from './ui/badge';
 
-import { Loader2, CheckCircle, Brain, User, Target, Activity } from 'lucide-react';
+import { Loader2, CheckCircle, Brain, User, Target, Activity, FileText } from 'lucide-react';
 import clsx from 'clsx';
 
 interface LogEntry {
@@ -16,6 +16,11 @@ interface PartialResult {
     demographics?: any;
     psychographics?: any;
     behavioral?: any;
+    citations?: Array<{
+        step: string;
+        filename: string;
+        quote: string;
+    }>;
 }
 
 interface LiveGenerationFeedProps {
@@ -60,7 +65,7 @@ export function LiveGenerationFeed({
         setCurrentStep('initializing');
 
         // Connect to SSE endpoint
-        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const baseUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
         const url = new URL(`${baseUrl}/api/personas/stream-generation`);
         url.searchParams.append('brand_id', brandId.toString());
         url.searchParams.append('segment_name', segmentName);
@@ -86,6 +91,13 @@ export function LiveGenerationFeed({
                 } else if (data.type === 'partial_result') {
                     setPartialData(prev => ({ ...prev, ...data.data }));
                     addLog(`Insight extracted: ${Object.keys(data.data)[0]}`, 'success', currentStep);
+                } else if (data.type === 'citations') {
+                    const newCitations = data.data.map((c: any) => ({ ...c, step: data.step }));
+                    setPartialData(prev => ({
+                        ...prev,
+                        citations: [...(prev.citations || []), ...newCitations]
+                    }));
+                    addLog(`Verified ${newCitations.length} sources for ${data.step}`, 'success', currentStep);
                 } else if (data.type === 'complete') {
                     addLog("Generation complete!", "success", "synthesizing");
                     es.close();
@@ -103,8 +115,8 @@ export function LiveGenerationFeed({
         es.onerror = (err) => {
             console.error("SSE Error:", err);
             es.close();
-            // Only trigger onError if we haven't completed
-            // (Sometimes browsers trigger error on close)
+            // Trigger error so UI doesn't silently freeze
+            onError('Connection lost during persona generation. Please try again.');
         };
 
         return () => {
@@ -269,6 +281,35 @@ export function LiveGenerationFeed({
                                 </div>
                                 <div className="text-sm text-gray-600">
                                     {(partialData.behavioral.adoption_curve || 'Adoption pattern analyzed.')}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Citations / Sources Card */}
+                        {partialData.citations && partialData.citations.length > 0 && (
+                            <div className="bg-white p-3 rounded-lg shadow-sm border border-l-4 border-l-emerald-500 animate-in fade-in slide-in-from-bottom-4">
+                                <div className="flex items-center gap-2 text-emerald-700 font-medium mb-2">
+                                    <FileText className="h-4 w-4" /> Validated Sources
+                                </div>
+                                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                                    {partialData.citations.slice(0, 5).map((cit, idx) => (
+                                        <div key={idx} className="text-xs border-b border-gray-100 last:border-0 pb-1">
+                                            <div className="font-medium text-gray-700 truncate">{cit.filename}</div>
+                                            {cit.quote && (
+                                                <div className="text-gray-500 italic mt-0.5 line-clamp-2">
+                                                    "{cit.quote}"
+                                                </div>
+                                            )}
+                                            <div className="text-[10px] text-gray-400 mt-0.5 uppercase tracking-wide">
+                                                Used for: {cit.step}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {partialData.citations.length > 5 && (
+                                        <div className="text-xs text-center text-gray-500 pt-1">
+                                            + {partialData.citations.length - 5} more citations
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}

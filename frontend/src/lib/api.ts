@@ -362,6 +362,10 @@ export const DiscoveryAPI = {
       segment_name: segmentName,
       segment_description: segmentDescription,
     }).then(r => r.data),
+
+  // Step 3: Save a reviewed persona
+  saveGenerated: (payload: { brand_id: number; segment_name: string; persona_profile: any }): Promise<any> =>
+    api.post('/api/personas/save-generated', payload).then(r => r.data),
 };
 
 export interface BrandInsight {

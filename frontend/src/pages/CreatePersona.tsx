@@ -42,7 +42,8 @@ import {
 } from "../components/ui/tooltip"
 import { BrandInsightSelector } from "../components/BrandInsightSelector"
 
-import { LiveGenerationFeed } from "@/components/LiveGenerationFeed"
+import { LiveGenerationFeed } from "../components/LiveGenerationFeed"
+import { useToast } from "../components/ui/use-toast"
 
 interface BrandOption {
   id: number
@@ -70,6 +71,7 @@ interface TranscriptSuggestions {
 
 export function CreatePersona() {
   const navigate = useNavigate()
+  const { toast } = useToast()
   const [searchParams] = useSearchParams()
   const urlBrandId = searchParams.get('brand_id')
   const urlCondition = searchParams.get('condition')
@@ -89,6 +91,7 @@ export function CreatePersona() {
   const [discoveryError, setDiscoveryError] = useState<string | null>(null)
   const [generationTarget, setGenerationTarget] = useState<{ name: string, description: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [reviewPersona, setReviewPersona] = useState<any | null>(null)
 
   // Form data for manual persona creation
   const [manualFormData, setManualFormData] = useState({
@@ -621,19 +624,62 @@ export function CreatePersona() {
 
   const handleGenerationComplete = (persona: any) => {
     setGeneratingFromDiscovery(false)
-    setGenerationTarget(null)
+    // Set for review instead of auto-finish
+    setReviewPersona(persona)
+  }
 
-    if (persona?.id) {
-      setRecentlyCreated({ ids: [persona.id], names: [persona.name] })
-      // Optional: Auto-redirect or let the user choose
-      // navigate(`/personas/${persona.id}`)
+  const handleSavePersona = async () => {
+    if (!reviewPersona || !discoveryBrandId) return
+    setGenerating(true)
+    setError(null)
+    try {
+      const saved = await DiscoveryAPI.saveGenerated({
+        brand_id: discoveryBrandId,
+        segment_name: generationTarget?.name || reviewPersona.name,
+        persona_profile: reviewPersona
+      })
+      setReviewPersona(null)
+      // Clear generation target as well
+      setGenerationTarget(null)
+
+      setRecentlyCreated({ ids: [saved.id], names: [saved.name] })
+      toast({
+        title: "Persona Saved Successfully",
+        description: `${saved.name} has been added to your library.`,
+        duration: 5000,
+      })
+    } catch (err: any) {
+      console.error(err)
+      toast({
+        title: "Save Failed",
+        description: err.message || "Could not save persona.",
+        variant: "destructive",
+      })
+      setError(err.message || "Save failed")
+    } finally {
+      setGenerating(false)
     }
+  }
+
+  const handleDiscardPersona = () => {
+    setReviewPersona(null)
+    setGenerationTarget(null)
+    toast({
+      title: "Persona Discarded",
+      description: "The generated persona was not saved.",
+    })
   }
 
   const handleGenerationError = (error: string) => {
     setGeneratingFromDiscovery(false)
     setGenerationTarget(null)
     setDiscoveryError(error)
+    toast({
+      title: "Generation Failed",
+      description: error,
+      variant: "destructive",
+      duration: 5000,
+    })
   }
 
   const handleDirectEntry = async () => {
@@ -1015,6 +1061,112 @@ export function CreatePersona() {
                     </div>
                   </div>
 
+                  {/* Review Generated Persona UI */}
+                  {reviewPersona && (
+                    <div className="mb-6 animate-in fade-in zoom-in-95 duration-300">
+                      <Card className="border-2 border-indigo-500 shadow-xl overflow-hidden">
+                        <CardHeader className="bg-indigo-50 border-b border-indigo-100 dark:bg-indigo-950/30 dark:border-indigo-900">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 bg-indigo-100 rounded-full dark:bg-indigo-900">
+                                <CheckCircle className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
+                              </div>
+                              <div>
+                                <CardTitle className="text-indigo-900 dark:text-indigo-100">Review Persona</CardTitle>
+                                <CardDescription className="text-indigo-700 dark:text-indigo-300">
+                                  Review the generated profile before saving to your library.
+                                </CardDescription>
+                              </div>
+                            </div>
+                            <Badge variant="outline" className="bg-white text-indigo-700 border-indigo-200">
+                              Wait for Approval
+                            </Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-6 space-y-6">
+                          <div className="grid md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
+                              <div>
+                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Name & Role</label>
+                                <div className="font-semibold text-lg text-gray-900 dark:text-gray-100">{reviewPersona.name}</div>
+                                <div className="text-sm text-gray-600 dark:text-gray-400">{reviewPersona.persona_type} • {reviewPersona.age} • {reviewPersona.gender}</div>
+                              </div>
+
+                              <div>
+                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Bio</label>
+                                <div className="text-sm text-gray-700 dark:text-gray-300 italic p-3 bg-gray-50 rounded-lg border dark:bg-gray-900/50 dark:border-gray-800">
+                                  "{reviewPersona.bio || reviewPersona.medical_background || "No bio available"}"
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Tagline</label>
+                                <div className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
+                                  {reviewPersona.tagline || "N/A"}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="space-y-4">
+                              <div>
+                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Psychographics (MBT)</label>
+                                <div className="space-y-2 mt-1">
+                                  <div className="flex gap-2 text-sm">
+                                    <span className="font-medium min-w-[80px] text-gray-600">Motivation:</span>
+                                    <span className="text-gray-800 dark:text-gray-200">{(reviewPersona.motivations || [])[0]}</span>
+                                  </div>
+                                  <div className="flex gap-2 text-sm">
+                                    <span className="font-medium min-w-[80px] text-gray-600">Belief:</span>
+                                    <span className="text-gray-800 dark:text-gray-200">{(reviewPersona.beliefs || [])[0]}</span>
+                                  </div>
+                                  <div className="flex gap-2 text-sm">
+                                    <span className="font-medium min-w-[80px] text-gray-600">Tension:</span>
+                                    <span className="text-gray-800 dark:text-gray-200">{(reviewPersona.pain_points || [])[0]}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {reviewPersona.sources && reviewPersona.sources.length > 0 && (
+                                <div>
+                                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                                    <FileText className="h-3 w-3" /> Key Sources
+                                  </label>
+                                  <ul className="mt-1 space-y-1">
+                                    {reviewPersona.sources.slice(0, 3).map((s: any, i: number) => (
+                                      <li key={i} className="text-xs text-gray-600 truncate flex items-center gap-1">
+                                        <div className="w-1 h-1 rounded-full bg-indigo-400"></div>
+                                        {s.filename}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <Separator />
+
+                          <div className="flex items-center justify-end gap-3">
+                            <Button variant="ghost" onClick={handleDiscardPersona} disabled={generating}>
+                              Discard
+                            </Button>
+                            <Button
+                              onClick={handleSavePersona}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[140px]"
+                              disabled={generating}
+                            >
+                              {generating ? (
+                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
+                              ) : (
+                                <><CheckCircle className="mr-2 h-4 w-4" /> Approve & Save</>
+                              )}
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )}
+
                   {/* Discovered Segments List */}
                   {discoveredSegments.length > 0 && (
                     <div className="mt-6">
@@ -1277,7 +1429,7 @@ export function CreatePersona() {
                     disabled={generating}
                     onSelectionChange={setManualSelectedInsights}
                     onSuggestions={setManualSuggestions}
-                    onBrandChange={(id: number) => setManualBrandId(id)}
+                    onBrandChange={(id: number | null) => setManualBrandId(id)}
                   />
 
                   <div className="flex flex-wrap items-center justify-end gap-3">
