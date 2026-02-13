@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { PersonasAPI, BrandsAPI, SegmentsAPI, DiseasePacksAPI, DiscoveryAPI } from "@/lib/api"
 import type { DiscoveredSegment } from "@/lib/api"
-import type { Segment, DiseasePack } from "@/lib/api"
+import type { Segment, DiseasePack, BrandInsight, BrandSuggestionResponse } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -34,6 +34,14 @@ import {
   Zap,
   BookOpen,
 } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../components/ui/tooltip"
+import { BrandInsightSelector } from "../components/BrandInsightSelector"
+
 import { LiveGenerationFeed } from "@/components/LiveGenerationFeed"
 
 interface BrandOption {
@@ -119,7 +127,7 @@ export function CreatePersona() {
   const [segments, setSegments] = useState<Segment[]>([])
   const [diseasePacks, setDiseasePacks] = useState<DiseasePack[]>([])
   const [manualSelectedInsights, setManualSelectedInsights] = useState<BrandInsight[]>([])
-  const [manualSuggestions, setManualSuggestions] = useState<SuggestionResponse | null>(null)
+  const [manualSuggestions, setManualSuggestions] = useState<BrandSuggestionResponse | null>(null)
   const [manualBrandId, setManualBrandId] = useState<number | null>(urlBrandId ? parseInt(urlBrandId) : null)
   const [aiBrandId, setAiBrandId] = useState<number | null>(urlBrandId ? parseInt(urlBrandId) : null)
   const [aiTargetSegment, setAiTargetSegment] = useState("")
@@ -1269,7 +1277,7 @@ export function CreatePersona() {
                     disabled={generating}
                     onSelectionChange={setManualSelectedInsights}
                     onSuggestions={setManualSuggestions}
-                    onBrandChange={(id) => setManualBrandId(id)}
+                    onBrandChange={(id: number) => setManualBrandId(id)}
                   />
 
                   <div className="flex flex-wrap items-center justify-end gap-3">

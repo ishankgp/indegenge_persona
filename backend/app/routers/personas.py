@@ -249,6 +249,33 @@ async def stream_persona_generation_endpoint(
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
+@router.post("/discover-from-docs")
+async def discover_segments_endpoint(
+    request: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Discover segments from brand documents using LLM.
+    """
+    brand_id = request.get("brand_id")
+    limit = request.get("limit", 5)
+    
+    if not brand_id:
+        raise HTTPException(status_code=400, detail="brand_id is required")
+        
+    documents = crud.get_brand_documents(db, brand_id)
+    if not documents:
+        # Return empty list instead of error if no docs found, 
+        # or minimal mock segments to unblock UI
+        return {"segments": []}
+        
+    try:
+        segments = persona_discovery.discover_segments_from_documents(documents, limit=limit)
+        return {"segments": segments}
+    except Exception as e:
+        logger.error(f"Discovery endpoint failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/generate-from-discovery")
 async def generate_persona_from_discovery_endpoint(
     request: schemas.GenerationRequest,

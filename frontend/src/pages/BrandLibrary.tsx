@@ -6,13 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import {
-  Upload, FileText, CheckCircle, Circle, Plus, Loader2, Sparkles,
+  Upload, FileText, Plus, Loader2, Sparkles,
   Library, Users, ArrowRight, UserPlus, Search, MoreVertical,
-  LayoutDashboard, Target, Brain, AlertTriangle, ShieldCheck
 } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 import { BrandsAPI } from "@/lib/api";
-import { BrandMBTDashboard } from "@/components/BrandMBTDashboard";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,30 +23,13 @@ interface Brand {
   name: string;
 }
 
-interface BrandInsight {
-  type: "Motivation" | "Belief" | "Tension";
-  text: string;
-  source_document?: string;
-}
-
 interface BrandDocument {
   id: number;
   filename: string;
   category: string;
   summary: string;
   created_at: string;
-  extracted_insights?: BrandInsight[];
 }
-
-const KNOWLEDGE_PILLARS = [
-  "Disease & Patient Journey Overview",
-  "Treatment Landscape / SoC",
-  "Brand Value Proposition & Core Messaging",
-  "Safety & Tolerability Summary",
-  "HCP & Patient Segmentation",
-  "Market Research & Insight Summaries",
-  "Adherence / Persistence / Discontinuation Insights"
-];
 
 const BrandLibrary = () => {
   const navigate = useNavigate();
@@ -199,15 +180,6 @@ const BrandLibrary = () => {
     }
   };
 
-  const getCategoryStatus = (category: string) => {
-    const hasDoc = documents.some(d => d.category === category);
-    return hasDoc ? (
-      <CheckCircle className="h-4 w-4 text-emerald-500" />
-    ) : (
-      <Circle className="h-4 w-4 text-muted-foreground/30" />
-    );
-  };
-
   const filteredBrands = brands.filter(b =>
     b.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -353,64 +325,29 @@ const BrandLibrary = () => {
                     </Button>
                   </Card>
                 ) : (
-                  documents.map((doc) => {
-                    const insights = doc.extracted_insights || [];
-                    const motivations = insights.filter(i => i.type === "Motivation");
-                    const beliefs = insights.filter(i => i.type === "Belief");
-                    const tensions = insights.filter(i => i.type === "Tension");
-
-                    return (
-                      <Card key={doc.id} className="group hover:shadow-md transition-all border-border/60 flex flex-col">
-                        <CardHeader className="py-3 px-4 border-b bg-muted/20 flex flex-row items-center justify-between space-y-0">
-                          <div className="flex items-center gap-3 overflow-hidden">
-                            <div className="p-2 bg-background rounded border shadow-sm text-blue-600 shrink-0">
-                              <FileText className="h-4 w-4" />
-                            </div>
-                            <div className="min-w-0">
-                              <CardTitle className="text-sm font-medium leading-none mb-1 truncate">{doc.filename}</CardTitle>
-                              <CardDescription className="text-xs truncate">{doc.summary}</CardDescription>
-                            </div>
+                  documents.map((doc) => (
+                    <Card key={doc.id} className="group hover:shadow-md transition-all border-border/60 flex flex-col">
+                      <CardHeader className="py-3 px-4 border-b bg-muted/20 flex flex-row items-center justify-between space-y-0">
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <div className="p-2 bg-background rounded border shadow-sm text-blue-600 shrink-0">
+                            <FileText className="h-4 w-4" />
                           </div>
-                          <Badge variant="secondary" className="font-normal text-[10px] opacity-70 group-hover:opacity-100 shrink-0 ml-2">
-                            {doc.category}
-                          </Badge>
-                        </CardHeader>
-                        <CardContent className="p-4 flex-1">
-                          {insights.length > 0 ? (
-                            <div className="space-y-3">
-                              <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs font-medium text-muted-foreground">
-                                <div className="flex items-center gap-1.5"><Target className="h-3 w-3 text-blue-500" /> {motivations.length} Motivations</div>
-                                <div className="flex items-center gap-1.5"><Brain className="h-3 w-3 text-purple-500" /> {beliefs.length} Beliefs</div>
-                                <div className="flex items-center gap-1.5"><AlertTriangle className="h-3 w-3 text-orange-500" /> {tensions.length} Tensions</div>
-                              </div>
-
-                              <div className="grid grid-cols-1 gap-2 mt-2">
-                                {[...motivations, ...beliefs, ...tensions].slice(0, 4).map((insight, idx) => (
-                                  <div key={idx} className="text-xs p-2 bg-muted/30 rounded border flex gap-2">
-                                    <span className={`font-bold shrink-0 ${insight.type === 'Motivation' ? 'text-blue-600' :
-                                      insight.type === 'Belief' ? 'text-purple-600' : 'text-orange-600'
-                                      }`}>
-                                      {insight.type.charAt(0)}
-                                    </span>
-                                    <span className="truncate">{insight.text}</span>
-                                  </div>
-                                ))}
-                                {insights.length > 4 && (
-                                  <div className="text-xs text-muted-foreground p-2 flex items-center justify-center">
-                                    +{insights.length - 4} more insights
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="text-xs text-muted-foreground italic flex items-center gap-2">
-                              <Loader2 className="h-3 w-3 animate-spin" /> Processing insights...
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    )
-                  })
+                          <div className="min-w-0">
+                            <CardTitle className="text-sm font-medium leading-none mb-1 truncate">{doc.filename}</CardTitle>
+                            <CardDescription className="text-xs truncate">{doc.summary}</CardDescription>
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="font-normal text-[10px] opacity-70 group-hover:opacity-100 shrink-0 ml-2">
+                          {doc.category}
+                        </Badge>
+                      </CardHeader>
+                      <CardContent className="p-4 flex-1">
+                        <p className="text-xs text-muted-foreground">
+                          Uploaded {new Date(doc.created_at).toLocaleDateString()}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))
                 )}
               </div>
             </div>
@@ -438,7 +375,7 @@ const BrandLibrary = () => {
                     <Button
                       className="w-full text-xs h-8"
                       variant="default"
-                      onClick={() => navigate(`/create?brand_id=${selectedBrandId}`)}
+                      onClick={() => navigate(`/create-persona?brand_id=${selectedBrandId}`)}
                     >
                       <UserPlus className="h-3 w-3 mr-2" />
                       New Persona
@@ -452,36 +389,6 @@ const BrandLibrary = () => {
                     </Button>
                   </CardContent>
                 </Card>
-              </div>
-
-              {/* Dashboard Widget */}
-              <div className="space-y-3">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <LayoutDashboard className="h-4 w-4 text-primary" />
-                  Aggregated Insights
-                </h3>
-                {/* We use class override to make it fit better */}
-                <BrandMBTDashboard
-                  brandId={parseInt(selectedBrandId)}
-                  brandName={selectedBrand?.name || ''}
-                  className="text-xs"
-                />
-              </div>
-
-              {/* Knowledge Coverage Widget */}
-              <div className="space-y-3">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-primary" />
-                  Knowledge Coverage
-                </h3>
-                <div className="space-y-2 bg-muted/10 p-3 rounded-lg border">
-                  {KNOWLEDGE_PILLARS.map((pillar, index) => (
-                    <div key={index} className="flex items-start gap-2.5">
-                      <div className="mt-0.5">{getCategoryStatus(pillar)}</div>
-                      <span className="text-xs text-muted-foreground leading-tight">{pillar}</span>
-                    </div>
-                  ))}
-                </div>
               </div>
 
             </div>

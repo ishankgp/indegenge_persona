@@ -5,7 +5,7 @@ import os
 from openai import OpenAI
 
 from . import schemas, models, vector_search, persona_engine, crud
-from .utils import get_openai_client, MODEL_NAME
+from .utils import get_openai_client, get_async_openai_client, MODEL_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -380,12 +380,12 @@ async def stream_persona_generation(
     """
     yield json.dumps({"type": "progress", "step": "initializing", "percentage": 10})
     
-    client = get_openai_client()
-    if not client:
+    async_client = get_async_openai_client()
+    if not async_client:
         yield json.dumps({"type": "error", "message": "OpenAI API not available"})
         return
 
-    # Fetch brand documents for RAG
+    # Fetch brand documents for RAG (Sync call, but fast enough)
     documents = crud.get_brand_documents(db_session, brand_id)
     yield json.dumps({"type": "log", "message": f"Found {len(documents)} brand documents for context.", "step": "initializing"})
 
@@ -413,7 +413,7 @@ async def stream_persona_generation(
             segment_description=segment_description
         )
         
-        # B. Retrieve relevant context (Synchronous call, might block slightly but usually fast)
+        # B. Retrieve relevant context (Synchronous call, blocking but accepted trade-off)
         rag_context = _retrieve_rag_context(
             brand_id=brand_id,
             query=query,
@@ -423,7 +423,7 @@ async def stream_persona_generation(
         
         yield json.dumps({"type": "log", "message": f"Retrieved context for {pass_name}.", "step": pass_name})
 
-        # C. LLM Extraction
+        # C. LLM Extraction (Async)
         pass_prompt = PASS_PROMPT_TEMPLATE.format(
             focus=config["focus"],
             segment_name=segment_name,
@@ -434,11 +434,7 @@ async def stream_persona_generation(
         )
         
         try:
-            # Note: client.chat.completions.create is synchronous. 
-            # In a true async app, we should use AsyncOpenAI client or run_in_executor.
-            # For now, we accept the blocking call as it's the pattern used elsewhere, 
-            # but we yield before and after.
-            response = client.chat.completions.create(
+            response = await async_client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=[
                     {"role": "system", "content": "You are an expert persona researcher. Extract structured insights from research documents."},
@@ -470,14 +466,14 @@ async def stream_persona_generation(
             yield json.dumps({"type": "log", "message": f"Error in {pass_name}: {str(e)}", "step": pass_name})
             pass_results[pass_name] = "{}"
 
-    # 2. Merge all pass results
+    # 2. Merge all pass results (Async)
     yield json.dumps({"type": "progress", "step": "synthesizing", "percentage": 80})
     yield json.dumps({"type": "log", "message": "Synthesizing final persona profile...", "step": "synthesizing"})
     
     logger.info(f"🔄 Merging passes for '{segment_name}'...")
     
     try:
-        merge_response = client.chat.completions.create(
+        merge_response = await async_client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": "You are a persona synthesis expert. Merge research findings into a single coherent profile."},

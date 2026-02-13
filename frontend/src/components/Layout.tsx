@@ -9,7 +9,6 @@ import {
   UserPlus,
   Users,
   Library,
-  Sparkles,
   ChevronRight,
   PieChart,
   CheckCircle2,
@@ -37,12 +36,6 @@ const navigation = [
     description: 'Browse & manage personas',
     href: '/personas',
     icon: Users,
-  },
-  {
-    name: 'Persona Builder',
-    description: 'Deep-dive persona creation',
-    href: '/persona-builder',
-    icon: Sparkles,
   },
   {
     name: 'Persona Coverage',
@@ -151,7 +144,7 @@ export function Layout() {
             </div>
           </div>
           <div className="mt-3 flex items-center gap-1.5 text-white/60 text-xs">
-            <Sparkles className="h-3 w-3" />
+            <Activity className="h-3 w-3" />
             <span>Powered by Indegene</span>
           </div>
         </div>

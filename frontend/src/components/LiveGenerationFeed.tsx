@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, CheckCircle, Circle, Brain, User, Target, Activity } from 'lucide-react';
+
+import { Loader2, CheckCircle, Brain, User, Target, Activity } from 'lucide-react';
 import clsx from 'clsx';
 
 interface LogEntry {

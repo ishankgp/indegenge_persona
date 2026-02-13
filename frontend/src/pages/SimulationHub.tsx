@@ -25,13 +25,12 @@ import {
   Search,
   Sparkles,
   Users,
-  BarChart3,
-  Target,
+
   MessageSquare,
   PlayCircle,
   Plus,
   Gauge,
-  FileText,
+
   Loader2,
   ImageIcon,
   Upload,
@@ -92,7 +91,7 @@ export function SimulationHub() {
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const [contentType, setContentType] = useState<"text" | "image" | "both">("text")
   const [questions, setQuestions] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
+
   const [analyzing, setAnalyzing] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
 
@@ -310,14 +309,11 @@ export function SimulationHub() {
 
 
   const fetchPersonas = async () => {
-    setLoading(true)
     try {
       const data = await PersonasAPI.list()
       setPersonas(data)
     } catch (error) {
       console.error("Error fetching personas:", error)
-    } finally {
-      setLoading(false)
     }
   }
 

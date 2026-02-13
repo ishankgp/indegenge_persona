@@ -8,6 +8,9 @@ import time
 
 from .core.config import settings
 from .routers import personas, brands, chat, synthetic, analysis
+from .database import get_db
+from . import models, segments, disease_packs
+from sqlalchemy.orm import Session
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -58,6 +61,31 @@ async def root():
         "docs": "/docs",
         "environment": settings.ENVIRONMENT
     }
+
+@app.get("/health/db")
+def health_check_db(db: Session = Depends(get_db)):
+    """
+    Check database connectivity and return simple stats.
+    Used by frontend to verify API is online.
+    """
+    try:
+        # Check simple query
+        count = db.query(models.Persona).count()
+        return {"status": "ok", "personas": count}
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "detail": str(e)})
+
+@app.get(f"{settings.API_V1_STR}/segments")
+def list_segments():
+    """List all available segments."""
+    return segments.SEGMENTS
+
+@app.get(f"{settings.API_V1_STR}/disease-packs")
+def list_disease_packs():
+    """List all available disease packs."""
+    # Convert dict values to list
+    return list(disease_packs.DISEASE_PACKS.values())
 
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

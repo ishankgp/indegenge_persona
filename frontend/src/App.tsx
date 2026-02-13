@@ -4,7 +4,6 @@ import Dashboard from './pages/Dashboard';
 import { PersonaLibrary } from './pages/PersonaLibrary';
 import BrandLibrary from './pages/BrandLibrary';
 import { CreatePersona } from './pages/CreatePersona';
-import { PersonaBuilder } from './pages/PersonaBuilder';
 import { SimulationHub } from './pages/SimulationHub';
 import { Analytics } from './pages/Analytics';
 import { PersonaCoverage } from './pages/PersonaCoverage';
@@ -24,7 +23,6 @@ function App() {
           <Route path="brand-library" element={<BrandLibrary />} />
           <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
           <Route path="create-persona" element={<CreatePersona />} />
-          <Route path="persona-builder" element={<PersonaBuilder />} />
           <Route path="simulation" element={<SimulationHub />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="coverage" element={<PersonaCoverage />} />
