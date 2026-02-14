@@ -122,6 +122,7 @@ export function SyntheticTestingWorkspace({
     const handleFileUpload = (files: FileList | null) => {
         if (!files) return;
 
+        const remainingSlots = 3 - assets.length;
         const filesToProcess = Array.from(files).slice(0, remainingSlots);
 
         if (filesToProcess.length === 0) {

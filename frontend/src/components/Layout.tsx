@@ -10,9 +10,6 @@ import {
   Users,
   Library,
   ChevronRight,
-  PieChart,
-  CheckCircle2,
-  ChevronDown,
   ChevronUp,
   Network,
 } from 'lucide-react';

@@ -3,14 +3,14 @@
 import React, { useState, useEffect } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { PersonasAPI, BrandsAPI, ChatAPI } from "@/lib/api"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "../components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Textarea } from "../components/ui/textarea"
 import { Badge } from "../components/ui/badge"
 import { Separator } from "../components/ui/separator"
-import { Skeleton } from "../components/ui/skeleton"
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { ScrollArea } from "../components/ui/scroll-area"
 import { Checkbox } from "../components/ui/checkbox"
@@ -19,28 +19,14 @@ import { VeevaCRMImporter } from "../components/VeevaCRMImporter"
 import {
   User,
   MapPin,
-  Heart,
   Loader2,
   Plus,
   Users,
-  Activity,
   Search,
-  Calendar,
-  Globe,
-  Sparkles,
   Brain,
-  Target,
-  Star,
-  TrendingUp,
-  Shield,
-  Clock,
-  Award,
-  Zap,
   CheckCircle,
-  Copy,
   Settings,
   Wand2,
-  UserPlus,
   X,
   Database,
   Trash2,
@@ -391,15 +377,7 @@ export function PersonaLibrary() {
     })
   }, [personas, searchTerm, filters])
 
-  const uniqueConditions = Array.from(new Set(personas.map(p => (p.condition || "").trim()))).filter(Boolean).sort()
-  const uniqueGenders = Array.from(new Set(personas.map(p => (p.gender || "").trim()))).filter(Boolean).sort()
-  const activeFiltersCount = (filters.personaTypes.length > 0 ? 1 : 0) + (filters.genders.length > 0 ? 1 : 0) +
-    (filters.conditions.length > 0 ? 1 : 0) + (filters.ageRange[0] !== DEFAULT_AGE_RANGE[0] || filters.ageRange[1] !== DEFAULT_AGE_RANGE[1] ? 1 : 0)
 
-  const getBrandName = (brandId: number | undefined) => {
-    if (!brandId) return null
-    return brands.find(b => b.id === brandId)?.name || null
-  }
 
   const addBulkTemplate = () => {
     setBulkTemplates([...bulkTemplates, { id: Date.now().toString(), age: "", gender: "", condition: "", location: "", concerns: "" }])
