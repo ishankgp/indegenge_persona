@@ -11,7 +11,10 @@ import {
   Library,
   ChevronRight,
   ChevronUp,
+  ChevronDown,
+  CheckCircle2,
   Network,
+  BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -41,10 +44,10 @@ const navigation = [
     icon: Library,
   },
   {
-    name: 'Knowledge Graph',
-    description: 'Visualize insights',
+    name: 'Evidence Bank',
+    description: 'Verified facts & insights',
     href: '/knowledge-graph',
-    icon: Network,
+    icon: BookOpen,
   },
   {
     name: 'Simulation Hub',

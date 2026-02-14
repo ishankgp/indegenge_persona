@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { ScrollArea } from "../components/ui/scroll-area"
 import { Checkbox } from "../components/ui/checkbox"
 import { Slider } from "../components/ui/slider"
-import { VeevaCRMImporter } from "../components/VeevaCRMImporter"
+
 import {
   User,
   MapPin,
@@ -28,7 +28,6 @@ import {
   Settings,
   Wand2,
   X,
-  Database,
   Trash2,
   Library,
   GitCompare,
@@ -376,6 +375,22 @@ export function PersonaLibrary() {
       return matchesSearch && matchesAge && matchesType && matchesGender && matchesCondition
     })
   }, [personas, searchTerm, filters])
+
+  const activeFiltersCount = React.useMemo(() => {
+    let count = 0
+    if (searchTerm.trim()) count++
+    if (filters.personaTypes.length > 0) count++
+    if (filters.genders.length > 0) count++
+    if (filters.conditions.length > 0) count++
+    if (filters.locations.length > 0) count++
+    if (filters.ageRange[0] !== DEFAULT_AGE_RANGE[0] || filters.ageRange[1] !== DEFAULT_AGE_RANGE[1]) count++
+    return count
+  }, [searchTerm, filters])
+
+  const uniqueGenders = React.useMemo(() => {
+    const genders = new Set(personas.map(p => p.gender).filter(Boolean))
+    return Array.from(genders)
+  }, [personas])
 
 
 
@@ -779,15 +794,6 @@ export function PersonaLibrary() {
                 </div>
               </div>
               <div className="p-4">
-                <VeevaCRMImporter
-                  onImportComplete={() => { fetchPersonas(); setWorkspaceMode("browse"); }}
-                  trigger={
-                    <Button variant="outline" className="w-full h-auto py-3 flex flex-col items-center gap-2 border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50">
-                      <Database className="h-5 w-5 text-blue-600" />
-                      <span className="text-blue-600 text-sm">Import from CRM</span>
-                    </Button>
-                  }
-                />
               </div>
             </aside>
 

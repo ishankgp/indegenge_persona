@@ -9,7 +9,7 @@ import time
 from .core.config import settings
 from .routers import personas, brands, chat, synthetic, analysis
 from .database import get_db
-from . import models, segments, disease_packs
+from . import models, segments, disease_packs, crud
 from sqlalchemy.orm import Session
 
 # Configure logging - write to both console and file for debugging
@@ -82,6 +82,13 @@ def health_check_db(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "detail": str(e)})
+
+@app.get("/stats")
+def get_stats(db: Session = Depends(get_db)):
+    """
+    Get dashboard statistics.
+    """
+    return crud.get_simulation_stats(db)
 
 @app.get(f"{settings.API_V1_STR}/segments")
 def list_segments():

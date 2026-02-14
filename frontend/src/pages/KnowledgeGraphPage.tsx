@@ -129,14 +129,16 @@ export function KnowledgeGraphPage() {
                             />
                         </div>
 
-                        <div className={`h-full w-full ${activeTab === 'graph' ? 'block' : 'hidden'}`}>
-                            <KnowledgeGraphWorkspace
-                                brandId={parseInt(selectedBrandId)}
-                                brandName={selectedBrand?.name}
-                            />
-                        </div>
+                        {activeTab === 'graph' && (
+                            <div className="h-full w-full">
+                                <KnowledgeGraphWorkspace
+                                    brandId={parseInt(selectedBrandId)}
+                                    brandName={selectedBrand?.name}
+                                />
+                            </div>
+                        )}
 
-                        <div className={`h-full w-full ${activeTab === 'admin' ? 'block' : 'hidden'}`}>
+                        {activeTab === 'admin' && (
                             <div className="h-full w-full overflow-y-auto bg-slate-50/50 dark:bg-slate-950/50 p-6">
                                 <div className="max-w-6xl mx-auto space-y-6">
                                     <div className="flex items-center justify-between">
@@ -148,7 +150,7 @@ export function KnowledgeGraphPage() {
                                     <NodeMergePanel brandId={parseInt(selectedBrandId)} />
                                 </div>
                             </div>
-                        </div>
+                        )}
                     </>
                 ) : (
                     <div className="flex items-center justify-center h-full text-muted-foreground">

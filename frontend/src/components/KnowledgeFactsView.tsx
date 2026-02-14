@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { KnowledgeGraphAPI, KnowledgeNode } from '@/lib/api';
+import { KnowledgeGraphAPI } from '@/lib/api';
+import type { KnowledgeNode } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';

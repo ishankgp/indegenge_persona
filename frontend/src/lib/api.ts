@@ -624,19 +624,20 @@ export const AssetIntelligenceAPI = {
 };
 
 // Knowledge Graph API
-export interface KnowledgeNode {
+export type KnowledgeNode = {
   id: string;
-  node_type: string;
   text: string;
-  summary?: string;
-  segment?: string;
-  journey_stage?: string;
-  confidence: number;
-  source_document_id?: number;
   source_quote?: string;
+  segment?: string;
   verified: boolean;
+  node_type: string;
+  confidence: number;
+  source_document_id?: number | string;
+  summary?: string;
+  journey_stage?: string;
   created_at?: string;
-}
+  [key: string]: any;
+};
 
 export interface KnowledgeRelation {
   id: number;
@@ -673,6 +674,7 @@ export interface KnowledgeGraph {
     contradictions: number;
   };
 }
+
 
 export const KnowledgeGraphAPI = {
   // Get nodes for a brand
@@ -869,3 +871,4 @@ export const SyntheticTestingAPI = {
   getRun: (id: number): Promise<SyntheticTestRun> =>
     api.get(`/api/synthetic/runs/${id}`).then(r => r.data),
 };
+

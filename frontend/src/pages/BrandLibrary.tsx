@@ -65,6 +65,8 @@ const BrandLibrary = () => {
   const [selectedDoc, setSelectedDoc] = useState<BrandDocument | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [docContent, setDocContent] = useState<string>("");
+  const [bulkIngestPath, setBulkIngestPath] = useState("");
+  const [isIngestModalOpen, setIsIngestModalOpen] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -161,19 +163,14 @@ const BrandLibrary = () => {
   };
 
   const handleBulkIngest = async () => {
-    if (!selectedBrandId) return;
-
-    const folderPath = window.prompt(
-      "Enter absolute folder path to ingest (on server):",
-      "data/mounjaro_resources"
-    );
-
-    if (!folderPath) return;
+    if (!selectedBrandId || !bulkIngestPath.trim()) return;
 
     setIsIngesting(true);
     try {
-      const result = await BrandsAPI.ingestFolder(parseInt(selectedBrandId), folderPath);
+      const result = await BrandsAPI.ingestFolder(parseInt(selectedBrandId), bulkIngestPath);
       fetchDocuments(parseInt(selectedBrandId));
+      setIsIngestModalOpen(false);
+      setBulkIngestPath("");
       toast({
         title: "Ingestion Complete",
         description: `Processed ${result.total_files} files. Created ${result.total_nodes_created} knowledge nodes.`
@@ -370,7 +367,7 @@ const BrandLibrary = () => {
                       <span className="font-semibold text-slate-700">Seed Demo Data</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      onClick={handleBulkIngest}
+                      onClick={() => setIsIngestModalOpen(true)}
                       disabled={isSeeding || isIngesting}
                       className="rounded-xl py-3 cursor-pointer"
                     >
@@ -601,6 +598,41 @@ const BrandLibrary = () => {
         </DialogContent>
       </Dialog>
 
+      {/* 5. Ingest Path Modal */}
+      <Dialog open={isIngestModalOpen} onOpenChange={setIsIngestModalOpen}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Bulk Directory Ingest</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Server Folder Path</label>
+              <Input
+                placeholder="e.g. data/resources"
+                value={bulkIngestPath}
+                onChange={(e) => setBulkIngestPath(e.target.value)}
+                className="rounded-xl"
+              />
+              <p className="text-[11px] text-slate-400">
+                Provide an absolute or relative path accessible by the backend server.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsIngestModalOpen(false)} className="rounded-xl">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleBulkIngest}
+              disabled={!bulkIngestPath || isIngesting}
+              className="bg-violet-600 hover:bg-violet-700 text-white rounded-xl"
+            >
+              {isIngesting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Start Ingestion
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
