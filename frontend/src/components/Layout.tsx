@@ -9,9 +9,12 @@ import {
   UserPlus,
   Users,
   Library,
-  Sparkles,
   ChevronRight,
-  PieChart
+  ChevronUp,
+  ChevronDown,
+  CheckCircle2,
+  Network,
+  BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -35,16 +38,16 @@ const navigation = [
     icon: Users,
   },
   {
-    name: 'Persona Coverage',
-    description: 'Quick view for marketers',
-    href: '/coverage',
-    icon: PieChart,
-  },
-  {
     name: 'Brand Library',
     description: 'Brand knowledge & assets',
     href: '/brand-library',
     icon: Library,
+  },
+  {
+    name: 'Evidence Bank',
+    description: 'Verified facts & insights',
+    href: '/knowledge-graph',
+    icon: BookOpen,
   },
   {
     name: 'Simulation Hub',
@@ -60,10 +63,39 @@ const navigation = [
   },
 ];
 
+const guidedFlow = [
+  {
+    title: 'Start with context',
+    description: 'Scan the dashboard for recent engagement shifts.',
+    href: '/',
+  },
+  {
+    title: 'Generate & align personas',
+    description: 'Create personas, then refine them with the builder.',
+    href: '/create-persona',
+  },
+  {
+    title: 'Persona Library',
+    description: 'Manage and compare personas in the library.',
+    href: '/personas',
+  },
+  {
+    title: 'Run simulations',
+    description: 'Test narratives and sequencing in Simulation Hub.',
+    href: '/simulation',
+  },
+  {
+    title: 'Share outcomes',
+    description: 'Publish insights to Analytics for stakeholders.',
+    href: '/analytics',
+  },
+];
+
 export function Layout() {
   const location = useLocation();
   const [apiOk, setApiOk] = useState<boolean | null>(null);
   const [personaCount, setPersonaCount] = useState<number | undefined>();
+  const [isGuidedFlowOpen, setIsGuidedFlowOpen] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,7 +133,7 @@ export function Layout() {
             </div>
           </div>
           <div className="mt-3 flex items-center gap-1.5 text-white/60 text-xs">
-            <Sparkles className="h-3 w-3" />
+            <Activity className="h-3 w-3" />
             <span>Powered by Indegene</span>
           </div>
         </div>
@@ -114,7 +146,7 @@ export function Layout() {
           <div className="space-y-1">
             {navigation.map((item) => {
               // For Dashboard (href="/"), use exact match; for others, use startsWith
-              const isActive = item.href === '/' 
+              const isActive = item.href === '/'
                 ? location.pathname === item.href
                 : location.pathname.startsWith(item.href);
               return (
@@ -151,6 +183,54 @@ export function Layout() {
                 </Link>
               );
             })}
+          </div>
+
+          <div className="mt-6 mb-2 px-2 border-t border-white/10 pt-4">
+            {/* Guided user flow */}
+            <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-4 shadow-inner">
+              <button
+                onClick={() => setIsGuidedFlowOpen(!isGuidedFlowOpen)}
+                className="w-full flex items-center justify-between gap-2 group cursor-pointer"
+              >
+                <div className="text-left">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-white/60 group-hover:text-white/80 transition-colors">Suggested flow</p>
+                  {isGuidedFlowOpen && (
+                    <>
+                      <p className="text-sm font-medium text-white">Tell the persona story</p>
+                      <p className="text-xs text-white/60">Step-by-step guide</p>
+                    </>
+                  )}
+                </div>
+                {isGuidedFlowOpen ? (
+                  <ChevronDown className="h-4 w-4 text-white/40" />
+                ) : (
+                  <ChevronUp className="h-4 w-4 text-white/40" />
+                )}
+              </button>
+
+              {isGuidedFlowOpen && (
+                <div className="mt-4 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                  {guidedFlow.map((step, index) => (
+                    <Link
+                      to={step.href}
+                      key={step.title}
+                      className="group flex items-start gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/10"
+                    >
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] font-semibold text-white">
+                        {index + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-white truncate">{step.title}</p>
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300 opacity-0 transition-opacity group-hover:opacity-100" />
+                        </div>
+                        <p className="text-xs text-white/60 line-clamp-2">{step.description}</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </nav>
 

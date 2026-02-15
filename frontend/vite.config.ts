@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type ProxyOptions } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // https://vitejs.dev/config/
@@ -13,7 +13,7 @@ export default defineConfig({
     port: 5173,
     host: '0.0.0.0',
     proxy: [
-      '/personas', '/cohorts', '/stats', '/health', '/api', '/simulations', '/crm'
+      '/cohorts', '/stats', '/health', '/api', '/simulations', '/crm'
     ].reduce((acc, path) => {
       acc[path] = { 
         target: 'http://localhost:8000', 
@@ -22,6 +22,6 @@ export default defineConfig({
         ws: true
       };
       return acc;
-    }, {} as Record<string, any>)
+    }, {} as Record<string, ProxyOptions>)
   }
 })

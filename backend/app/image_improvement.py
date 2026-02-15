@@ -10,9 +10,9 @@ import logging
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 
-# Load environment variables
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-env_path = os.path.join(project_root, '.env')
+# Load environment variables from the backend folder
+backend_dir = os.path.dirname(os.path.dirname(__file__))
+env_path = os.path.join(backend_dir, '.env')
 load_dotenv(env_path)
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,8 @@ from PIL import Image, ImageEnhance
 import io
 
 # API Key for Nano Banana Pro (Gemini 3 Pro Image Preview)
-IMAGE_EDIT_API_KEY = os.getenv("IMAGE_EDIT_API_KEY", "AIzaSyCphVkbjgVxTriWqfizyEDesLi7b7HT8gk")
+# Use IMAGE_EDIT_API_KEY for consistency, fallback to GEMINI_API_KEY
+IMAGE_EDIT_API_KEY = os.getenv("IMAGE_EDIT_API_KEY") or os.getenv("GEMINI_API_KEY")
 
 def get_image_edit_client():
     """Initialize the Nano Banana Pro API client."""
@@ -147,8 +148,8 @@ def improve_image_with_ai(
         image_bytes = buffered.getvalue()
         
         try:
-            # Use Nano Banana Pro (gemini-3-pro-image-preview) for image-to-image editing
-            # This model supports image-to-image editing with text prompts
+            # Use Gemini 3 Pro Image Preview (Nano Banana Pro) for high-quality image editing
+            # Supports: 1K/2K/4K output, advanced text rendering, up to 14 reference images
             # Reference: https://ai.google.dev/gemini-api/docs/image-generation
             
             response = client.models.generate_content(
@@ -163,25 +164,33 @@ def improve_image_with_ai(
                     improvement_prompt
                 ],
                 config=types.GenerateContentConfig(
-                    image_config=types.ImageConfig(
-                        aspect_ratio="16:9",  # Maintain aspect ratio
-                        image_size="2K"  # High quality 2K resolution
-                    )
+                    response_modalities=["IMAGE", "TEXT"]
                 )
             )
             
             # Extract the improved image from the response
+            # Handle different SDK response formats
             improved_image_bytes = None
             analysis_text = ""
             
-            for part in response.parts:
-                if part.text is not None:
+            parts = []
+            if hasattr(response, 'parts'):
+                parts = response.parts
+            elif hasattr(response, 'candidates') and response.candidates:
+                parts = response.candidates[0].content.parts
+            
+            for part in parts:
+                if hasattr(part, 'text') and part.text:
                     analysis_text += part.text + "\n"
-                elif part.inline_data is not None:
+                elif hasattr(part, 'inline_data') and part.inline_data:
                     # This is the generated image
                     improved_image_bytes = part.inline_data.data
                     if not analysis_text:
                         analysis_text = "Image improved based on persona feedback using Nano Banana Pro."
+            
+            # Also check for direct text attribute
+            if not analysis_text and hasattr(response, 'text') and response.text:
+                analysis_text = response.text
             
             if improved_image_bytes:
                 # Convert to base64

@@ -11,31 +11,20 @@ from typing import Dict, Any, List, Optional
 from . import crud
 from datetime import datetime
 
-# Load environment variables from the project root
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-env_path = os.path.join(project_root, '.env')
+# Import shared utilities
+from .utils import get_openai_client, MODEL_NAME
+
+# Load environment variables from the backend folder
+backend_dir = os.path.dirname(os.path.dirname(__file__))
+env_path = os.path.join(backend_dir, '.env')
 load_dotenv(env_path)
-
-# Initialize OpenAI client lazily to avoid requiring credentials at import time
-_openai_client: Optional[OpenAI] = None
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")  # Use gpt-4o for vision capabilities
-
-
-def get_openai_client() -> Optional[OpenAI]:
-    """Return a configured OpenAI client when an API key is present."""
-
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-
-    global _openai_client
-    if _openai_client is None:
-        _openai_client = OpenAI(api_key=api_key)
-
-    return _openai_client
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Model token limit (allow overriding via env)
+MODEL_MAX_TOKENS = int(os.getenv("OPENAI_MODEL_MAX_TOKENS", "32768"))
+
 
 # Model token limit (allow overriding via env)
 MODEL_MAX_TOKENS = int(os.getenv("OPENAI_MODEL_MAX_TOKENS", "32768"))
@@ -89,7 +78,7 @@ def normalize_metric(metric: str) -> str:
     return LEGACY_METRIC_ALIASES.get(metric, metric)
 
 
-def format_metric_guidance(metrics: List[str]) -> str:
+def format_metric_guidance(metrics: List[str], metric_weights: Optional[Dict[str, float]] = None) -> str:
     """Return human-readable instructions for each requested metric."""
     if not metrics:
         return "- No metrics provided."
@@ -97,11 +86,19 @@ def format_metric_guidance(metrics: List[str]) -> str:
     lines = []
     for metric in metrics:
         canonical = normalize_metric(metric)
+        weight_note = ""
+        if metric_weights:
+            # Accept either canonical or original key.
+            weight = metric_weights.get(canonical)
+            if weight is None:
+                weight = metric_weights.get(metric)
+            if weight is not None:
+                weight_note = f" (weight={weight})"
         description = PHARMA_METRIC_DESCRIPTIONS.get(
             canonical,
             f"Provide an evidence-based assessment for '{canonical}'."
         )
-        lines.append(f'- "{canonical}": {description}')
+        lines.append(f'- "{canonical}": {description}{weight_note}')
     return "\n".join(lines)
 
 
@@ -215,14 +212,28 @@ def create_cohort_analysis_prompt(
     persona_data: Dict[str, Any],
     persona_type: str,
     stimulus_text: str,
-    metrics: List[str]
+    metrics: List[str],
+    questions: Optional[List[str]] = None,
+    metric_weights: Optional[Dict[str, float]] = None
 ) -> str:
     """Create a text-only analysis prompt that is persona and metric aware."""
-    
+
     persona_label = "healthcare professional" if (persona_type or "").strip().lower() == "hcp" else "patient"
-    metric_guidance = format_metric_guidance(metrics)
+    metric_guidance = format_metric_guidance(metrics, metric_weights=metric_weights)
     persona_snapshot = json.dumps(persona_data, indent=2)
-    
+
+    question_block = ""
+    answers_block = ""
+    if questions:
+        formatted_questions = "\n".join([f"- Q{idx+1}: {q}" for idx, q in enumerate(questions)])
+        question_block = f"\n**Qualitative Questions:**\n{formatted_questions}\n"
+        answers_block = """,
+    "answers": [
+        "<response to Q1>",
+        "<response to Q2>",
+        ...
+    ]"""
+
     prompt = f"""
 **Role:** You are an AI expert in pharmaceutical marketing analytics. Simulate how a {persona_label} persona responds to the provided marketing stimulus.
 
@@ -231,6 +242,7 @@ def create_cohort_analysis_prompt(
 
 **Stimulus Text:**
 "{stimulus_text}"
+{question_block}
 
 **Analysis Instructions:**
 - Ground your assessment in the persona's medical condition, motivations, and behavioral context.
@@ -245,12 +257,12 @@ def create_cohort_analysis_prompt(
     "responses": {{
         "<metric_name>": <value per metric instructions above>
     }},
-    "reasoning": "2-3 sentences explaining why the persona responded this way, referencing persona traits."
+    "reasoning": "2-3 sentences explaining why the persona responded this way, referencing persona traits."{answers_block}
 }}
 
 Ensure numeric scores respect the ranges provided above. For textual metrics (e.g., key_concerns), return the most salient objection in plain text. Do not include metrics that were not requested.
 """
-    
+
     return prompt
 
 def generate_tool_preamble(persona_count: int, metrics: List[str], stimulus_text: str) -> str:
@@ -271,11 +283,27 @@ def analyze_persona_response(
     persona_data: Dict[str, Any],
     persona_type: str,
     stimulus_text: str,
-    metrics: List[str]
+    metrics: List[str],
+    questions: Optional[List[str]] = None,
+    metric_weights: Optional[Dict[str, float]] = None
 ) -> Dict[str, Any]:
     """Analyzes how a single persona responds to a stimulus using chat completions."""
     normalized_metrics = [normalize_metric(metric) for metric in metrics]
-    prompt = create_cohort_analysis_prompt(persona_data, persona_type, stimulus_text, normalized_metrics)
+    normalized_weights = None
+    if metric_weights:
+        # Normalize any legacy metric keys to canonical keys to keep weights aligned.
+        normalized_weights = {}
+        for key, weight in metric_weights.items():
+            normalized_weights[normalize_metric(str(key))] = weight
+
+    prompt = create_cohort_analysis_prompt(
+        persona_data,
+        persona_type,
+        stimulus_text,
+        normalized_metrics,
+        questions,
+        metric_weights=normalized_weights,
+    )
     persona_role = "healthcare professional" if (persona_type or "").strip().lower() == "hcp" else "patient"
     messages = [
         {
@@ -297,9 +325,22 @@ def analyze_persona_response(
         for metric in normalized_metrics:
             if metric in data.get('responses', {}):
                 filtered[metric] = data['responses'][metric]
+        answers = data.get('answers') if questions else None
+        if questions:
+            # Ensure answers align with questions order and length
+            normalized_answers: List[str] = []
+            for idx, _ in enumerate(questions):
+                if isinstance(answers, list) and idx < len(answers):
+                    normalized_answers.append(str(answers[idx]))
+                else:
+                    normalized_answers.append("No answer provided.")
+        else:
+            normalized_answers = None
+
         return {
             'responses': filtered,
-            'reasoning': data.get('reasoning', 'No reasoning provided.')
+            'reasoning': data.get('reasoning', 'No reasoning provided.'),
+            'answers': normalized_answers
         }
     except Exception as e:
         print(f"Error analyzing persona response: {e}")
@@ -315,9 +356,11 @@ def analyze_persona_response(
                 fallback[metric] = random.randint(5, 9)
             elif metric == 'key_concerns':
                 fallback[metric] = "Need more information about side effects and effectiveness"
+        fallback_answers = ["No answer generated."] * len(questions) if questions else None
         return {
             'responses': fallback,
-            'reasoning': 'Analysis failed, using fallback response.'
+            'reasoning': 'Analysis failed, using fallback response.',
+            'answers': fallback_answers
         }
 
 def calculate_summary_statistics(individual_responses: List[Dict[str, Any]], metrics: List[str]) -> Dict[str, Any]:
@@ -443,13 +486,48 @@ def generate_llm_powered_insights_and_suggestions(individual_responses: List[Dic
         }
 
 
+def _extract_metric_value(resp: Dict[str, Any], metric_name: str) -> Any:
+    """
+    Extract a metric value from a response dict, handling both regular cohort analysis
+    ('responses' key) and multimodal analysis ('metrics' key) formats.
+    """
+    # Try regular cohort format first
+    if 'responses' in resp:
+        value = resp['responses'].get(metric_name)
+        if value is not None:
+            return value
+    
+    # Try multimodal format
+    if 'metrics' in resp:
+        metric_data = resp['metrics'].get(metric_name)
+        if metric_data is not None:
+            # Multimodal format may return dict with 'score' key or direct value
+            if isinstance(metric_data, dict):
+                return metric_data.get('score', metric_data.get('value'))
+            return metric_data
+    
+    return None
+
+
 def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulus_text: str) -> List[str]:
-    """Generates insights from the cohort analysis."""
+    """Generates insights from the cohort analysis.
+    
+    Works with both regular cohort analysis ('responses' key) and 
+    multimodal analysis ('metrics' key) response formats.
+    """
     
     insights = []
     
-    # Analyze intent patterns
-    intent_scores = [resp['responses'].get('purchase_intent') for resp in individual_responses if resp['responses'].get('purchase_intent')]
+    # Analyze intent patterns - check both canonical and legacy names
+    intent_scores = []
+    for resp in individual_responses:
+        # Try canonical name first, then legacy alias
+        value = _extract_metric_value(resp, 'intent_to_action')
+        if value is None:
+            value = _extract_metric_value(resp, 'purchase_intent')
+        if value is not None and isinstance(value, (int, float)):
+            intent_scores.append(float(value))
+    
     if intent_scores:
         avg_intent = sum(intent_scores) / len(intent_scores)
         if avg_intent >= 7:
@@ -460,7 +538,14 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
             insights.append("Moderate request/prescribe intent - message shows potential but may need refinement.")
     
     # Analyze sentiment patterns
-    sentiments = [resp['responses'].get('sentiment') for resp in individual_responses if resp['responses'].get('sentiment')]
+    sentiments = []
+    for resp in individual_responses:
+        value = _extract_metric_value(resp, 'emotional_response')
+        if value is None:
+            value = _extract_metric_value(resp, 'sentiment')
+        if value is not None and isinstance(value, (int, float)):
+            sentiments.append(float(value))
+    
     if sentiments:
         avg_sentiment = sum(sentiments) / len(sentiments)
         if avg_sentiment >= 0.5:
@@ -471,7 +556,14 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
             insights.append("Neutral sentiment - message is well-received but may need emotional enhancement.")
     
     # Analyze trust patterns
-    trust_scores = [resp['responses'].get('trust_in_brand') for resp in individual_responses if resp['responses'].get('trust_in_brand')]
+    trust_scores = []
+    for resp in individual_responses:
+        value = _extract_metric_value(resp, 'brand_trust')
+        if value is None:
+            value = _extract_metric_value(resp, 'trust_in_brand')
+        if value is not None and isinstance(value, (int, float)):
+            trust_scores.append(float(value))
+    
     if trust_scores:
         avg_trust = sum(trust_scores) / len(trust_scores)
         if avg_trust >= 7:
@@ -480,14 +572,24 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
             insights.append("Low brand trust impact - consider adding more credibility elements.")
     
     # Analyze message clarity
-    clarity_scores = [resp['responses'].get('message_clarity') for resp in individual_responses if resp['responses'].get('message_clarity')]
+    clarity_scores = []
+    for resp in individual_responses:
+        value = _extract_metric_value(resp, 'message_clarity')
+        if value is not None and isinstance(value, (int, float)):
+            clarity_scores.append(float(value))
+    
     if clarity_scores:
         avg_clarity = sum(clarity_scores) / len(clarity_scores)
         if avg_clarity <= 6:
             insights.append("Message clarity concerns detected - consider simplifying language or adding explanations.")
     
     # Analyze common concerns
-    concerns = [resp['responses'].get('key_concerns') for resp in individual_responses if resp['responses'].get('key_concerns')]
+    concerns = []
+    for resp in individual_responses:
+        value = _extract_metric_value(resp, 'key_concerns')
+        if value is not None and isinstance(value, str):
+            concerns.append(value)
+    
     if concerns:
         # Find most common concern patterns
         concern_text = ' '.join(concerns).lower()
@@ -498,12 +600,83 @@ def generate_cohort_insights(individual_responses: List[Dict[str, Any]], stimulu
         if 'effectiveness' in concern_text or 'work' in concern_text:
             insights.append("Effectiveness concerns detected - consider providing more efficacy data or testimonials.")
     
+    
     if not insights:
         insights.append("Analysis complete. Consider reviewing individual responses for detailed insights.")
     
     return insights
 
-def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: List[str], db) -> Dict[str, Any]:
+
+def _process_single_cohort_persona(
+    persona_info: Dict[str, Any],
+    stimulus_text: str,
+    metrics: List[str],
+    questions: Optional[List[str]] = None,
+    metric_weights: Optional[Dict[str, float]] = None
+) -> Dict[str, Any]:
+    """Helper function to process a single persona in a worker thread.
+    
+    Args:
+        persona_info: Dict containing stripped persona attributes (no ORM objects)
+        stimulus_text: The evaluation text
+        metrics: List of metrics to evaluate
+        questions: Optional list of qualitative questions
+        metric_weights: Optional weights for metrics
+    """
+    try:
+        # Extract basic info
+        persona_id = persona_info['id']
+        persona_name = persona_info['name']
+        persona_json_str = persona_info.get('full_persona_json')
+        
+        # Parse JSON
+        try:
+            persona_data = json.loads(persona_json_str) if persona_json_str else {}
+        except Exception:
+            persona_data = {}
+            
+        # Determine type
+        local_type = persona_info.get('persona_type') or persona_data.get('persona_type') or "Patient"
+        
+        # Run analysis (synchronous call to LLM)
+        analysis_result = analyze_persona_response(
+            persona_data,
+            local_type,
+            stimulus_text,
+            metrics,
+            questions,
+            metric_weights=metric_weights,
+        )
+        
+        # Return structured result
+        return {
+            'persona_id': persona_id,
+            'persona_name': persona_name,
+            'avatar_url': persona_info.get('avatar_url'),
+            'persona_type': local_type,
+            'responses': analysis_result['responses'],
+            'reasoning': analysis_result['reasoning'],
+            'answers': analysis_result.get('answers')
+        }
+    except Exception as e:
+        logger.error(f"Error processing persona {persona_info.get('name', 'Unknown')}: {e}")
+        return {
+            'persona_id': persona_info.get('id'),
+            'persona_name': persona_info.get('name', 'Unknown'),
+            'error': str(e),
+            'responses': {},
+            'reasoning': f"Error during processing: {str(e)}",
+            'answers': []
+        }
+
+def run_cohort_analysis(
+    persona_ids: List[int],
+    stimulus_text: str,
+    metrics: List[str],
+    db,
+    questions: Optional[List[str]] = None,
+    metric_weights: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
     """Runs a complete cohort analysis for the given personas and stimulus."""
     
     normalized_metrics: List[str] = []
@@ -527,21 +700,46 @@ def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: Lis
     preamble_text = generate_tool_preamble(len(personas), metrics, stimulus_text)
 
     # Analyze each persona's response
-    individual_responses = []
+    # Prepare persona data for parallel processing to avoid ORM/Threading issues
+    persona_dicts = []
     for persona in personas:
-        # Parse the JSON string to get the persona data
-        persona_data = json.loads(persona.full_persona_json)
-        persona_type = getattr(persona, "persona_type", None) or persona_data.get("persona_type") or "Patient"
-        analysis_result = analyze_persona_response(persona_data, persona_type, stimulus_text, metrics)
-        
-        individual_responses.append({
-            'persona_id': persona.id,
-            'persona_name': persona.name,
-            'avatar_url': getattr(persona, 'avatar_url', None),
-            'persona_type': persona_type,
-            'responses': analysis_result['responses'],
-            'reasoning': analysis_result['reasoning']
+        persona_dicts.append({
+            "id": persona.id,
+            "name": persona.name,
+            "full_persona_json": persona.full_persona_json,
+            "persona_type": getattr(persona, "persona_type", None),
+            "avatar_url": getattr(persona, 'avatar_url', None)
         })
+
+    # Analyze each persona's response in parallel
+    individual_responses = []
+    
+    # Use ThreadPoolExecutor for parallel processing
+    # Max workers capped at 10 to avoid hitting rate limits too hard/fast
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_persona = {
+            executor.submit(
+                _process_single_cohort_persona, 
+                p_dict, 
+                stimulus_text, 
+                metrics, 
+                questions, 
+                metric_weights
+            ): p_dict['id'] 
+            for p_dict in persona_dicts
+        }
+        
+        for future in concurrent.futures.as_completed(future_to_persona):
+            try:
+                result = future.result()
+                individual_responses.append(result)
+            except Exception as exc:
+                logger.error(f"Persona processing generated an exception: {exc}")
+    
+    # Sort responses to match original order (optional, but good for UX)
+    # We use a map of ID -> index from the original list
+    id_to_index = {p.id: i for i, p in enumerate(personas)}
+    individual_responses.sort(key=lambda x: id_to_index.get(x.get('persona_id'), 0))
     
     # Calculate summary statistics
     summary_stats = calculate_summary_statistics(individual_responses, metrics)
@@ -554,21 +752,31 @@ def run_cohort_analysis(persona_ids: List[int], stimulus_text: str, metrics: Lis
         "cohort_size": len(personas),
         "stimulus_text": stimulus_text,
         "metrics_analyzed": metrics,
+        "questions": questions or [],
         "individual_responses": individual_responses,
         "summary_statistics": summary_stats,
         "insights": llm_generated_data.get("cumulative_insights", []),
         "suggestions": llm_generated_data.get("actionable_suggestions", []),
         "preamble": preamble_text,
-        "created_at": datetime.now().isoformat()
+        "created_at": datetime.now().isoformat(),
+        "metric_weights": metric_weights or {}
     }
     
     return final_analysis
 
 
-def create_multimodal_analysis_prompt(persona_data: Dict[str, Any], stimulus_text: str, stimulus_images: List[Dict], content_type: str, metrics: List[str]) -> str:
+def create_multimodal_analysis_prompt(
+    persona_data: Dict[str, Any],
+    stimulus_text: str,
+    stimulus_images: List[Dict],
+    content_type: str,
+    metrics: List[str],
+    questions: Optional[List[str]] = None,
+    metric_weights: Optional[Dict[str, float]] = None,
+) -> str:
     """Creates a prompt for analyzing how a persona responds to multimodal stimulus (text + images)."""
     
-    metric_guidance = format_metric_guidance(metrics)
+    metric_guidance = format_metric_guidance(metrics, metric_weights=metric_weights)
     
     # Build content description
     content_description = ""
@@ -579,6 +787,24 @@ def create_multimodal_analysis_prompt(persona_data: Dict[str, Any], stimulus_tex
     elif content_type == 'both':
         content_description = f"Text Message: {stimulus_text}\nVisual Content: {len(stimulus_images)} image(s) provided"
     
+    question_block = ""
+    if questions:
+        formatted_questions = "\n".join([f"- Q{idx+1}: {q}" for idx, q in enumerate(questions)])
+        question_block = f"\nQUALITATIVE QUESTIONS:\n{formatted_questions}\n"
+    
+    # Build metric weights instruction block
+    weights_instruction = ""
+    if metric_weights:
+        normalized_weights = {normalize_metric(k): v for k, v in metric_weights.items()}
+        weights_list = ", ".join([f"{k}={v}" for k, v in normalized_weights.items() if v])
+        if weights_list:
+            weights_instruction = f"""
+METRIC WEIGHTS (for weighted scoring):
+The following weights indicate relative importance: {weights_list}
+When calculating the "weighted_composite_score", multiply each metric score by its weight and sum them.
+Metrics without explicit weights should use weight=1.0.
+"""
+
     prompt = f"""
 You are analyzing how a specific pharmaceutical persona responds to marketing content. 
 
@@ -594,6 +820,7 @@ DETAILED PERSONA CHARACTERISTICS:
 
 MARKETING CONTENT TO ANALYZE:
 {content_description}
+{question_block}
 
 ANALYSIS TASK:
 Analyze how this specific persona would respond to the provided content. Consider their unique characteristics, health condition, concerns, and behavioral patterns.
@@ -601,14 +828,20 @@ Analyze how this specific persona would respond to the provided content. Conside
 For each of the following metrics, provide your analysis (use the JSON keys exactly as listed):
 
 {metric_guidance}
+{weights_instruction}
 
 RESPONSE FORMAT:
 Provide a JSON response with the following structure:
 {{
     "analysis_summary": "Brief overview of how this persona responds to the content",
     "metrics": {{
-        // For each requested metric, provide the score and reasoning
+        // For each requested metric, provide an object with "score" and "reasoning"
+        // Example: "intent_to_action": {{"score": 7, "reasoning": "The persona shows..."}}
     }},
+    "weighted_composite_score": <number or null>,  // Sum of (score * weight) for all metrics, if weights provided
+    "answers": [
+        // If qualitative questions were provided, include one answer per question in order.
+    ],
     "key_insights": [
         "List of 2-3 key insights about this persona's response"
     ],
@@ -621,35 +854,58 @@ Be specific and consider the persona's unique characteristics in your analysis.
     return prompt
 
 
-def _process_persona_multimodal(persona, stimulus_text: str, stimulus_images: List[Dict], content_type: str, metrics: List[str]) -> Dict[str, Any]:
+def _process_persona_multimodal(
+    persona_dict: Dict[str, Any],  # Changed from ORM object to serialized dict
+    stimulus_text: str,
+    stimulus_images: List[Dict],
+    content_type: str,
+    metrics: List[str],
+    questions: Optional[List[str]] = None,
+    metric_weights: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
     """
     Process a single persona for multimodal analysis.
     This function is designed to be called in parallel.
+    
+    Args:
+        persona_dict: Serialized persona data dictionary (not SQLAlchemy ORM object)
+                     to avoid DetachedInstanceError in worker threads
     """
-    logger.info(f"🔄 Processing persona: {persona.name} (ID: {persona.id})")
+    persona_id = persona_dict['id']
+    persona_name = persona_dict['name']
+    logger.info(f"🔄 Processing persona: {persona_name} (ID: {persona_id})")
     
     # Parse the full persona JSON to get all the detailed information
     try:
-        full_persona = json.loads(persona.full_persona_json) if persona.full_persona_json else {}
-        logger.info(f"✅ Parsed persona data for {persona.name}")
+        full_persona = json.loads(persona_dict['full_persona_json']) if persona_dict.get('full_persona_json') else {}
+        logger.info(f"✅ Parsed persona data for {persona_name}")
     except Exception as parse_error:
-        logger.error(f"❌ Error parsing persona JSON for {persona.name}: {parse_error}")
+        logger.error(f"❌ Error parsing persona JSON for {persona_name}: {parse_error}")
         full_persona = {}
     
+    # Build persona_data dict from serialized data
     persona_data = {
-        'id': persona.id,
-        'name': persona.name,
-        'persona_type': persona.persona_type,
-        'age': persona.age,
-        'gender': persona.gender,
-        'condition': persona.condition,
-        'location': persona.location,
+        'id': persona_dict['id'],
+        'name': persona_dict['name'],
+        'persona_type': persona_dict.get('persona_type'),
+        'age': persona_dict.get('age'),
+        'gender': persona_dict.get('gender'),
+        'condition': persona_dict.get('condition'),
+        'location': persona_dict.get('location'),
         'full_persona': full_persona
     }
     
     # Create multimodal prompt
-    logger.info(f"🔄 Creating multimodal prompt for {persona.name}")
-    prompt = create_multimodal_analysis_prompt(persona_data, stimulus_text, stimulus_images, content_type, metrics)
+    logger.info(f"🔄 Creating multimodal prompt for {persona_name}")
+    prompt = create_multimodal_analysis_prompt(
+        persona_data,
+        stimulus_text,
+        stimulus_images,
+        content_type,
+        metrics,
+        questions=questions,
+        metric_weights=metric_weights,
+    )
     logger.info(f"✅ Prompt created, length: {len(prompt)} chars")
     
     # Prepare messages for GPT-5
@@ -668,7 +924,7 @@ def _process_persona_multimodal(persona, stimulus_text: str, stimulus_images: Li
     
     # Add images if provided
     if stimulus_images and content_type in ['image', 'both']:
-        logger.info(f"🖼️ Adding {len(stimulus_images)} images to analysis for {persona.name}")
+        logger.info(f"🖼️ Adding {len(stimulus_images)} images to analysis for {persona_name}")
         for j, image_info in enumerate(stimulus_images):
             data_url = f"data:{image_info['content_type']};base64,{image_info['data']}"
             logger.info(f"🖼️ Image {j+1}: {image_info['filename']}, type: {image_info['content_type']}, data URL length: {len(data_url)}")
@@ -679,45 +935,67 @@ def _process_persona_multimodal(persona, stimulus_text: str, stimulus_images: Li
                 }
             })
     else:
-        logger.info(f"📝 Text-only analysis for {persona.name}")
+        logger.info(f"📝 Text-only analysis for {persona_name}")
     
     try:
-        logger.info(f"🚀 Calling GPT-5 for {persona.name}...")
+        logger.info(f"🚀 Calling GPT-5 for {persona_name}...")
         logger.info(f"📊 Message content parts: {len(messages[0]['content'])}")
         
         data = _chat_json(messages)
-        logger.info(f"✅ GPT-5 response received for {persona.name}")
+        logger.info(f"✅ GPT-5 response received for {persona_name}")
         logger.info(f"📊 Response keys: {list(data.keys())}")
         
+        answers = data.get("answers")
+        if questions:
+            normalized_answers: List[str] = []
+            for idx, _ in enumerate(questions):
+                if isinstance(answers, list) and idx < len(answers):
+                    normalized_answers.append(str(answers[idx]))
+                else:
+                    normalized_answers.append("No answer provided.")
+        else:
+            normalized_answers = None
+
         result = {
-            'persona_id': persona.id,
-            'persona_name': persona_data.get('name', f'Persona {persona.id}'),
-            'condition': persona.condition,
+            'persona_id': persona_id,
+            'persona_name': persona_data.get('name', f'Persona {persona_id}'),
+            'condition': persona_data.get('condition'),
             'analysis_summary': data.get('analysis_summary', ''),
             'metrics': data.get('metrics', {}),
+            'answers': normalized_answers,
             'key_insights': data.get('key_insights', []),
             'behavioral_prediction': data.get('behavioral_prediction', ''),
             'raw_response': json.dumps(data)[:500]
         }
-        logger.info(f"✅ Analysis completed for {persona.name}")
+        logger.info(f"✅ Analysis completed for {persona_name}")
         return result
         
     except Exception as e:
-        logger.error(f"❌ Error analyzing persona {persona.id} ({persona.name}): {e}")
+        logger.error(f"❌ Error analyzing persona {persona_id} ({persona_name}): {e}")
         logger.error(f"❌ Full error traceback:", exc_info=True)
         return {
-            'persona_id': persona.id,
-            'persona_name': f"Persona {persona.id}",
-            'condition': persona.condition,
+            'persona_id': persona_id,
+            'persona_name': f"Persona {persona_id}",
+            'condition': persona_data.get('condition'),
             'analysis_summary': f"Error in analysis: {str(e)}",
             'metrics': {},
+            'answers': [],
             'key_insights': [],
             'behavioral_prediction': 'Unable to generate prediction due to error',
             'error': str(e)
         }
 
 
-def run_multimodal_cohort_analysis(persona_ids: List[int], stimulus_text: str, stimulus_images: List[Dict], content_type: str, metrics: List[str], db) -> Dict[str, Any]:
+def run_multimodal_cohort_analysis(
+    persona_ids: List[int],
+    stimulus_text: str,
+    stimulus_images: List[Dict],
+    content_type: str,
+    metrics: List[str],
+    db,
+    metric_weights: Optional[Dict[str, float]] = None,
+    questions: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """
     Runs a multimodal cohort analysis using GPT-5's vision capabilities for image processing.
     """
@@ -742,37 +1020,77 @@ def run_multimodal_cohort_analysis(persona_ids: List[int], stimulus_text: str, s
     
     logger.info(f"✅ Loaded {len(personas)} valid personas")
     
+    # Serialize persona data BEFORE passing to worker threads
+    # SQLAlchemy ORM objects cannot be accessed across threads (DetachedInstanceError)
+    persona_data_list = []
+    for persona in personas:
+        try:
+            # Extract all needed attributes into a plain dictionary
+            persona_dict = {
+                'id': persona.id,
+                'name': persona.name,
+                'persona_type': persona.persona_type,
+                'age': persona.age,
+                'gender': persona.gender,
+                'condition': persona.condition,
+                'location': persona.location,
+                'full_persona_json': persona.full_persona_json,  # Serialize JSON string
+            }
+            persona_data_list.append(persona_dict)
+            logger.debug(f"✅ Serialized persona {persona.id}: {persona.name}")
+        except Exception as e:
+            logger.error(f"❌ Error serializing persona {persona.id}: {e}")
+            continue
+    
+    if not persona_data_list:
+        logger.error("❌ No valid persona data after serialization")
+        raise ValueError("No valid persona data after serialization")
+    
     # Process all personas in parallel using ThreadPoolExecutor
-    logger.info(f"� Starting parallel processing of {len(personas)} personas...")
+    logger.info(f"🚀 Starting parallel processing of {len(persona_data_list)} personas...")
     individual_responses = []
     
     # Determine the optimal number of workers (max 5 to avoid overwhelming OpenAI API)
-    max_workers = min(5, len(personas))
+    max_workers = min(5, len(persona_data_list))
     logger.info(f"🔧 Using {max_workers} parallel workers for processing")
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all persona processing tasks
-        future_to_persona = {
-            executor.submit(_process_persona_multimodal, persona, stimulus_text, stimulus_images, content_type, metrics): persona 
-            for persona in personas
+        # Submit all persona processing tasks with serialized data
+        future_to_persona_id = {
+            executor.submit(
+                _process_persona_multimodal,
+                persona_data,  # Pass serialized dict instead of ORM object
+                stimulus_text,
+                stimulus_images,
+                content_type,
+                metrics,
+                questions,
+                metric_weights,
+            ): persona_data['id'] 
+            for persona_data in persona_data_list
         }
         
         # Collect results as they complete
-        for future in concurrent.futures.as_completed(future_to_persona):
-            persona = future_to_persona[future]
+        for future in concurrent.futures.as_completed(future_to_persona_id):
+            persona_id = future_to_persona_id[future]
+            # Find persona name for logging
+            persona_name = next((p['name'] for p in persona_data_list if p['id'] == persona_id), f"ID {persona_id}")
             try:
                 result = future.result()
                 individual_responses.append(result)
-                logger.info(f"✅ Completed processing for {persona.name}")
+                logger.info(f"✅ Completed processing for {persona_name}")
             except Exception as e:
-                logger.error(f"❌ Exception occurred while processing {persona.name}: {e}")
+                logger.error(f"❌ Exception occurred while processing {persona_name}: {e}")
+                # Find persona condition from serialized data
+                persona_condition = next((p.get('condition') for p in persona_data_list if p['id'] == persona_id), None)
                 # Add error response for failed persona
                 individual_responses.append({
-                    'persona_id': persona.id,
-                    'persona_name': f"Persona {persona.id}",
-                    'condition': persona.condition,
+                    'persona_id': persona_id,
+                    'persona_name': persona_name,
+                    'condition': persona_condition,
                     'analysis_summary': f"Processing error: {str(e)}",
                     'metrics': {},
+                    'answers': [],
                     'key_insights': [],
                     'behavioral_prediction': 'Unable to generate prediction due to processing error',
                     'error': str(e)
@@ -802,6 +1120,8 @@ def run_multimodal_cohort_analysis(persona_ids: List[int], stimulus_text: str, s
         'stimulus_images_count': len(stimulus_images) if stimulus_images else 0,
         'content_summary': content_summary,
         'metrics_analyzed': metrics,
+        'metric_weights': metric_weights or {},
+        'questions': questions or [],
         'individual_responses': individual_responses,
         'summary_statistics': summary_stats,
         'insights': llm_generated_data.get("cumulative_insights", []),

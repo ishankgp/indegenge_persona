@@ -14,7 +14,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv()
+# Try backend/.env first (where keys are stored), then project root
+load_dotenv(Path(__file__).parent / "backend" / ".env")
+load_dotenv()  # Also load from root if exists
 
 # --- Configuration ---
 BACKEND_PORT = 8000
@@ -82,12 +84,15 @@ def ensure_port_available(port):
                 print_info(f"Process {pid} terminated successfully")
             except ProcessLookupError:
                 print_info(f"Process {pid} already terminated")
+            except subprocess.CalledProcessError as e:
+                # e.returncode == 128 usually means process not found (already gone)
+                print_info(f"Taskkill failed for process {pid} (likely already terminated): {e}")
             except PermissionError:
                 print_error(f"Permission denied to terminate process {pid}")
-                return False
+                # Don't return False immediately; try to continue and see if bind works
             except Exception as e:
                 print_error(f"Error terminating process {pid}: {e}")
-                return False
+                # Proceed to try binding anyway
         
         # Wait a moment for processes to clean up
         time.sleep(2)

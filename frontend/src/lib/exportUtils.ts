@@ -1,4 +1,6 @@
 import type { AnalysisResults } from '@/types/analytics';
+import type { MetricDefinition } from './metricsRegistry';
+import { getMetricByBackendKey, normalizeBackendMetricKey } from './metricsRegistry';
 
 export function exportToJSON(analysisResults: AnalysisResults, filename?: string) {
     const dataStr = JSON.stringify(analysisResults, null, 2);
@@ -14,26 +16,50 @@ export function exportToJSON(analysisResults: AnalysisResults, filename?: string
 export function exportToCSV(analysisResults: AnalysisResults, filename?: string) {
     const { individual_responses, metrics_analyzed } = analysisResults;
 
-    // Create CSV header
-    const headers = ['Persona Name', 'Persona ID', 'Reasoning'];
-    if (metrics_analyzed.includes('purchase_intent')) headers.push('Purchase Intent');
-    if (metrics_analyzed.includes('sentiment')) headers.push('Sentiment');
-    if (metrics_analyzed.includes('trust_in_brand')) headers.push('Trust in Brand');
-    if (metrics_analyzed.includes('message_clarity')) headers.push('Message Clarity');
-    if (metrics_analyzed.includes('key_concern_flagged')) headers.push('Key Concern');
+    const metricDefinitions: MetricDefinition[] = Array.from(
+        (metrics_analyzed || []).reduce((map, metricKey) => {
+            const normalized = normalizeBackendMetricKey(metricKey);
+            const definition = getMetricByBackendKey(normalized) || {
+                id: normalized,
+                backendKeys: [normalized],
+                label: normalized.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+                description: '',
+                type: 'score',
+                scale: { min: 0, max: 10 }
+            };
+            if (!map.has(definition.id)) {
+                map.set(definition.id, definition);
+            }
+            return map;
+        }, new Map<string, MetricDefinition>()).values()
+    );
 
-    // Create CSV rows
+    const headers = ['Persona Name', 'Persona ID', 'Reasoning', ...metricDefinitions.map((metric) => metric.label)];
+
+    const getResponseValue = (response: any, metric: MetricDefinition) => {
+        const keysToCheck = [metric.id, ...(metric.backendKeys || [])];
+        for (const key of keysToCheck) {
+            const value = response.responses?.[key];
+            if (value !== undefined && value !== null) return value;
+        }
+        return '';
+    };
+
     const rows = individual_responses.map((response) => {
         const row = [
             `"${response.persona_name}"`,
             response.persona_id,
             `"${response.reasoning.replace(/"/g, '""')}"`
         ];
-        if (metrics_analyzed.includes('purchase_intent')) row.push(String(response.responses.purchase_intent || ''));
-        if (metrics_analyzed.includes('sentiment')) row.push(String(response.responses.sentiment || ''));
-        if (metrics_analyzed.includes('trust_in_brand')) row.push(String(response.responses.trust_in_brand || ''));
-        if (metrics_analyzed.includes('message_clarity')) row.push(String(response.responses.message_clarity || ''));
-        if (metrics_analyzed.includes('key_concern_flagged')) row.push(`"${response.responses.key_concern_flagged || ''}"`);
+
+        metricDefinitions.forEach((metric) => {
+            const value = getResponseValue(response, metric);
+            if (Array.isArray(value)) {
+                row.push(`"${value.map((v) => String(v)).join('; ').replace(/"/g, '""')}"`);
+            } else {
+                row.push(`"${String(value ?? '').replace(/"/g, '""')}"`);
+            }
+        });
         return row.join(',');
     });
 

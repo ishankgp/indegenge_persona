@@ -1,6 +1,199 @@
-from sqlalchemy.orm import Session
-from . import models, schemas
 import json
+import logging
+from typing import Optional, Dict, Any, List
+
+from sqlalchemy.orm import Session
+
+from . import models, schemas, persona_engine
+
+logger = logging.getLogger(__name__)
+
+
+def _is_enriched_field(field_data: Any) -> bool:
+    """Check if a field follows the enriched field structure."""
+    if not isinstance(field_data, dict):
+        return False
+    return "value" in field_data and "status" in field_data
+
+
+def _merge_enriched_field(
+    existing: Dict[str, Any],
+    update: Dict[str, Any],
+    confirm: bool = False
+) -> Dict[str, Any]:
+    """Merge an enriched field update while preserving evidence.
+    
+    Args:
+        existing: The existing field data
+        update: The update to apply
+        confirm: If True, mark the field as confirmed
+    
+    Returns:
+        Merged field data with preserved evidence
+    """
+    result = {**existing}
+    
+    # Update value if provided
+    if "value" in update:
+        result["value"] = update["value"]
+    
+    # Update confidence if provided
+    if "confidence" in update:
+        result["confidence"] = update["confidence"]
+    
+    # Preserve or extend evidence - never lose it
+    existing_evidence = existing.get("evidence", [])
+    new_evidence = update.get("evidence", [])
+    if new_evidence:
+        # Combine and deduplicate evidence
+        combined_evidence = list(existing_evidence)
+        for ev in new_evidence:
+            if ev not in combined_evidence:
+                combined_evidence.append(ev)
+        result["evidence"] = combined_evidence
+    else:
+        result["evidence"] = existing_evidence
+    
+    # Update status
+    if confirm:
+        result["status"] = "confirmed"
+    elif "status" in update:
+        result["status"] = update["status"]
+    
+    return result
+
+
+def _deep_merge_persona_json(
+    existing: Dict[str, Any],
+    updates: Dict[str, Any],
+    confirm_fields: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """Deep merge persona JSON with field-level status tracking.
+    
+    Args:
+        existing: The existing persona JSON
+        updates: Updates to apply
+        confirm_fields: List of field paths to mark as confirmed
+    
+    Returns:
+        Merged persona JSON with preserved evidence and updated statuses
+    """
+    confirm_fields = confirm_fields or []
+    result = json.loads(json.dumps(existing))  # Deep copy
+    
+    def merge_recursive(target: Dict, source: Dict, path: str = ""):
+        for key, value in source.items():
+            current_path = f"{path}.{key}" if path else key
+            should_confirm = current_path in confirm_fields
+            
+            if key not in target:
+                # New field - add it
+                if _is_enriched_field(value) and should_confirm:
+                    value = {**value, "status": "confirmed"}
+                target[key] = value
+            elif _is_enriched_field(target[key]) and isinstance(value, dict):
+                # Both are enriched fields - merge them
+                target[key] = _merge_enriched_field(
+                    target[key],
+                    value,
+                    confirm=should_confirm
+                )
+            elif isinstance(target[key], dict) and isinstance(value, dict):
+                # Both are dicts but not enriched fields - recurse
+                merge_recursive(target[key], value, current_path)
+            else:
+                # Simple replacement
+                target[key] = value
+                
+        # Also mark fields as confirmed even if not in updates
+        for field_path in confirm_fields:
+            # Determine if this field_path belongs to the current merge level
+            if path:
+                # At nested level: field_path must start with path + "."
+                if not field_path.startswith(path + "."):
+                    continue
+                # Extract the key at this level (next segment after path)
+                path_prefix_len = len(path) + 1  # +1 for the dot
+                remaining_path = field_path[path_prefix_len:]
+                current_key = remaining_path.split(".")[0]
+            else:
+                # At top level: field_path must not contain dots (top-level field only)
+                if "." in field_path:
+                    continue
+                current_key = field_path
+            
+            if current_key in target and _is_enriched_field(target[current_key]):
+                target[current_key]["status"] = "confirmed"
+    
+    merge_recursive(result, updates)
+    return result
+
+
+def apply_field_updates(
+    persona_json: Dict[str, Any],
+    field_updates: Dict[str, schemas.PersonaFieldUpdate],
+    confirm_fields: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """Apply field-level updates to persona JSON.
+    
+    Args:
+        persona_json: The existing persona JSON
+        field_updates: Dict mapping field paths to updates
+        confirm_fields: List of field paths to mark as confirmed
+    
+    Returns:
+        Updated persona JSON
+    """
+    result = json.loads(json.dumps(persona_json))  # Deep copy
+    confirm_fields = confirm_fields or []
+    
+    for field_path, update in field_updates.items():
+        # Navigate to the field
+        parts = field_path.split(".")
+        target = result
+        
+        for i, part in enumerate(parts[:-1]):
+            if part not in target:
+                target[part] = {}
+            target = target[part]
+        
+        final_key = parts[-1]
+        existing = target.get(final_key, {
+            "value": "",
+            "status": "empty",
+            "confidence": 0.5,
+            "evidence": []
+        })
+        
+        # Build update dict from PersonaFieldUpdate
+        update_dict = {}
+        if update.value is not None:
+            update_dict["value"] = update.value
+        if update.status is not None:
+            update_dict["status"] = update.status.value
+        if update.confidence is not None:
+            update_dict["confidence"] = update.confidence
+        if update.evidence is not None:
+            update_dict["evidence"] = update.evidence
+        
+        should_confirm = field_path in confirm_fields
+        
+        if _is_enriched_field(existing):
+            target[final_key] = _merge_enriched_field(
+                existing,
+                update_dict,
+                confirm=should_confirm
+            )
+        else:
+            # Create new enriched field
+            target[final_key] = {
+                "value": update_dict.get("value", existing),
+                "status": "confirmed" if should_confirm else update_dict.get("status", "suggested"),
+                "confidence": update_dict.get("confidence", 0.7),
+                "evidence": update_dict.get("evidence", [])
+            }
+    
+    return result
 
 def get_personas(db: Session, skip: int = 0, limit: int = 100):
     """Retrieve all personas from the database."""
@@ -49,10 +242,14 @@ def create_persona(db: Session, persona_data: schemas.PersonaCreate, persona_jso
         brand_id=persona_data.brand_id,
         full_persona_json=persona_json
     )
-    db.add(db_persona)
-    db.commit()
-    db.refresh(db_persona)
-    return db_persona
+    try:
+        db.add(db_persona)
+        db.commit()
+        db.refresh(db_persona)
+        return db_persona
+    except Exception:
+        db.rollback()
+        raise
 
 def get_persona(db: Session, persona_id: int):
     return db.query(models.Persona).filter(models.Persona.id == persona_id).first()
@@ -70,16 +267,81 @@ def get_personas_count_by_brand(db: Session, brand_id: int) -> int:
     ).count()
 
 def update_persona(db: Session, persona_id: int, persona: schemas.PersonaUpdate):
+    """Update persona with support for field-level updates and confirmation.
+    
+    Supports three update modes:
+    1. Direct full_persona_json replacement
+    2. Field-level updates via field_updates dict
+    3. Confirming fields via confirm_fields list
+    """
     db_persona = db.query(models.Persona).filter(models.Persona.id == persona_id).first()
-    if db_persona:
-        update_data = persona.dict(exclude_unset=True)
-        full_payload = update_data.get("full_persona_json")
-        if isinstance(full_payload, dict):
-            update_data["full_persona_json"] = json.dumps(full_payload)
-        for key, value in update_data.items():
-            setattr(db_persona, key, value)
-        db.commit()
-        db.refresh(db_persona)
+    if not db_persona:
+        return None
+    
+    update_data = persona.dict(exclude_unset=True)
+    
+    # Extract special fields
+    field_updates = update_data.pop("field_updates", None)
+    confirm_fields = update_data.pop("confirm_fields", None)
+    full_payload = update_data.get("full_persona_json")
+    
+    # Parse existing persona JSON
+    try:
+        existing_json = json.loads(db_persona.full_persona_json or "{}")
+    except json.JSONDecodeError:
+        existing_json = {}
+    
+    # Handle full_persona_json update with merge
+    if isinstance(full_payload, dict):
+        # Merge with existing, preserving evidence
+        merged_json = _deep_merge_persona_json(
+            existing_json,
+            full_payload,
+            confirm_fields=confirm_fields
+        )
+        update_data["full_persona_json"] = json.dumps(merged_json, ensure_ascii=False)
+    elif isinstance(full_payload, str):
+        try:
+            payload_dict = json.loads(full_payload)
+            merged_json = _deep_merge_persona_json(
+                existing_json,
+                payload_dict,
+                confirm_fields=confirm_fields
+            )
+            update_data["full_persona_json"] = json.dumps(merged_json, ensure_ascii=False)
+        except json.JSONDecodeError:
+            # If parsing fails, use as-is
+            pass
+    
+    # Apply field-level updates if provided
+    if field_updates:
+        try:
+            current_json = json.loads(update_data.get("full_persona_json", db_persona.full_persona_json or "{}"))
+        except json.JSONDecodeError:
+            current_json = existing_json
+        
+        updated_json = apply_field_updates(
+            current_json,
+            field_updates,
+            confirm_fields=confirm_fields
+        )
+        update_data["full_persona_json"] = json.dumps(updated_json, ensure_ascii=False)
+    
+    # Apply confirm_fields even without other updates
+    if confirm_fields and not full_payload and not field_updates:
+        merged_json = _deep_merge_persona_json(
+            existing_json,
+            {},
+            confirm_fields=confirm_fields
+        )
+        update_data["full_persona_json"] = json.dumps(merged_json, ensure_ascii=False)
+    
+    # Apply all updates to the model
+    for key, value in update_data.items():
+        setattr(db_persona, key, value)
+    
+    db.commit()
+    db.refresh(db_persona)
     return db_persona
 
 def delete_persona(db: Session, persona_id: int):
@@ -208,11 +470,195 @@ def get_brands(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.Brand).offset(skip).limit(limit).all()
 
 def create_brand_document(db: Session, document: schemas.BrandDocumentCreate):
-    db_document = models.BrandDocument(**document.dict())
+    data = document.dict()
+    # Remove fields not in the model
+    data = document.dict()
+    # Remove fields not in the model
+    data.pop('summary', None)
+    
+    db_document = models.BrandDocument(**data)
     db.add(db_document)
     db.commit()
     db.refresh(db_document)
     return db_document
 
+
+def _delete_vector_store(vector_store_id: Optional[str]) -> None:
+    """Best-effort cleanup of remote OpenAI Vector Stores."""
+    if not vector_store_id:
+        return
+    
+    try:
+        from .document_processor import _get_openai_client
+        client = _get_openai_client()
+        if client:
+            client.beta.vector_stores.delete(vector_store_id)
+            logger.info("Deleted OpenAI Vector Store %s", vector_store_id)
+    except Exception as exc:
+        logger.warning("Vector store cleanup failed for %s: %s", vector_store_id, exc)
+
+
+def upsert_brand_document(db: Session, document: schemas.BrandDocumentCreate):
+    """Create or replace a brand document while cleaning up stale vectors.
+
+    If a document with the same brand and filename exists, it will be updated
+    with the new payload. When a replacement includes a new vector_store_id,
+    the previous store is removed on a best-effort basis.
+    """
+
+    logger.info(f"🔍 Upserting document: Brand {document.brand_id}, Filename '{document.filename}'")
+    
+    existing = db.query(models.BrandDocument).filter(
+        models.BrandDocument.brand_id == document.brand_id,
+        models.BrandDocument.filename == document.filename,
+    ).first()
+    
+    if existing:
+        logger.info(f"✅ Found existing document ID {existing.id} for filename '{document.filename}'")
+    else:
+        logger.info(f"⚠️ No existing document found for filename '{document.filename}'. checking similar...")
+        # Debug: list all docs for this brand to see what's there
+        all_docs = db.query(models.BrandDocument).filter(models.BrandDocument.brand_id == document.brand_id).all()
+        doc_names = [d.filename for d in all_docs]
+        logger.info(f"   Current docs for brand {document.brand_id}: {doc_names}")
+
+    if existing:
+        previous_vs_id = existing.vector_store_id
+        for key, value in document.dict().items():
+            setattr(existing, key, value)
+
+        db.commit()
+        db.refresh(existing)
+
+        # If vector store ID changed (and wasn't None), delete the old one to avoid garbage
+        if previous_vs_id and previous_vs_id != existing.vector_store_id:
+             _delete_vector_store(previous_vs_id)
+
+        return existing
+
+    return create_brand_document(db, document)
+
+
+def delete_brand_document(db: Session, document_id: int, *, brand_id: Optional[int] = None) -> bool:
+    query = db.query(models.BrandDocument).filter(models.BrandDocument.id == document_id)
+    if brand_id is not None:
+        query = query.filter(models.BrandDocument.brand_id == brand_id)
+
+    db_document = query.first()
+    if db_document:
+        vs_id = db_document.vector_store_id
+        db.delete(db_document)
+        db.commit()
+        _delete_vector_store(vs_id)
+        return True
+
+    return False
+
 def get_brand_documents(db: Session, brand_id: int):
     return db.query(models.BrandDocument).filter(models.BrandDocument.brand_id == brand_id).all()
+
+
+# CRUD for Cached Asset Analysis
+def get_cached_analysis(
+    db: Session,
+    image_hash: str,
+    persona_id: int,
+    persona_hash: str
+) -> Optional[models.CachedAssetAnalysis]:
+    """Retrieve a cached analysis if it exists for the given keys."""
+    return db.query(models.CachedAssetAnalysis).filter(
+        models.CachedAssetAnalysis.image_hash == image_hash,
+        models.CachedAssetAnalysis.persona_id == persona_id,
+        models.CachedAssetAnalysis.persona_hash == persona_hash
+    ).first()
+
+
+def create_cached_analysis(
+    db: Session,
+    image_hash: str,
+    persona_id: int,
+    persona_hash: str,
+    asset_name: Optional[str],
+    result_json: Dict[str, Any]
+) -> models.CachedAssetAnalysis:
+    """Create a new cached analysis entry."""
+    db_cached = models.CachedAssetAnalysis(
+        image_hash=image_hash,
+        persona_id=persona_id,
+        persona_hash=persona_hash,
+        asset_name=asset_name,
+        result_json=result_json
+    )
+    db.add(db_cached)
+    db.commit()
+    db.refresh(db_cached)
+    return db_cached
+
+
+def get_asset_history(
+    db: Session,
+    skip: int = 0,
+    limit: int = 50
+) -> List[models.CachedAssetAnalysis]:
+    """Retrieve asset analysis history for the dashboard, newest first."""
+    return db.query(models.CachedAssetAnalysis).order_by(
+        models.CachedAssetAnalysis.created_at.desc()
+    ).offset(skip).limit(limit).all()
+
+
+def delete_cached_analysis(db: Session, analysis_id: int) -> bool:
+    """Delete a cached analysis record by ID."""
+    record = db.query(models.CachedAssetAnalysis).filter(
+        models.CachedAssetAnalysis.id == analysis_id
+    ).first()
+    if record:
+        db.delete(record)
+        db.commit()
+        return True
+    return False
+
+
+# CRUD for Chat Sessions
+def create_chat_session(db: Session, session: schemas.ChatSessionCreate):
+    db_session = models.ChatSession(**session.dict())
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+    return db_session
+
+def get_chat_session(db: Session, session_id: int):
+    return db.query(models.ChatSession).filter(models.ChatSession.id == session_id).first()
+
+def get_chat_sessions_by_persona(db: Session, persona_id: int, skip: int = 0, limit: int = 50):
+    return db.query(models.ChatSession).filter(
+        models.ChatSession.persona_id == persona_id
+    ).order_by(models.ChatSession.updated_at.desc()).offset(skip).limit(limit).all()
+
+def create_chat_message(db: Session, message: schemas.ChatMessageCreate, session_id: int):
+    db_message = models.ChatMessage(**message.dict(), session_id=session_id)
+    db.add(db_message)
+    
+    # Update parent session "updated_at"
+    session = get_chat_session(db, session_id)
+    if session:
+        from datetime import datetime
+        session.updated_at = datetime.utcnow()
+        
+    db.commit()
+    db.refresh(db_message)
+    return db_message
+
+def get_chat_history(db: Session, session_id: int, limit: int = 50):
+    return db.query(models.ChatMessage).filter(
+        models.ChatMessage.session_id == session_id
+    ).order_by(models.ChatMessage.created_at.asc()).limit(limit).all()
+
+def delete_chat_session(db: Session, session_id: int):
+    session = get_chat_session(db, session_id)
+    if session:
+        # Delete messages first (manual cascade)
+        db.query(models.ChatMessage).filter(models.ChatMessage.session_id == session_id).delete()
+        db.delete(session)
+        db.commit()
+        return True
+    return False
