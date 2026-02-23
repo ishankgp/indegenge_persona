@@ -9,6 +9,7 @@ import { AssetIntelligenceWorkspace } from "@/components/AssetIntelligenceWorksp
 import { SyntheticTestingWorkspace } from "@/components/SyntheticTestingWorkspace"
 import { PersonaFeedbackPanel } from "@/components/PersonaFeedbackPanel"
 import { PanelFeedbackSummaryComponent } from "@/components/PanelFeedbackSummary"
+import { PanelFeedbackResultsTabs } from "@/components/PanelFeedbackResultsTabs"
 import { useNavigate, useLocation } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
@@ -543,13 +544,10 @@ export function SimulationHub() {
       return
     }
 
-    const hasText = panelStimulusText.trim().length > 0
-    const hasImages = panelImages.length > 0
-
-    if (!hasText && !hasImages) {
+    if (panelImages.length === 0) {
       toast({
-        title: "Missing Content",
-        description: "Please enter marketing content or upload an image to analyze",
+        title: "No Images",
+        description: "Please upload at least one image to analyze",
         variant: "destructive"
       })
       return
@@ -561,45 +559,35 @@ export function SimulationHub() {
     try {
       const personaIds = Array.from(selectedPersonas)
 
-      // Convert images to base64 if present
-      let processedImages = undefined
-      if (hasImages) {
-        processedImages = await Promise.all(
-          panelImages.map(async (file) => {
-            return new Promise<{ filename: string; content_type: string; data: string }>((resolve, reject) => {
-              const reader = new FileReader()
-              reader.onload = () => {
-                const base64String = (reader.result as string).split(',')[1]
-                resolve({
-                  filename: file.name,
-                  content_type: file.type,
-                  data: base64String
-                })
-              }
-              reader.onerror = reject
-              reader.readAsDataURL(file)
-            })
+      // Convert images to base64
+      const processedImages = await Promise.all(
+        panelImages.map(async (file) => {
+          return new Promise<{ filename: string; content_type: string; data: string }>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => {
+              const base64String = (reader.result as string).split(',')[1]
+              resolve({
+                filename: file.name,
+                content_type: file.type,
+                data: base64String
+              })
+            }
+            reader.onerror = reject
+            reader.readAsDataURL(file)
           })
-        )
-      }
-
-      // Determine content type
-      let panelContentType: 'text' | 'image' | 'both' = 'text'
-      if (hasText && hasImages) panelContentType = 'both'
-      else if (hasImages) panelContentType = 'image'
+        })
+      )
 
       console.log('🎯 Starting Panel Feedback analysis...', {
         personas: personaIds.length,
-        contentType: panelContentType,
-        textLength: panelStimulusText.length,
         imageCount: panelImages.length
       })
 
       const response = await PanelFeedbackAPI.analyze(
         personaIds,
-        panelStimulusText,
         processedImages,
-        panelContentType
+        panelStimulusText,
+        'image'
       )
       console.log('✅ Panel feedback complete:', response)
       setPanelFeedbackResults(response)
@@ -963,21 +951,12 @@ export function SimulationHub() {
                 )}
               </div>
 
-              {/* Marketing Content Input */}
+              {/* Image Upload */}
               <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Marketing Content (Optional if image provided)</Label>
-                  <Textarea
-                    placeholder="Enter your marketing message, email copy, or campaign text here..."
-                    className="min-h-[150px] resize-none"
-                    value={panelStimulusText}
-                    onChange={(e) => setPanelStimulusText(e.target.value)}
-                  />
-                </div>
 
                 <div className="space-y-2 flex-1 flex flex-col overflow-hidden">
                   <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium">Visual Assets (Optional)</Label>
+                    <Label className="text-sm font-medium">Visual Assets</Label>
                     <Button
                       variant="outline"
                       size="sm"
@@ -1026,7 +1005,7 @@ export function SimulationHub() {
               {/* Run Analysis Button */}
               <Button
                 onClick={handlePanelFeedback}
-                disabled={panelFeedbackLoading || selectedPersonas.size === 0 || (!panelStimulusText.trim() && panelImages.length === 0)}
+                disabled={panelFeedbackLoading || selectedPersonas.size === 0 || panelImages.length === 0}
                 className="w-full"
               >
                 {panelFeedbackLoading ? (
@@ -1044,22 +1023,20 @@ export function SimulationHub() {
             </aside>
 
             {/* RIGHT: Results Panel */}
-            <main className="flex-1 overflow-auto p-6 space-y-6">
+            <main className="flex-1 overflow-hidden">
               {panelFeedbackLoading ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center space-y-4">
                     <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
-                    <p className="text-muted-foreground">Analyzing with {selectedPersonas.size} personas...</p>
+                    <p className="text-muted-foreground">Analyzing {panelImages.length} image(s) with {selectedPersonas.size} personas...</p>
+                    <p className="text-xs text-muted-foreground">This may take a moment as each image is analyzed separately per persona.</p>
                   </div>
                 </div>
               ) : panelFeedbackResults ? (
-                <div className="space-y-6">
-                  <PanelFeedbackSummaryComponent
-                    summary={panelFeedbackResults.summary}
-                    personaCount={panelFeedbackResults.metadata.persona_count}
-                  />
-                  <PersonaFeedbackPanel cards={panelFeedbackResults.persona_cards} />
-                </div>
+                <PanelFeedbackResultsTabs
+                  results={panelFeedbackResults}
+                  imagePreviews={panelImagePreviews}
+                />
               ) : (
                 <div className="flex items-center justify-center h-full text-center">
                   <div className="space-y-4 max-w-md">
@@ -1068,7 +1045,7 @@ export function SimulationHub() {
                     </div>
                     <h3 className="text-lg font-semibold">Panel Feedback</h3>
                     <p className="text-muted-foreground">
-                      Select personas and enter your marketing content to get structured feedback with Clean Read, Key Themes, Strengths, and Weaknesses from each persona.
+                      Select personas and upload marketing images to get structured feedback with Clean Read, Key Themes, Strengths, and Weaknesses from each persona — analyzed per image.
                     </p>
                   </div>
                 </div>

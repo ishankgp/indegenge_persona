@@ -776,11 +776,25 @@ export interface PanelFeedbackSummary {
   }>;
 }
 
-export interface PanelFeedbackResponse {
+export interface ImageFeedbackResult {
+  image_filename: string;
   persona_cards: PersonaFeedbackCard[];
   summary: PanelFeedbackSummary;
+}
+
+export interface ResultsTableCell {
+  persona_id: number;
+  persona_name: string;
+  image_filename: string;
+  recommendation: string;
+}
+
+export interface PanelFeedbackResponse {
+  image_results: ImageFeedbackResult[];
+  results_table: ResultsTableCell[];
   metadata: {
     persona_count: number;
+    image_count: number;
     content_type: string;
     created_at: string;
   };
@@ -789,14 +803,14 @@ export interface PanelFeedbackResponse {
 export const PanelFeedbackAPI = {
   analyze: (
     personaIds: number[],
-    stimulusText: string,
-    stimulusImages?: Array<{ filename: string; content_type: string; data: string }>,
-    contentType: string = 'text'
+    stimulusImages: Array<{ filename: string; content_type: string; data: string }>,
+    stimulusText: string = '',
+    contentType: string = 'image'
   ): Promise<PanelFeedbackResponse> =>
-    api.post('/api/panel-feedback', {
+    api.post('/api/panel-feedback/analyze', {
       persona_ids: personaIds,
-      stimulus_text: stimulusText,
       stimulus_images: stimulusImages,
+      stimulus_text: stimulusText,
       content_type: contentType
     }).then(r => r.data),
 };

@@ -350,6 +350,58 @@ class SyntheticTestingResponse(BaseModel):
     aggregated: Dict[str, AggregatedAssetResult]
     metadata: Dict[str, Any]
 
+# === Panel Feedback Schemas ===
+
+class PanelFeedbackImageInput(BaseModel):
+    filename: str
+    content_type: str
+    data: str  # Base64
+
+class PanelFeedbackRequest(BaseModel):
+    persona_ids: List[int]
+    stimulus_images: List[PanelFeedbackImageInput]
+    stimulus_text: Optional[str] = ""
+    content_type: str = "image"
+
+class PanelFeedbackCard(BaseModel):
+    persona_id: int
+    persona_name: str
+    role: str = ""
+    segment: str = ""
+    key_characteristics: List[str] = Field(default_factory=list)
+    avatar_url: Optional[str] = None
+    clean_read: str = ""
+    key_themes: List[str] = Field(default_factory=list)
+    strengths: List[str] = Field(default_factory=list)
+    weaknesses: List[str] = Field(default_factory=list)
+    error: Optional[str] = None
+
+class PanelFeedbackRecommendation(BaseModel):
+    suggestion: str
+    reasoning: str
+
+class PanelFeedbackSummarySchema(BaseModel):
+    aggregated_themes: List[str] = Field(default_factory=list)
+    dissent_highlights: List[str] = Field(default_factory=list)
+    recommendations: List[PanelFeedbackRecommendation] = Field(default_factory=list)
+
+class ImageFeedbackResult(BaseModel):
+    image_filename: str
+    persona_cards: List[PanelFeedbackCard] = Field(default_factory=list)
+    summary: Optional[PanelFeedbackSummarySchema] = None
+
+class ResultsTableCell(BaseModel):
+    persona_id: int
+    persona_name: str
+    image_filename: str
+    recommendation: str
+
+class PanelFeedbackResponse(BaseModel):
+    image_results: List[ImageFeedbackResult] = Field(default_factory=list)
+    results_table: List[ResultsTableCell] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class GenerationRequest(BaseModel):
     segment_name: str
     segment_description: str

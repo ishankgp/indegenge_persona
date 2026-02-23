@@ -408,6 +408,104 @@ Be specific and reference persona names when highlighting dissent. Focus on acti
         }
 
 
+def generate_results_table(
+    image_results: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Generate a results summary table: 1 actionable recommendation per persona × image.
+    
+    Extracts strengths/weaknesses from each persona card per image and uses a
+    lightweight LLM call to distill them into a single recommendation.
+    """
+    
+    # Collect all persona×image combinations
+    cells_input = []
+    for img_result in image_results:
+        image_filename = img_result["image_filename"]
+        for card in img_result.get("persona_cards", []):
+            if card.get("error"):
+                cells_input.append({
+                    "persona_id": card["persona_id"],
+                    "persona_name": card["persona_name"],
+                    "image_filename": image_filename,
+                    "strengths": [],
+                    "weaknesses": [],
+                })
+            else:
+                cells_input.append({
+                    "persona_id": card["persona_id"],
+                    "persona_name": card["persona_name"],
+                    "image_filename": image_filename,
+                    "strengths": card.get("strengths", []),
+                    "weaknesses": card.get("weaknesses", []),
+                })
+    
+    if not cells_input:
+        return []
+    
+    # Build a single prompt that generates all recommendations at once
+    cells_description = json.dumps(cells_input, indent=2)
+    
+    prompt = f"""You are a pharmaceutical marketing strategist. Given persona feedback on marketing images, generate exactly ONE concise, actionable recommendation per persona×image combination to improve image effectiveness for that persona.
+
+**FEEDBACK DATA:**
+{cells_description}
+
+**YOUR TASK:**
+For each entry, synthesize the strengths and weaknesses into a single actionable recommendation (1-2 sentences max). Focus on the most impactful change.
+
+**OUTPUT FORMAT (JSON only):**
+{{
+    "recommendations": [
+        {{
+            "persona_id": <id>,
+            "image_filename": "<filename>",
+            "recommendation": "<single actionable recommendation>"
+        }}
+    ]
+}}
+"""
+
+    messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+    
+    try:
+        data = _chat_json_panel(messages, max_completion_tokens=2048)
+        
+        if data.get("error"):
+            raise RuntimeError(data["error"])
+        
+        recs_list = data.get("recommendations", [])
+        
+        # Map back to full cell structures
+        result_cells = []
+        recs_map = {(r["persona_id"], r["image_filename"]): r["recommendation"] for r in recs_list}
+        
+        for cell in cells_input:
+            key = (cell["persona_id"], cell["image_filename"])
+            result_cells.append({
+                "persona_id": cell["persona_id"],
+                "persona_name": cell["persona_name"],
+                "image_filename": cell["image_filename"],
+                "recommendation": recs_map.get(key, "Review individual feedback for insights.")
+            })
+        
+        return result_cells
+        
+    except Exception as e:
+        logger.error(f"❌ Error generating results table: {e}")
+        # Fallback: generate basic recommendations from weaknesses
+        result_cells = []
+        for cell in cells_input:
+            weakness = cell["weaknesses"][0] if cell["weaknesses"] else "No specific issues identified."
+            result_cells.append({
+                "persona_id": cell["persona_id"],
+                "persona_name": cell["persona_name"],
+                "image_filename": cell["image_filename"],
+                "recommendation": f"Address: {weakness}"
+            })
+        return result_cells
+
+
 def run_panel_feedback_analysis(
     persona_ids: List[int],
     stimulus_text: str,
@@ -418,6 +516,9 @@ def run_panel_feedback_analysis(
     """
     Run structured panel feedback analysis for the given personas.
     
+    Each image is analyzed separately: 1 LLM call per persona × per image.
+    Results are structured as per-image feedback + a results summary table.
+    
     Args:
         persona_ids: List of persona IDs to include in the panel
         stimulus_text: Text content of the marketing asset
@@ -426,7 +527,7 @@ def run_panel_feedback_analysis(
         db: Database session
     
     Returns:
-        Dict containing persona_cards, summary, and metadata
+        Dict containing image_results, results_table, and metadata
     """
     
     if not persona_ids:
@@ -437,7 +538,6 @@ def run_panel_feedback_analysis(
     for persona_id in persona_ids:
         persona = crud.get_persona(db, persona_id)
         if persona:
-            # Serialize to dict to avoid DetachedInstanceError in threads
             personas.append({
                 'id': persona.id,
                 'name': persona.name,
@@ -453,52 +553,74 @@ def run_panel_feedback_analysis(
     if not personas:
         raise ValueError("No valid personas found for the provided IDs")
     
-    logger.info(f"🎯 Running panel feedback for {len(personas)} personas")
+    images = stimulus_images or []
+    image_count = len(images)
+    logger.info(f"🎯 Running panel feedback for {len(personas)} personas × {image_count} images")
     
-    # Process personas in parallel
-    persona_cards = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(personas))) as executor:
-        futures = {
-            executor.submit(
-                analyze_single_persona_panel,
-                persona_dict,
-                stimulus_text,
-                stimulus_images,
-                content_type
-            ): persona_dict['id']
-            for persona_dict in personas
-        }
+    # Process each image separately
+    image_results = []
+    
+    for img_idx, image_info in enumerate(images):
+        image_filename = image_info.get("filename", f"Image {img_idx + 1}")
+        logger.info(f"📸 Processing image {img_idx + 1}/{image_count}: {image_filename}")
         
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                result = future.result()
-                persona_cards.append(result)
-            except Exception as e:
-                persona_id = futures[future]
-                logger.error(f"❌ Panel feedback failed for persona {persona_id}: {e}")
-                persona_cards.append({
-                    "persona_id": persona_id,
-                    "persona_name": f"Persona {persona_id}",
-                    "error": str(e)
-                })
+        # For this image, analyze all personas in parallel
+        single_image_list = [image_info]
+        persona_cards = []
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(personas))) as executor:
+            futures = {
+                executor.submit(
+                    analyze_single_persona_panel,
+                    persona_dict,
+                    stimulus_text,
+                    single_image_list,  # Pass only this single image
+                    content_type
+                ): persona_dict['id']
+                for persona_dict in personas
+            }
+            
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    result = future.result()
+                    persona_cards.append(result)
+                except Exception as e:
+                    pid = futures[future]
+                    logger.error(f"❌ Panel feedback failed for persona {pid} on {image_filename}: {e}")
+                    persona_cards.append({
+                        "persona_id": pid,
+                        "persona_name": f"Persona {pid}",
+                        "error": str(e)
+                    })
+        
+        # Sort by persona_id for consistent ordering
+        persona_cards.sort(key=lambda x: x.get('persona_id', 0))
+        
+        # Synthesize summary for this image
+        logger.info(f"📊 Synthesizing summary for {image_filename}...")
+        summary = synthesize_panel_summary(persona_cards, stimulus_text)
+        
+        image_results.append({
+            "image_filename": image_filename,
+            "persona_cards": persona_cards,
+            "summary": summary,
+        })
     
-    # Sort by persona_id for consistent ordering
-    persona_cards.sort(key=lambda x: x.get('persona_id', 0))
-    
-    # Synthesize summary
-    logger.info("📊 Synthesizing panel summary...")
-    summary = synthesize_panel_summary(persona_cards, stimulus_text)
+    # Generate the results table (1 recommendation per persona × image)
+    logger.info("📋 Generating results summary table...")
+    results_table = generate_results_table(image_results)
     
     # Build final result
     result = {
-        "persona_cards": persona_cards,
-        "summary": summary,
+        "image_results": image_results,
+        "results_table": results_table,
         "metadata": {
             "persona_count": len(personas),
+            "image_count": image_count,
             "content_type": content_type,
             "created_at": datetime.now().isoformat()
         }
     }
     
-    logger.info(f"✅ Panel feedback analysis complete for {len(personas)} personas")
+    logger.info(f"✅ Panel feedback analysis complete for {len(personas)} personas × {image_count} images")
     return result
