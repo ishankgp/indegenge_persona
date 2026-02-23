@@ -25,6 +25,7 @@ import {
     type SyntheticTestRun
 } from '@/lib/api';
 import { ComparativeAnalysisTable } from './ComparativeAnalysisTable';
+import { SyntheticResultsMatrix } from './SyntheticResultsMatrix';
 
 interface Asset {
     id: string;
@@ -591,11 +592,15 @@ export function SyntheticTestingWorkspace({
                         </Card>
 
                         {/* 3. QUALITATIVE COMPARISON */}
-                        <Tabs defaultValue="comparative" className="w-full">
-                            <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
+                        <Tabs defaultValue="matrix" className="w-full">
+                            <TabsList className="grid w-full grid-cols-3 lg:w-[600px]">
+                                <TabsTrigger value="matrix">Summary Matrix</TabsTrigger>
                                 <TabsTrigger value="comparative">Comparative View</TabsTrigger>
                                 <TabsTrigger value="detailed">Detailed Breakdown</TabsTrigger>
                             </TabsList>
+                            <TabsContent value="matrix" className="mt-4">
+                                <SyntheticResultsMatrix results={results} assets={assets} />
+                            </TabsContent>
                             <TabsContent value="comparative" className="mt-4">
                                 <ComparativeAnalysisTable results={results} assets={assets} />
                             </TabsContent>

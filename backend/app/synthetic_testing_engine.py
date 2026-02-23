@@ -134,6 +134,7 @@ Evaluate this asset objectively on a 1-7 scale (1 = Poor/Low, 7 = Excellent/High
 1. **Does Well**: What this cover concept does well.
 2. **Challenges**: What this cover concept does NOT do as well.
 3. **Considerations**: Considerations to improve the cover concept.
+4. **Actionable Recommendation**: A single, punchy, actionable recommendation for this persona (max 20 words).
 
 **OUTPUT JSON FORMAT:**
 {{
@@ -147,7 +148,8 @@ Evaluate this asset objectively on a 1-7 scale (1 = Poor/Low, 7 = Excellent/High
     "feedback": {{
         "does_well": ["<concise bullet 1>", "<concise bullet 2>"],
         "does_not_do_well": ["<concise bullet 1>", "<concise bullet 2>"],
-        "considerations": ["<concise bullet 1>", "<concise bullet 2>"]
+        "considerations": ["<concise bullet 1>", "<concise bullet 2>"],
+        "actionable_recommendation": "<single most important change>"
     }}
 }}
 """
@@ -202,9 +204,11 @@ def analyze_single_asset_persona(
         "persona_id": persona_dict['id'],
         "persona_name": persona_dict['name'],
         "asset_id": asset.get('id'),
+        "asset_name": asset_name,
         "scores": scores,
         "overall_preference_score": preference_pct,
-        "feedback": result.get("feedback", {})
+        "feedback": result.get("feedback", {}),
+        "recommendation": result.get("feedback", {}).get("actionable_recommendation", "Consider individual feedback for improvements.")
     }
 
 def run_synthetic_testing(
@@ -298,9 +302,22 @@ def run_synthetic_testing(
                 "respondent_count": count
             }
 
+        # Matrix for Summary View: List of {persona_id, persona_name, asset_id, asset_name, recommendation}
+        results_matrix = []
+        for r in results:
+            if 'error' in r: continue
+            results_matrix.append({
+                "persona_id": r.get("persona_id"),
+                "persona_name": r.get("persona_name"),
+                "asset_id": r.get("asset_id"),
+                "asset_name": r.get("asset_name"),
+                "recommendation": r.get("recommendation", "N/A")
+            })
+
         return {
             "results": results,
             "aggregated": aggregated_results,
+            "results_matrix": results_matrix,
             "metadata": {
                 "personas_count": len(personas),
                 "assets_count": len(assets),

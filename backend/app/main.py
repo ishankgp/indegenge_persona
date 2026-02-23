@@ -8,7 +8,7 @@ import time
 
 from .core.config import settings
 from .routers import personas, brands, chat, synthetic, analysis, panel_feedback
-from .database import get_db
+from .database import get_db, engine, Base
 from . import models, segments, disease_packs, crud
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,9 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Create tables
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

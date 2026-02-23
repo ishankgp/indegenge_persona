@@ -662,3 +662,23 @@ def delete_chat_session(db: Session, session_id: int):
         db.commit()
         return True
     return False
+
+# --- Synthetic Testing CRUD ---
+
+def create_synthetic_test_run(db: Session, run_data: schemas.SyntheticTestRunCreate):
+    db_run = models.SyntheticTestRun(
+        name=run_data.name,
+        persona_ids=run_data.persona_ids,
+        assets=run_data.assets,
+        results=run_data.results.model_dump()
+    )
+    db.add(db_run)
+    db.commit()
+    db.refresh(db_run)
+    return db_run
+
+def get_synthetic_test_runs(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.SyntheticTestRun).order_by(models.SyntheticTestRun.created_at.desc()).offset(skip).limit(limit).all()
+
+def get_synthetic_test_run(db: Session, run_id: int):
+    return db.query(models.SyntheticTestRun).filter(models.SyntheticTestRun.id == run_id).first()

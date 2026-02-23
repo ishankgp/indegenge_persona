@@ -850,6 +850,13 @@ export interface AggregatedAssetResult {
 export interface SyntheticTestingResponse {
   results: SyntheticResultItem[];
   aggregated: Record<string, AggregatedAssetResult>;
+  results_matrix: Array<{
+    persona_id: number;
+    persona_name: string;
+    asset_id: string;
+    asset_name: string;
+    recommendation: string;
+  }>;
   metadata: {
     personas_count: number;
     assets_count: number;
@@ -871,7 +878,7 @@ export const SyntheticTestingAPI = {
     personaIds: number[],
     assets: Array<{ id: string; name: string; image_data?: string; text_content: string }>
   ): Promise<SyntheticTestingResponse> =>
-    api.post('/api/synthetic-testing/analyze', {
+    api.post('/api/synthetic/analyze', {
       persona_ids: personaIds,
       assets: assets
     }).then(r => r.data),

@@ -348,7 +348,24 @@ class AggregatedAssetResult(BaseModel):
 class SyntheticTestingResponse(BaseModel):
     results: List[SyntheticResultItem]
     aggregated: Dict[str, AggregatedAssetResult]
+    results_matrix: List[Dict[str, Any]] = Field(default_factory=list) # List of {persona_id, asset_id, recommendation}
     metadata: Dict[str, Any]
+
+class SyntheticTestRunBase(BaseModel):
+    name: str
+    persona_ids: List[int]
+    assets: List[Dict[str, Any]] # {id, name, preview}
+    results: SyntheticTestingResponse
+
+class SyntheticTestRunCreate(SyntheticTestRunBase):
+    pass
+
+class SyntheticTestRun(SyntheticTestRunBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 # === Panel Feedback Schemas ===
 
