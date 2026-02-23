@@ -1,8 +1,8 @@
 "use client"
 
-import React, { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { PersonasAPI, BrandsAPI, DiscoveryAPI } from "@/lib/api"
+import { BrandsAPI, DiscoveryAPI } from "@/lib/api"
 import type { DiscoveredSegment } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -31,12 +31,6 @@ interface BrandOption {
   name: string
 }
 
-interface FieldStatus {
-  key: string
-  label: string
-  complete: boolean
-  message?: string
-}
 
 
 
@@ -45,10 +39,8 @@ export function CreatePersona() {
   const { toast } = useToast()
   const [searchParams] = useSearchParams()
   const urlBrandId = searchParams.get('brand_id')
-  const urlCondition = searchParams.get('condition')
 
   const [generating, setGenerating] = useState(false)
-  const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 })
   const [recentlyCreated, setRecentlyCreated] = useState<{ ids: number[]; names: string[] }>({ ids: [], names: [] })
   // Simplified: Only "research" mode remains
   const [creationMode] = useState<"research">("research")
@@ -63,7 +55,6 @@ export function CreatePersona() {
   const [generatingFromDiscovery, setGeneratingFromDiscovery] = useState(false)
   const [discoveryError, setDiscoveryError] = useState<string | null>(null)
   const [generationTarget, setGenerationTarget] = useState<{ name: string, description: string } | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [reviewPersona, setReviewPersona] = useState<any | null>(null)
 
   const [brands, setBrands] = useState<BrandOption[]>([])
@@ -110,7 +101,6 @@ export function CreatePersona() {
   const handleSavePersona = async () => {
     if (!reviewPersona || !discoveryBrandId) return
     setGenerating(true)
-    setError(null)
     try {
       const saved = await DiscoveryAPI.saveGenerated({
         brand_id: discoveryBrandId,
@@ -134,7 +124,6 @@ export function CreatePersona() {
         description: err.message || "Could not save persona.",
         variant: "destructive",
       })
-      setError(err.message || "Save failed")
     } finally {
       setGenerating(false)
     }
