@@ -43,7 +43,7 @@ export function SyntheticResultsMatrix({ results, assets }: SyntheticResultsMatr
             <CardHeader className="bg-slate-50 dark:bg-slate-900/50 pb-4">
                 <div className="flex items-center gap-2">
                     <BarChart3 className="h-5 w-5 text-primary" />
-                    <CardTitle className="text-lg">Actionable Recommendations Matrix</CardTitle>
+                    <CardTitle className="text-lg">Results</CardTitle>
                 </div>
                 <p className="text-sm text-muted-foreground mt-1">
                     Direct synthesized feedback for each Persona × Asset combination.

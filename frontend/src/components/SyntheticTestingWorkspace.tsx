@@ -594,7 +594,7 @@ export function SyntheticTestingWorkspace({
                         {/* 3. QUALITATIVE COMPARISON */}
                         <Tabs defaultValue="matrix" className="w-full">
                             <TabsList className="grid w-full grid-cols-3 lg:w-[600px]">
-                                <TabsTrigger value="matrix">Summary Matrix</TabsTrigger>
+                                <TabsTrigger value="matrix">Results</TabsTrigger>
                                 <TabsTrigger value="comparative">Comparative View</TabsTrigger>
                                 <TabsTrigger value="detailed">Detailed Breakdown</TabsTrigger>
                             </TabsList>
